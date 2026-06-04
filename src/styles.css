@@ -96,6 +96,109 @@ h1 {
   border-top: 4px solid #24292f;
 }
 
+.feed-panel {
+  display: grid;
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid #d8d2c7;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.feed-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #e4ded4;
+}
+
+.feed-panel__header h2 {
+  margin: 2px 0 0;
+  font-size: 1.25rem;
+}
+
+.feed-panel__counter {
+  display: inline-grid;
+  width: 44px;
+  height: 32px;
+  place-items: center;
+  border-radius: 999px;
+  background: #1f2428;
+  color: #fffdfa;
+  font-weight: 800;
+}
+
+.message-feed {
+  display: grid;
+  max-height: 440px;
+  gap: 10px;
+  margin: 0;
+  padding: 16px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.message {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid #ebe5db;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.message__metadata {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.message__badge {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.message__badge--mock {
+  background: #0f766e;
+}
+
+.message__badge--twitch {
+  background: #7c3aed;
+}
+
+.message__badge--kick {
+  background: #2ebf4f;
+}
+
+.message__badge--x {
+  background: #24292f;
+}
+
+.message__author {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.message__time {
+  margin-left: auto;
+  color: #6d747c;
+  font-size: 0.85rem;
+}
+
+.message__text {
+  margin: 0;
+  color: #30363d;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 760px) {
   .app-shell {
     padding: 20px;

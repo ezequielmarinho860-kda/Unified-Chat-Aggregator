@@ -14,10 +14,10 @@
     <main class="app-shell">
       <section class="dashboard">
         <div class="dashboard__header">
-          <p class="eyebrow">Bloco 0</p>
+          <p class="eyebrow">Bloco 1</p>
           <h1>Unified Chat Aggregator</h1>
           <p class="summary">
-            Dashboard desktop inicial pronto para receber connectors de chat.
+            Feed em tempo real recebendo mensagens pelo backbone IPC.
           </p>
         </div>
 
@@ -35,6 +35,18 @@
             <strong>Connector pendente</strong>
           </article>
         </div>
+
+        <section class="feed-panel" aria-labelledby="feed-title">
+          <div class="feed-panel__header">
+            <div>
+              <p class="eyebrow">Live feed</p>
+              <h2 id="feed-title">Mensagens unificadas</h2>
+            </div>
+            <span class="feed-panel__counter" id="message-count">0</span>
+          </div>
+
+          <ol class="message-feed" id="message-feed" aria-live="polite"></ol>
+        </section>
       </section>
     </main>
     <script src="./renderer.js"></script>

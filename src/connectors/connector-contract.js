@@ -16,6 +16,7 @@ const CONNECTOR_METHODS = ['connect', 'disconnect', 'send'];
  *
  * @typedef {Object} ChatConnector
  * @property {Platform} platform
+ * @property {((listener: (message: ChatMessage) => void) => () => void) | undefined} onMessage
  * @property {() => Promise<void>} connect
  * @property {() => Promise<void>} disconnect
  * @property {(text: string) => Promise<void>} send
