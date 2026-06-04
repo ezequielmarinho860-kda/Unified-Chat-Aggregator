@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Unified Chat Aggregator</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="dashboard">
+        <div class="dashboard__header">
+          <p class="eyebrow">Bloco 0</p>
+          <h1>Unified Chat Aggregator</h1>
+          <p class="summary">
+            Dashboard desktop inicial pronto para receber connectors de chat.
+          </p>
+        </div>
+
+        <div class="status-grid" aria-label="Status dos connectors">
+          <article class="status-card status-card--twitch">
+            <span class="status-card__label">Twitch</span>
+            <strong>Connector pendente</strong>
+          </article>
+          <article class="status-card status-card--kick">
+            <span class="status-card__label">Kick</span>
+            <strong>Connector pendente</strong>
+          </article>
+          <article class="status-card status-card--x">
+            <span class="status-card__label">X</span>
+            <strong>Connector pendente</strong>
+          </article>
+        </div>
+      </section>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>
