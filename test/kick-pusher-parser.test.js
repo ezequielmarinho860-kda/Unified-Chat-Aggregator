@@ -2,6 +2,8 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   KICK_CHAT_MESSAGE_EVENT,
+  KICK_GLOBAL_BADGE_IMAGE_URLS,
+  normalizeKickBadges,
   parseKickPusherEnvelope,
 } = require('../src/connectors/kick-pusher-parser');
 
@@ -18,6 +20,7 @@ test('parses Kick Pusher chat message events into canonical messages', () => {
           id: 99,
           username: 'Streamer',
           profile_pic: 'https://example.com/avatar.png',
+          badges: ['moderator', 'subscriber'],
         },
       }),
     }),
@@ -29,7 +32,114 @@ test('parses Kick Pusher chat message events into canonical messages', () => {
   assert.equal(parsed.message.author.id, '99');
   assert.equal(parsed.message.author.name, 'Streamer');
   assert.equal(parsed.message.author.avatarUrl, 'https://example.com/avatar.png');
+  assert.deepEqual(parsed.message.author.badges, [
+    {
+      id: 'moderator',
+      label: 'Mod',
+      version: undefined,
+      imageUrl: KICK_GLOBAL_BADGE_IMAGE_URLS.moderator,
+    },
+    {
+      id: 'subscriber',
+      label: 'Sub',
+      version: undefined,
+      imageUrl: KICK_GLOBAL_BADGE_IMAGE_URLS.subscriber,
+    },
+  ]);
   assert.equal(parsed.message.text, 'hello kick');
+});
+
+test('normalizes Kick badge objects with images', () => {
+  const badges = normalizeKickBadges({
+    sender: {
+      badges: [
+        {
+          id: 'vip',
+          name: 'VIP',
+          imageUrl: 'https://files.kick.com/badges/vip.webp',
+        },
+        {
+          type: 'og',
+          title: 'OG',
+          image_url: 'https://files.kick.com/badges/og.webp',
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(badges, [
+    {
+      id: 'vip',
+      label: 'VIP',
+      version: undefined,
+      imageUrl: 'https://files.kick.com/badges/vip.webp',
+    },
+    {
+      id: 'og',
+      label: 'OG',
+      version: undefined,
+      imageUrl: 'https://files.kick.com/badges/og.webp',
+    },
+  ]);
+});
+
+test('derives fallback Kick badges from sender role flags', () => {
+  const badges = normalizeKickBadges({
+    sender: {
+      role: 'moderator',
+      is_subscribed: true,
+      is_verified: true,
+    },
+  });
+
+  assert.deepEqual(badges, [
+    {
+      id: 'moderator',
+      label: 'Mod',
+      version: undefined,
+      imageUrl: KICK_GLOBAL_BADGE_IMAGE_URLS.moderator,
+    },
+    {
+      id: 'subscriber',
+      label: 'Sub',
+      version: undefined,
+      imageUrl: KICK_GLOBAL_BADGE_IMAGE_URLS.subscriber,
+    },
+    {
+      id: 'verified',
+      label: 'Verified',
+      version: undefined,
+      imageUrl: KICK_GLOBAL_BADGE_IMAGE_URLS.verified,
+    },
+  ]);
+});
+
+test('normalizes Kick numeric chat level badges', () => {
+  const badges = normalizeKickBadges({
+    sender: {
+      chatroom_level: 14,
+    },
+  });
+
+  assert.deepEqual(badges, [
+    { id: 'level-14', label: '14', version: '14', imageUrl: undefined },
+  ]);
+});
+
+test('normalizes numeric Kick badges from badge collections', () => {
+  const badges = normalizeKickBadges({
+    sender_badges: ['10', 'moderator'],
+  });
+
+  assert.deepEqual(badges, [
+    { id: 'level-10', label: '10', version: '10', imageUrl: undefined },
+    {
+      id: 'moderator',
+      label: 'Mod',
+      version: undefined,
+      imageUrl: KICK_GLOBAL_BADGE_IMAGE_URLS.moderator,
+    },
+  ]);
 });
 
 test('parses Pusher ping envelopes', () => {

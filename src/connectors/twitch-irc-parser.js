@@ -51,7 +51,7 @@ const parseTwitchIrcLine = (line) => {
   };
 };
 
-const parseTwitchPrivmsg = (line) => {
+const parseTwitchPrivmsg = (line, { badgeCatalog = {} } = {}) => {
   const parsed = parseTwitchIrcLine(line);
 
   if (parsed.command !== 'PRIVMSG') {
@@ -70,11 +70,48 @@ const parseTwitchPrivmsg = (line) => {
     author: {
       id: parsed.tags['user-id'] || username || displayName,
       name: displayName,
+      badges: parseTwitchBadges(parsed.tags.badges, badgeCatalog),
     },
     text: parsed.trailing || '',
     timestamp,
     raw: parsed,
   });
+};
+
+const parseTwitchBadges = (rawBadges = '', badgeCatalog = {}) => {
+  if (!rawBadges) {
+    return [];
+  }
+
+  return rawBadges
+    .split(',')
+    .filter(Boolean)
+    .map((badge) => {
+      const [id, version = '1'] = badge.split('/');
+      const metadata = badgeCatalog?.[id]?.[version];
+
+      return {
+        id,
+        label: metadata?.label ?? getTwitchBadgeLabel(id),
+        version,
+        imageUrl: metadata?.imageUrl,
+      };
+    });
+};
+
+const getTwitchBadgeLabel = (badgeId) => {
+  const labels = {
+    broadcaster: 'Broadcaster',
+    founder: 'Founder',
+    moderator: 'Mod',
+    premium: 'Prime',
+    staff: 'Staff',
+    subscriber: 'Sub',
+    turbo: 'Turbo',
+    vip: 'VIP',
+  };
+
+  return labels[badgeId] ?? badgeId;
 };
 
 const decodeIrcTagValue = (value) =>
@@ -92,5 +129,6 @@ const getUsernameFromPrefix = (prefix) => {
 
 module.exports = {
   parseTwitchIrcLine,
+  parseTwitchBadges,
   parseTwitchPrivmsg,
 };

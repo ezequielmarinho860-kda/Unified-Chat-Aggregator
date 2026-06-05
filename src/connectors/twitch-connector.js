@@ -1,5 +1,5 @@
 const { EventEmitter } = require('node:events');
-const { sendTwitchChatMessage } = require('./twitch-api');
+const { fetchTwitchChatBadgeCatalog, sendTwitchChatMessage } = require('./twitch-api');
 const { parseTwitchPrivmsg } = require('./twitch-irc-parser');
 
 const TWITCH_IRC_URL = 'wss://irc-ws.chat.twitch.tv:443';
@@ -17,6 +17,7 @@ const createTwitchConnector = ({
   let socket;
   let reconnectTimer;
   let shouldReconnect = false;
+  let badgeCatalog = {};
 
   const connect = async () => {
     if (socket && socket.readyState <= WebSocket.OPEN) {
@@ -24,6 +25,7 @@ const createTwitchConnector = ({
     }
 
     shouldReconnect = true;
+    await loadBadgeCatalog();
     socket = webSocketFactory(TWITCH_IRC_URL);
 
     socket.addEventListener('open', () => {
@@ -65,10 +67,27 @@ const createTwitchConnector = ({
       return;
     }
 
-    const message = parseTwitchPrivmsg(line);
+    const message = parseTwitchPrivmsg(line, { badgeCatalog });
 
     if (message) {
       events.emit('message', message);
+    }
+  };
+
+  const loadBadgeCatalog = async () => {
+    if (!accessToken) {
+      badgeCatalog = {};
+      return;
+    }
+
+    try {
+      badgeCatalog = await fetchTwitchChatBadgeCatalog({
+        channel: normalizedChannel,
+        accessToken,
+        fetchImpl,
+      });
+    } catch {
+      badgeCatalog = {};
     }
   };
 

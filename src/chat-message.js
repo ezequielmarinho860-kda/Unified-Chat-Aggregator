@@ -25,6 +25,32 @@ const normalizeAuthor = (author) => {
     id: requireString(author.id, 'author.id'),
     name: requireString(author.name, 'author.name'),
     avatarUrl: optionalString(author.avatarUrl),
+    badges: normalizeBadges(author.badges),
+  };
+};
+
+const normalizeBadges = (badges) => {
+  if (badges === undefined || badges === null) {
+    return [];
+  }
+
+  if (!Array.isArray(badges)) {
+    throw new TypeError('Chat message author badges must be an array.');
+  }
+
+  return badges.map(normalizeBadge);
+};
+
+const normalizeBadge = (badge) => {
+  if (!badge || typeof badge !== 'object') {
+    throw new TypeError('Chat message author badge must be an object.');
+  }
+
+  return {
+    id: requireString(badge.id, 'author.badges.id'),
+    label: requireString(badge.label, 'author.badges.label'),
+    version: optionalString(badge.version),
+    imageUrl: optionalString(badge.imageUrl),
   };
 };
 

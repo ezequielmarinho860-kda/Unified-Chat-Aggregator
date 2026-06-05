@@ -1,6 +1,8 @@
 const TWITCH_AUTH_VALIDATE_URL = 'https://id.twitch.tv/oauth2/validate';
 const TWITCH_USERS_ENDPOINT = 'https://api.twitch.tv/helix/users';
 const TWITCH_SEND_CHAT_MESSAGE_ENDPOINT = 'https://api.twitch.tv/helix/chat/messages';
+const TWITCH_GLOBAL_CHAT_BADGES_ENDPOINT = 'https://api.twitch.tv/helix/chat/badges/global';
+const TWITCH_CHANNEL_CHAT_BADGES_ENDPOINT = 'https://api.twitch.tv/helix/chat/badges';
 const TWITCH_SEND_ANNOUNCEMENT_ENDPOINT =
   'https://api.twitch.tv/helix/chat/announcements';
 const TWITCH_BANS_ENDPOINT = 'https://api.twitch.tv/helix/moderation/bans';
@@ -429,6 +431,92 @@ const resolveTwitchUserByLogin = async ({
   };
 };
 
+const fetchTwitchChatBadgeCatalog = async ({
+  channel,
+  accessToken,
+  fetchImpl = fetch,
+} = {}) => {
+  const tokenInfo = await validateTwitchAccessToken({ accessToken, fetchImpl });
+  const broadcaster = await resolveTwitchUserByLogin({
+    login: channel,
+    accessToken,
+    clientId: tokenInfo.clientId,
+    fetchImpl,
+  });
+  const channelBadgesUrl = new URL(TWITCH_CHANNEL_CHAT_BADGES_ENDPOINT);
+
+  channelBadgesUrl.searchParams.set('broadcaster_id', broadcaster.id);
+
+  const [globalBadges, channelBadges] = await Promise.all([
+    fetchTwitchBadgeSets({
+      url: TWITCH_GLOBAL_CHAT_BADGES_ENDPOINT,
+      accessToken,
+      clientId: tokenInfo.clientId,
+      errorPrefix: 'Twitch global badge lookup failed',
+      fetchImpl,
+    }),
+    fetchTwitchBadgeSets({
+      url: channelBadgesUrl.toString(),
+      accessToken,
+      clientId: tokenInfo.clientId,
+      errorPrefix: 'Twitch channel badge lookup failed',
+      fetchImpl,
+    }),
+  ]);
+
+  return createTwitchBadgeCatalog([...globalBadges, ...channelBadges]);
+};
+
+const fetchTwitchBadgeSets = async ({
+  url,
+  accessToken,
+  clientId,
+  errorPrefix,
+  fetchImpl,
+}) => {
+  const response = await fetchImpl(url, {
+    headers: createTwitchApiHeaders(accessToken, clientId),
+  });
+  const body = await parseJsonResponse(response);
+
+  if (!response.ok) {
+    throw new Error(createTwitchErrorMessage(errorPrefix, response, body));
+  }
+
+  return Array.isArray(body?.data) ? body.data : [];
+};
+
+const createTwitchBadgeCatalog = (badgeSets) => {
+  const catalog = {};
+
+  for (const badgeSet of badgeSets) {
+    const setId = String(badgeSet.set_id ?? '');
+
+    if (!setId || !Array.isArray(badgeSet.versions)) {
+      continue;
+    }
+
+    catalog[setId] ??= {};
+
+    for (const version of badgeSet.versions) {
+      const versionId = String(version.id ?? '');
+
+      if (!versionId) {
+        continue;
+      }
+
+      catalog[setId][versionId] = {
+        label: String(version.title || version.description || setId),
+        imageUrl: String(
+          version.image_url_2x || version.image_url_1x || version.image_url_4x || '',
+        ),
+      };
+    }
+  }
+
+  return catalog;
+};
+
 const createTwitchApiHeaders = (accessToken, clientId) => ({
   Authorization: `Bearer ${normalizeTwitchAccessToken(accessToken)}`,
   'Client-Id': normalizeRequiredString(clientId, 'Twitch client_id'),
@@ -478,10 +566,14 @@ module.exports = {
   TWITCH_ANNOUNCEMENT_SCOPE,
   TWITCH_BAN_SCOPE,
   TWITCH_CHAT_MODERATION_SCOPE,
+  TWITCH_CHANNEL_CHAT_BADGES_ENDPOINT,
+  TWITCH_GLOBAL_CHAT_BADGES_ENDPOINT,
   TWITCH_MANAGE_MODERATORS_SCOPE,
   TWITCH_SEND_CHAT_MESSAGE_ENDPOINT,
   TWITCH_WRITE_SCOPE,
+  createTwitchBadgeCatalog,
   executeTwitchChatCommand,
+  fetchTwitchChatBadgeCatalog,
   parseTwitchChatCommand,
   resolveTwitchUserByLogin,
   sendTwitchChatMessage,

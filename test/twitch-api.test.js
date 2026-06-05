@@ -1,6 +1,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  createTwitchBadgeCatalog,
+  fetchTwitchChatBadgeCatalog,
   parseTwitchChatCommand,
   resolveTwitchUserByLogin,
   sendTwitchChatMessage,
@@ -59,6 +61,104 @@ test('resolves a Twitch user by login', async () => {
     login: 'monstercat',
     displayName: 'Monstercat',
   });
+});
+
+test('creates a Twitch badge catalog from badge API responses', () => {
+  const catalog = createTwitchBadgeCatalog([
+    {
+      set_id: 'subscriber',
+      versions: [
+        {
+          id: '12',
+          title: 'Subscriber',
+          image_url_1x: 'https://static-cdn.jtvnw.net/badges/v1/sub/1',
+          image_url_2x: 'https://static-cdn.jtvnw.net/badges/v1/sub/2',
+        },
+      ],
+    },
+  ]);
+
+  assert.deepEqual(catalog, {
+    subscriber: {
+      12: {
+        label: 'Subscriber',
+        imageUrl: 'https://static-cdn.jtvnw.net/badges/v1/sub/2',
+      },
+    },
+  });
+});
+
+test('fetches Twitch global and channel badge catalogs', async () => {
+  const fetchImpl = async (url, options) => {
+    if (url === 'https://id.twitch.tv/oauth2/validate') {
+      assert.equal(options.headers.Authorization, 'OAuth token');
+      return createJsonResponse({
+        client_id: 'client-1',
+        user_id: 'sender-1',
+        login: 'sender',
+        scopes: ['user:write:chat'],
+      });
+    }
+
+    assert.equal(options.headers.Authorization, 'Bearer token');
+
+    if (String(url).startsWith('https://api.twitch.tv/helix/users')) {
+      return createJsonResponse({
+        data: [{ id: 'broadcaster-1', login: 'monstercat' }],
+      });
+    }
+
+    if (url === 'https://api.twitch.tv/helix/chat/badges/global') {
+      return createJsonResponse({
+        data: [
+          {
+            set_id: 'moderator',
+            versions: [
+              {
+                id: '1',
+                title: 'Moderator',
+                image_url_2x: 'https://static-cdn.jtvnw.net/badges/v1/mod/2',
+              },
+            ],
+          },
+        ],
+      });
+    }
+
+    assert.equal(
+      url,
+      'https://api.twitch.tv/helix/chat/badges?broadcaster_id=broadcaster-1',
+    );
+    return createJsonResponse({
+      data: [
+        {
+          set_id: 'subscriber',
+          versions: [
+            {
+              id: '12',
+              title: 'Subscriber',
+              image_url_2x: 'https://static-cdn.jtvnw.net/badges/v1/sub/2',
+            },
+          ],
+        },
+      ],
+    });
+  };
+
+  const catalog = await fetchTwitchChatBadgeCatalog({
+    channel: 'monstercat',
+    accessToken: 'token',
+    fetchImpl,
+  });
+
+  assert.equal(
+    catalog.moderator[1].imageUrl,
+    'https://static-cdn.jtvnw.net/badges/v1/mod/2',
+  );
+  assert.equal(
+    catalog.subscriber[12].imageUrl,
+    'https://static-cdn.jtvnw.net/badges/v1/sub/2',
+  );
 });
 
 test('sends a Twitch chat message', async () => {

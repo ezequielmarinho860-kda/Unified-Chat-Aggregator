@@ -78,6 +78,8 @@ const renderMessage = (message) => {
   author.className = 'message__author';
   author.textContent = message.author.name;
 
+  const badges = renderAuthorBadges(message.author.badges);
+
   const time = document.createElement('time');
   time.className = 'message__time';
   time.dateTime = message.timestamp;
@@ -89,11 +91,34 @@ const renderMessage = (message) => {
 
   const metadata = document.createElement('div');
   metadata.className = 'message__metadata';
-  metadata.append(badge, author, time);
+  metadata.append(badge, author, ...badges, time);
 
   item.append(metadata, text);
   return item;
 };
+
+const renderAuthorBadges = (badges = []) =>
+  badges.map((badge) => {
+    const element = document.createElement('span');
+
+    element.className = `author-badge author-badge--${badge.id}`;
+    element.title = badge.label;
+
+    if (badge.imageUrl) {
+      const image = document.createElement('img');
+
+      element.classList.add('author-badge--image');
+      image.className = 'author-badge__image';
+      image.src = badge.imageUrl;
+      image.alt = badge.label;
+      image.loading = 'lazy';
+      element.append(image);
+    } else {
+      element.textContent = badge.label;
+    }
+
+    return element;
+  });
 
 const updateMessageMetrics = () => {
   messageCount.textContent = String(totalMessages);

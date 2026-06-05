@@ -76,6 +76,70 @@ test('connects to Twitch IRC and joins the configured channel', async () => {
   await connector.disconnect();
 });
 
+test('loads Twitch badge images before parsing chat messages', async () => {
+  const socket = new FakeWebSocket(TWITCH_IRC_URL);
+  const connector = createTwitchConnector({
+    channel: 'monstercat',
+    accessToken: 'token',
+    webSocketFactory: () => socket,
+    fetchImpl: async (url) => {
+      if (url === 'https://id.twitch.tv/oauth2/validate') {
+        return createJsonResponse({
+          client_id: 'client-1',
+          user_id: 'sender-1',
+          login: 'sender',
+          scopes: ['user:write:chat'],
+        });
+      }
+
+      if (String(url).startsWith('https://api.twitch.tv/helix/users')) {
+        return createJsonResponse({
+          data: [{ id: 'broadcaster-1', login: 'monstercat' }],
+        });
+      }
+
+      if (url === 'https://api.twitch.tv/helix/chat/badges/global') {
+        return createJsonResponse({ data: [] });
+      }
+
+      return createJsonResponse({
+        data: [
+          {
+            set_id: 'subscriber',
+            versions: [
+              {
+                id: '12',
+                title: 'Subscriber',
+                image_url_2x: 'https://static-cdn.jtvnw.net/badges/v1/sub/2',
+              },
+            ],
+          },
+        ],
+      });
+    },
+  });
+  const received = [];
+  const unsubscribe = connector.onMessage((message) => received.push(message));
+
+  await connector.connect();
+  socket.open();
+  socket.receive(
+    '@badges=subscriber/12;display-name=Ana;id=message-1;tmi-sent-ts=1780603200000;user-id=user-1 :ana!ana@ana.tmi.twitch.tv PRIVMSG #monstercat :hello twitch',
+  );
+
+  assert.deepEqual(received[0].author.badges, [
+    {
+      id: 'subscriber',
+      label: 'Subscriber',
+      version: '12',
+      imageUrl: 'https://static-cdn.jtvnw.net/badges/v1/sub/2',
+    },
+  ]);
+
+  unsubscribe();
+  await connector.disconnect();
+});
+
 test('emits parsed Twitch chat messages', async () => {
   const socket = new FakeWebSocket(TWITCH_IRC_URL);
   const connector = createTwitchConnector({
