@@ -4,7 +4,13 @@ const { validateTwitchAccessToken } = require('./twitch-api');
 const TWITCH_AUTHORIZE_URL = 'https://id.twitch.tv/oauth2/authorize';
 const DEFAULT_TWITCH_REDIRECT_URI = 'http://localhost/twitch/callback';
 const DEFAULT_TWITCH_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
-const TWITCH_AUTH_SCOPES = ['user:write:chat'];
+const TWITCH_AUTH_SCOPES = [
+  'user:write:chat',
+  'moderator:manage:announcements',
+  'moderator:manage:banned_users',
+  'moderator:manage:chat_messages',
+  'channel:manage:moderators',
+];
 
 const connectTwitchWithImplicitOAuth = async ({
   BrowserWindow,
