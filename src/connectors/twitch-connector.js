@@ -1,0 +1,111 @@
+const { EventEmitter } = require('node:events');
+const { parseTwitchPrivmsg } = require('./twitch-irc-parser');
+
+const TWITCH_IRC_URL = 'wss://irc-ws.chat.twitch.tv:443';
+const DEFAULT_RECONNECT_MS = 5_000;
+
+const createTwitchConnector = ({
+  channel,
+  reconnectMs = DEFAULT_RECONNECT_MS,
+  webSocketFactory = (url) => new WebSocket(url),
+} = {}) => {
+  const normalizedChannel = normalizeChannelName(channel);
+  const events = new EventEmitter();
+  let socket;
+  let reconnectTimer;
+  let shouldReconnect = false;
+
+  const connect = async () => {
+    if (socket && socket.readyState <= WebSocket.OPEN) {
+      return;
+    }
+
+    shouldReconnect = true;
+    socket = webSocketFactory(TWITCH_IRC_URL);
+
+    socket.addEventListener('open', () => {
+      const nickname = `justinfan${Math.floor(Math.random() * 100000)}`;
+
+      socket.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+      socket.send('PASS SCHMOOPIIE');
+      socket.send(`NICK ${nickname}`);
+      socket.send(`JOIN #${normalizedChannel}`);
+    });
+
+    socket.addEventListener('message', (event) => {
+      for (const line of String(event.data).split('\r\n').filter(Boolean)) {
+        handleIrcLine(line);
+      }
+    });
+
+    socket.addEventListener('close', scheduleReconnect);
+    socket.addEventListener('error', () => {
+      socket?.close();
+    });
+  };
+
+  const disconnect = async () => {
+    shouldReconnect = false;
+    clearTimeout(reconnectTimer);
+    reconnectTimer = undefined;
+
+    if (socket && socket.readyState <= WebSocket.OPEN) {
+      socket.close();
+    }
+
+    socket = undefined;
+  };
+
+  const handleIrcLine = (line) => {
+    if (line.startsWith('PING')) {
+      socket?.send(line.replace('PING', 'PONG'));
+      return;
+    }
+
+    const message = parseTwitchPrivmsg(line);
+
+    if (message) {
+      events.emit('message', message);
+    }
+  };
+
+  const scheduleReconnect = () => {
+    if (!shouldReconnect || reconnectTimer) {
+      return;
+    }
+
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = undefined;
+      socket = undefined;
+      connect();
+    }, reconnectMs);
+  };
+
+  return {
+    platform: 'twitch',
+    channel: normalizedChannel,
+    onMessage: (listener) => {
+      events.on('message', listener);
+      return () => events.off('message', listener);
+    },
+    connect,
+    disconnect,
+    send: async () => {
+      throw new Error('Twitch send is not implemented in the read MVP.');
+    },
+  };
+};
+
+const normalizeChannelName = (channel) => {
+  if (typeof channel !== 'string' || channel.trim().length === 0) {
+    throw new TypeError('Twitch channel must be a non-empty string.');
+  }
+
+  return channel.trim().replace(/^#/, '').toLowerCase();
+};
+
+module.exports = {
+  TWITCH_IRC_URL,
+  createTwitchConnector,
+  normalizeChannelName,
+};

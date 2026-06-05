@@ -2,9 +2,15 @@ const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
 const { createChatHub } = require('./chat-hub');
 const { createMockConnector } = require('./connectors/mock-connector');
+const { createTwitchConnector } = require('./connectors/twitch-connector');
+
+const twitchChannel = process.env.TWITCH_CHANNEL || 'monstercat';
 
 const chatHub = createChatHub({
-  connectors: [createMockConnector()],
+  connectors: [
+    createMockConnector(),
+    createTwitchConnector({ channel: twitchChannel }),
+  ],
 });
 
 const createMainWindow = () => {
