@@ -19,7 +19,7 @@ module.exports = [
     },
   },
   {
-    files: ['src/renderer.js'],
+    files: ['src/renderer.js', 'src/x-capture-preload.js'],
     languageOptions: {
       globals: {
         ...globals.browser,
