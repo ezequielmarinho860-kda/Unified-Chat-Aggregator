@@ -3,9 +3,11 @@ const path = require('node:path');
 const { DEFAULT_APP_CONFIG, normalizeAppConfig } = require('./app-config');
 
 const createAppConfigStore = (configPath) => {
+  const exists = () => fs.existsSync(configPath);
+
   const load = () => {
     try {
-      if (!fs.existsSync(configPath)) {
+      if (!exists()) {
         return normalizeAppConfig(DEFAULT_APP_CONFIG);
       }
 
@@ -27,6 +29,7 @@ const createAppConfigStore = (configPath) => {
 
   return {
     configPath,
+    exists,
     load,
     save,
   };

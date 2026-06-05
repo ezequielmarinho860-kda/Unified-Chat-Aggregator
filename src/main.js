@@ -2,9 +2,9 @@ const path = require('node:path');
 const { app, BrowserWindow, ipcMain } = require('electron');
 const {
   PLATFORM_ORDER,
-  applyEnvironmentOverrides,
   clearEnvironmentOverrides,
   createPublicAppConfig,
+  createRuntimeAppConfig,
   normalizeAppConfig,
 } = require('./app-config');
 const { createAppConfigStore } = require('./app-config-store');
@@ -22,6 +22,7 @@ let configStore;
 let savedConfig;
 let runtimeConfig;
 let envOverrides = [];
+let allowEnvironmentOverrides = false;
 let chatHub = createChatHub();
 let unsubscribeHubMessage;
 let unsubscribeHubStatus;
@@ -84,7 +85,10 @@ const restartRuntime = async (nextSavedConfig = savedConfig) => {
 
   await chatHub.stop();
 
-  const appliedConfig = applyEnvironmentOverrides(savedConfig, process.env);
+  const appliedConfig = createRuntimeAppConfig(savedConfig, {
+    allowEnvironmentOverrides,
+    env: process.env,
+  });
   runtimeConfig = appliedConfig.runtimeConfig;
   envOverrides = appliedConfig.overrides;
   chatHub = createChatHub({ connectors: buildConnectors(runtimeConfig) });
@@ -212,6 +216,7 @@ const createMainWindow = () => {
 
 app.whenReady().then(async () => {
   configStore = createAppConfigStore(path.join(app.getPath('userData'), 'config.json'));
+  allowEnvironmentOverrides = !configStore.exists();
   savedConfig = configStore.load();
   await restartRuntime(savedConfig);
   createMainWindow();
@@ -237,6 +242,8 @@ ipcMain.handle('config:get', () => getRuntimeSnapshot());
 
 ipcMain.handle('config:save', async (_event, config) => {
   const nextSavedConfig = configStore.save(mergeSavedAuth(config));
+
+  allowEnvironmentOverrides = false;
   clearEnvironmentOverrides(process.env);
   await restartRuntime(nextSavedConfig);
   return getRuntimeSnapshot();
@@ -276,6 +283,7 @@ ipcMain.handle('twitch:connect', async () => {
     },
   });
 
+  allowEnvironmentOverrides = false;
   await restartRuntime(nextSavedConfig);
   return getRuntimeSnapshot();
 });
@@ -295,6 +303,7 @@ ipcMain.handle('twitch:disconnect', async () => {
     },
   });
 
+  allowEnvironmentOverrides = false;
   await restartRuntime(nextSavedConfig);
   return getRuntimeSnapshot();
 });

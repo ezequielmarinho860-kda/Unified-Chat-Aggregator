@@ -4,6 +4,7 @@ const {
   applyEnvironmentOverrides,
   clearEnvironmentOverrides,
   createPublicAppConfig,
+  createRuntimeAppConfig,
   normalizeAppConfig,
 } = require('../src/app-config');
 
@@ -84,6 +85,31 @@ test('keeps CONNECTORS as the source of enabled platforms', () => {
   assert.equal(runtimeConfig.connectors.kick.enabled, false);
   assert.equal(runtimeConfig.connectors.twitch.enabled, false);
   assert.equal(runtimeConfig.connectors.x.enabled, true);
+});
+
+test('can build runtime config without environment overrides', () => {
+  const { runtimeConfig, overrides } = createRuntimeAppConfig(
+    {
+      connectors: {
+        twitch: { enabled: true, channel: 'saved-twitch' },
+        kick: { enabled: true, channel: 'saved-kick' },
+        x: { enabled: true, liveUrl: 'https://x.com/i/broadcasts/saved' },
+      },
+    },
+    {
+      allowEnvironmentOverrides: false,
+      env: {
+        TWITCH_CHANNEL: 'env-twitch',
+        KICK_CHANNEL: 'env-kick',
+        X_LIVE_URL: 'https://x.com/i/broadcasts/env',
+      },
+    },
+  );
+
+  assert.equal(runtimeConfig.connectors.twitch.channel, 'saved-twitch');
+  assert.equal(runtimeConfig.connectors.kick.channel, 'saved-kick');
+  assert.equal(runtimeConfig.connectors.x.liveUrl, 'https://x.com/i/broadcasts/saved');
+  assert.deepEqual(overrides, []);
 });
 
 test('clears environment overrides from the provided env object', () => {

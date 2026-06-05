@@ -134,6 +134,20 @@ const applyEnvironmentOverrides = (config, env = process.env) => {
   };
 };
 
+const createRuntimeAppConfig = (
+  config,
+  { allowEnvironmentOverrides = true, env = process.env } = {},
+) => {
+  if (!allowEnvironmentOverrides) {
+    return {
+      runtimeConfig: normalizeAppConfig(config),
+      overrides: [],
+    };
+  }
+
+  return applyEnvironmentOverrides(config, env);
+};
+
 const clearEnvironmentOverrides = (env = process.env) => {
   for (const key of ENV_OVERRIDE_KEYS) {
     delete env[key];
@@ -185,5 +199,6 @@ module.exports = {
   applyEnvironmentOverrides,
   clearEnvironmentOverrides,
   createPublicAppConfig,
+  createRuntimeAppConfig,
   normalizeAppConfig,
 };
