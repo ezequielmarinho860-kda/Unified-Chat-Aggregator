@@ -12,6 +12,7 @@ const { createChatHub } = require('./chat-hub');
 const {
   resolveKickChannelWithBrowserFallback,
 } = require('./connectors/kick-browser-resolver');
+const { connectKickWithOAuth } = require('./connectors/kick-auth');
 const { connectTwitchWithImplicitOAuth } = require('./connectors/twitch-auth');
 const { createKickConnector } = require('./connectors/kick-connector');
 const { createTwitchConnector } = require('./connectors/twitch-connector');
@@ -36,6 +37,12 @@ const buildConnectors = (config) => {
       createKickConnector({
         channel: kick.channel,
         chatroomId: kick.chatroomId || undefined,
+        accessToken: kick.accessToken || undefined,
+        refreshToken: kick.refreshToken || undefined,
+        clientId: kick.clientId || undefined,
+        clientSecret: kick.clientSecret || undefined,
+        oauthBrokerUrl: kick.oauthBrokerUrl || undefined,
+        onAuthUpdate: persistKickAuthUpdate,
         resolveChannel: ({ channel, fetchImpl }) =>
           resolveKickChannelWithBrowserFallback({
             channel,
@@ -129,7 +136,16 @@ const getDisplayStatuses = () => {
   );
 
   for (const status of chatHub.getStatuses()) {
-    statuses.set(status.platform, status);
+    const defaultStatus = statuses.get(status.platform) ?? {};
+
+    statuses.set(status.platform, {
+      ...defaultStatus,
+      ...status,
+      details: {
+        ...defaultStatus.details,
+        ...status.details,
+      },
+    });
   }
 
   return [...statuses.values()];
@@ -161,15 +177,23 @@ const mergeSavedAuth = (config) => {
   const previousTwitch = savedConfig?.connectors?.twitch ?? {};
   const incomingTwitch = config?.connectors?.twitch ?? {};
   const hasIncomingClientId = Object.hasOwn(incomingTwitch, 'clientId');
+  const nextKick = mergeSavedKickAuth(config, nextConfig);
 
   if (hasIncomingClientId && nextConfig.connectors.twitch.clientId !== previousTwitch.clientId) {
-    return nextConfig;
+    return normalizeAppConfig({
+      ...nextConfig,
+      connectors: {
+        ...nextConfig.connectors,
+        kick: nextKick,
+      },
+    });
   }
 
   return normalizeAppConfig({
     ...nextConfig,
     connectors: {
       ...nextConfig.connectors,
+      kick: nextKick,
       twitch: {
         ...nextConfig.connectors.twitch,
         clientId: previousTwitch.clientId,
@@ -180,6 +204,68 @@ const mergeSavedAuth = (config) => {
       },
     },
   });
+};
+
+const mergeSavedKickAuth = (config, nextConfig) => {
+  const previousKick = savedConfig?.connectors?.kick ?? {};
+  const incomingKick = config?.connectors?.kick ?? {};
+  const nextKick = nextConfig.connectors.kick;
+  const incomingClientSecret =
+    typeof incomingKick.clientSecret === 'string' ? incomingKick.clientSecret.trim() : '';
+  const clientId = nextKick.clientId;
+  const oauthBrokerUrl = nextKick.oauthBrokerUrl || previousKick.oauthBrokerUrl;
+  const clientSecret =
+    incomingClientSecret ||
+    (clientId === previousKick.clientId ? previousKick.clientSecret : '');
+  const credentialsChanged =
+    clientId !== previousKick.clientId ||
+    oauthBrokerUrl !== previousKick.oauthBrokerUrl ||
+    (incomingClientSecret.length > 0 && incomingClientSecret !== previousKick.clientSecret);
+
+  return {
+    ...nextKick,
+    clientId,
+    clientSecret,
+    oauthBrokerUrl,
+    accessToken: credentialsChanged ? '' : previousKick.accessToken,
+    refreshToken: credentialsChanged ? '' : previousKick.refreshToken,
+    expiresAt: credentialsChanged ? '' : previousKick.expiresAt,
+    userId: credentialsChanged ? '' : previousKick.userId,
+    login: credentialsChanged ? '' : previousKick.login,
+    displayName: credentialsChanged ? '' : previousKick.displayName,
+  };
+};
+
+const persistKickAuthUpdate = (authPatch) => {
+  if (!configStore || !savedConfig?.connectors?.kick) {
+    return;
+  }
+
+  const nextSavedConfig = configStore.save(
+    normalizeAppConfig({
+      ...savedConfig,
+      connectors: {
+        ...savedConfig.connectors,
+        kick: {
+          ...savedConfig.connectors.kick,
+          ...authPatch,
+        },
+      },
+    }),
+  );
+
+  savedConfig = nextSavedConfig;
+  runtimeConfig = normalizeAppConfig({
+    ...runtimeConfig,
+    connectors: {
+      ...runtimeConfig.connectors,
+      kick: {
+        ...runtimeConfig.connectors.kick,
+        ...authPatch,
+      },
+    },
+  });
+  broadcastRuntimeSnapshot();
 };
 
 const createMainWindow = () => {
@@ -296,6 +382,72 @@ ipcMain.handle('twitch:disconnect', async () => {
       twitch: {
         ...savedConfig.connectors.twitch,
         accessToken: '',
+        userId: '',
+        login: '',
+        displayName: '',
+      },
+    },
+  });
+
+  allowEnvironmentOverrides = false;
+  await restartRuntime(nextSavedConfig);
+  return getRuntimeSnapshot();
+});
+
+ipcMain.handle('kick:connect', async () => {
+  const kickConfig = runtimeConfig?.connectors?.kick ?? savedConfig?.connectors?.kick;
+  const clientId = kickConfig?.clientId;
+  const clientSecret = kickConfig?.clientSecret;
+  const oauthBrokerUrl = kickConfig?.oauthBrokerUrl;
+
+  if (!clientId) {
+    throw new Error('Kick Client ID is required.');
+  }
+
+  if (!oauthBrokerUrl && !clientSecret) {
+    throw new Error('Kick OAuth Broker URL or Client Secret is required.');
+  }
+
+  const auth = await connectKickWithOAuth({
+    BrowserWindow,
+    clientId,
+    clientSecret,
+    oauthBrokerUrl,
+  });
+  const nextSavedConfig = configStore.save({
+    ...savedConfig,
+    connectors: {
+      ...savedConfig.connectors,
+      kick: {
+        ...savedConfig.connectors.kick,
+        clientId: auth.clientId,
+        clientSecret: auth.clientSecret,
+        oauthBrokerUrl: auth.oauthBrokerUrl,
+        accessToken: auth.accessToken,
+        refreshToken: auth.refreshToken,
+        expiresAt: auth.expiresAt,
+        userId: auth.userId,
+        login: auth.login,
+        displayName: auth.displayName,
+      },
+    },
+  });
+
+  allowEnvironmentOverrides = false;
+  await restartRuntime(nextSavedConfig);
+  return getRuntimeSnapshot();
+});
+
+ipcMain.handle('kick:disconnect', async () => {
+  const nextSavedConfig = configStore.save({
+    ...savedConfig,
+    connectors: {
+      ...savedConfig.connectors,
+      kick: {
+        ...savedConfig.connectors.kick,
+        accessToken: '',
+        refreshToken: '',
+        expiresAt: '',
         userId: '',
         login: '',
         displayName: '',

@@ -1,6 +1,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  DEFAULT_KICK_CLIENT_ID,
+  DEFAULT_KICK_OAUTH_BROKER_URL,
   applyEnvironmentOverrides,
   clearEnvironmentOverrides,
   createPublicAppConfig,
@@ -15,6 +17,9 @@ test('normalizes missing app config with defaults', () => {
   assert.equal(config.connectors.twitch.clientId, '');
   assert.equal(config.connectors.twitch.accessToken, '');
   assert.equal(config.connectors.kick.channel, 'xqc');
+  assert.equal(config.connectors.kick.clientId, DEFAULT_KICK_CLIENT_ID);
+  assert.equal(config.connectors.kick.accessToken, '');
+  assert.equal(config.connectors.kick.oauthBrokerUrl, DEFAULT_KICK_OAUTH_BROKER_URL);
   assert.equal(config.connectors.x.enabled, false);
 });
 
@@ -30,7 +35,20 @@ test('normalizes user connector settings', () => {
         login: '  sender  ',
         displayName: '  Sender  ',
       },
-      kick: { enabled: true, channel: '  streamer  ', chatroomId: '  123  ' },
+      kick: {
+        enabled: true,
+        channel: '  streamer  ',
+        chatroomId: '  123  ',
+        clientId: '  kick-client  ',
+        clientSecret: '  kick-secret  ',
+        oauthBrokerUrl: '  https://broker.example.com  ',
+        accessToken: '  kick-token  ',
+        refreshToken: '  kick-refresh  ',
+        expiresAt: '  2026-06-04T20:00:00.000Z  ',
+        userId: '  kick-user  ',
+        login: '  kick-login  ',
+        displayName: '  Kick Sender  ',
+      },
       x: { enabled: true, liveUrl: '  https://x.com/live  ', showBrowser: true },
     },
   });
@@ -42,6 +60,15 @@ test('normalizes user connector settings', () => {
   assert.equal(config.connectors.twitch.login, 'sender');
   assert.equal(config.connectors.twitch.displayName, 'Sender');
   assert.equal(config.connectors.kick.chatroomId, '123');
+  assert.equal(config.connectors.kick.clientId, 'kick-client');
+  assert.equal(config.connectors.kick.clientSecret, 'kick-secret');
+  assert.equal(config.connectors.kick.oauthBrokerUrl, 'https://broker.example.com');
+  assert.equal(config.connectors.kick.accessToken, 'kick-token');
+  assert.equal(config.connectors.kick.refreshToken, 'kick-refresh');
+  assert.equal(config.connectors.kick.expiresAt, '2026-06-04T20:00:00.000Z');
+  assert.equal(config.connectors.kick.userId, 'kick-user');
+  assert.equal(config.connectors.kick.login, 'kick-login');
+  assert.equal(config.connectors.kick.displayName, 'Kick Sender');
   assert.equal(config.connectors.x.liveUrl, 'https://x.com/live');
   assert.equal(config.connectors.x.showBrowser, true);
 });
@@ -142,15 +169,41 @@ test('creates a public app config without exposing access tokens', () => {
         login: 'sender',
         displayName: 'Sender',
       },
+      kick: {
+        enabled: true,
+        channel: 'xqc',
+        chatroomId: '123',
+        clientId: 'kick-client',
+        clientSecret: 'kick-secret',
+        oauthBrokerUrl: 'https://broker.example.com',
+        accessToken: 'kick-token',
+        refreshToken: 'kick-refresh',
+        expiresAt: '2026-06-04T20:00:00.000Z',
+        userId: 'kick-user',
+        login: 'kick-login',
+        displayName: 'Kick Sender',
+      },
     },
   });
 
   assert.equal(publicConfig.connectors.twitch.accessToken, undefined);
   assert.equal(publicConfig.connectors.twitch.clientId, undefined);
+  assert.equal(publicConfig.connectors.kick.clientSecret, undefined);
+  assert.equal(publicConfig.connectors.kick.accessToken, undefined);
+  assert.equal(publicConfig.connectors.kick.refreshToken, undefined);
+  assert.equal(publicConfig.connectors.kick.clientId, undefined);
+  assert.equal(publicConfig.connectors.kick.oauthBrokerUrl, undefined);
   assert.deepEqual(publicConfig.connectors.twitch.auth, {
     connected: true,
     userId: 'user-1',
     login: 'sender',
     displayName: 'Sender',
+  });
+  assert.deepEqual(publicConfig.connectors.kick.auth, {
+    connected: true,
+    userId: 'kick-user',
+    login: 'kick-login',
+    displayName: 'Kick Sender',
+    expiresAt: '2026-06-04T20:00:00.000Z',
   });
 });

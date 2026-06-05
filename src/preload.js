@@ -44,5 +44,7 @@ contextBridge.exposeInMainWorld('chatAggregator', {
   sendMessage: (payload) => ipcRenderer.invoke('chat:send', payload),
   connectTwitch: () => ipcRenderer.invoke('twitch:connect'),
   disconnectTwitch: () => ipcRenderer.invoke('twitch:disconnect'),
+  connectKick: () => ipcRenderer.invoke('kick:connect'),
+  disconnectKick: () => ipcRenderer.invoke('kick:disconnect'),
   resolveKickChatroom: (channel) => ipcRenderer.invoke('kick:resolve-chatroom', channel),
 });

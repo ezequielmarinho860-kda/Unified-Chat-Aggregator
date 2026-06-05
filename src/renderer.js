@@ -13,6 +13,9 @@ const resolveKickChatroom = document.querySelector('#resolve-kick-chatroom');
 const connectTwitch = document.querySelector('#connect-twitch');
 const disconnectTwitch = document.querySelector('#disconnect-twitch');
 const twitchAuthStatus = document.querySelector('#twitch-auth-status');
+const connectKick = document.querySelector('#connect-kick');
+const disconnectKick = document.querySelector('#disconnect-kick');
+const kickAuthStatus = document.querySelector('#kick-auth-status');
 const messageComposer = document.querySelector('#message-composer');
 const composerMeta = document.querySelector('#composer-meta');
 const statusCards = new Map(
@@ -140,6 +143,9 @@ const renderConnectorStatus = (status) => {
     status.error,
     status.details?.channel ? `Channel: ${status.details.channel}` : undefined,
     status.details?.liveUrl ? 'Live configured' : undefined,
+    status.details?.authenticatedUser
+      ? `Authenticated: ${status.details.authenticatedUser}`
+      : undefined,
     formatRelativeDetail(status.lastMessageAt),
     `${messageCount} msg`,
   ].filter(Boolean);
@@ -195,6 +201,7 @@ const populateConfigForm = (config) => {
   setFormValue('kick.enabled', config.connectors.kick.enabled);
   setFormValue('kick.channel', config.connectors.kick.channel);
   setFormValue('kick.chatroomId', config.connectors.kick.chatroomId);
+  renderKickAuthStatus(config.connectors.kick.auth);
   setFormValue('x.enabled', config.connectors.x.enabled);
   setFormValue('x.liveUrl', config.connectors.x.liveUrl);
   setFormValue('x.showBrowser', config.connectors.x.showBrowser);
@@ -245,6 +252,8 @@ const setConfigBusy = (isBusy) => {
   restartConnectors.disabled = isBusy;
   connectTwitch.disabled = isBusy;
   disconnectTwitch.disabled = isBusy;
+  connectKick.disabled = isBusy;
+  disconnectKick.disabled = isBusy;
 };
 
 const renderTwitchAuthStatus = (auth = {}) => {
@@ -254,6 +263,14 @@ const renderTwitchAuthStatus = (auth = {}) => {
     auth.connected && label ? `Connected as ${label}` : 'Not connected';
   connectTwitch.hidden = Boolean(auth.connected);
   disconnectTwitch.hidden = !auth.connected;
+};
+
+const renderKickAuthStatus = (auth = {}) => {
+  const label = auth.displayName || auth.login;
+
+  kickAuthStatus.textContent = auth.connected && label ? `Connected as ${label}` : 'Not connected';
+  connectKick.hidden = Boolean(auth.connected);
+  disconnectKick.hidden = !auth.connected;
 };
 
 const setComposerBusy = (isBusy) => {
@@ -399,6 +416,39 @@ disconnectTwitch?.addEventListener('click', async () => {
     configMeta.textContent = 'Twitch account disconnected.';
   } catch (error) {
     configMeta.textContent = `Twitch disconnect failed: ${error.message}`;
+  } finally {
+    setConfigBusy(false);
+  }
+});
+
+connectKick?.addEventListener('click', async () => {
+  setConfigBusy(true);
+  configMeta.textContent = 'Opening Kick authorization...';
+
+  try {
+    await window.chatAggregator.saveConfig(readConfigForm());
+    const snapshot = await window.chatAggregator.connectKick();
+
+    renderConfigSnapshot(snapshot);
+    configMeta.textContent = 'Kick account connected.';
+  } catch (error) {
+    configMeta.textContent = `Kick connection failed: ${error.message}`;
+  } finally {
+    setConfigBusy(false);
+  }
+});
+
+disconnectKick?.addEventListener('click', async () => {
+  setConfigBusy(true);
+  configMeta.textContent = 'Disconnecting Kick...';
+
+  try {
+    const snapshot = await window.chatAggregator.disconnectKick();
+
+    renderConfigSnapshot(snapshot);
+    configMeta.textContent = 'Kick account disconnected.';
+  } catch (error) {
+    configMeta.textContent = `Kick disconnect failed: ${error.message}`;
   } finally {
     setConfigBusy(false);
   }

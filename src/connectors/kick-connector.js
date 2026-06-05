@@ -1,4 +1,5 @@
 const { EventEmitter } = require('node:events');
+const { refreshKickAccessToken, sendKickChatMessage } = require('./kick-api');
 const { parseKickPusherEnvelope } = require('./kick-pusher-parser');
 const { normalizeKickChannelName, resolveKickChannel } = require('./kick-resolver');
 
@@ -9,6 +10,12 @@ const DEFAULT_RECONNECT_MS = 10_000;
 const createKickConnector = ({
   channel,
   chatroomId,
+  accessToken,
+  refreshToken,
+  clientId,
+  clientSecret,
+  oauthBrokerUrl,
+  onAuthUpdate = async () => {},
   reconnectMs = DEFAULT_RECONNECT_MS,
   fetchImpl = fetch,
   resolveChannel = resolveKickChannel,
@@ -17,6 +24,8 @@ const createKickConnector = ({
   const normalizedChannel = normalizeKickChannelName(channel);
   const events = new EventEmitter();
   let resolvedChatroomId = chatroomId ? String(chatroomId) : undefined;
+  let currentAccessToken = accessToken;
+  let currentRefreshToken = refreshToken;
   let socket;
   let reconnectTimer;
   let shouldReconnect = false;
@@ -113,6 +122,42 @@ const createKickConnector = ({
     }, reconnectMs);
   };
 
+  const send = async (text) => {
+    try {
+      return await sendWithCurrentToken(text);
+    } catch (error) {
+      if (!isUnauthorizedKickError(error) || !currentRefreshToken) {
+        throw error;
+      }
+
+      const token = await refreshKickAccessToken({
+        refreshToken: currentRefreshToken,
+        clientId,
+        clientSecret,
+        oauthBrokerUrl,
+        fetchImpl,
+      });
+
+      currentAccessToken = token.accessToken;
+      currentRefreshToken = token.refreshToken || currentRefreshToken;
+      await onAuthUpdate({
+        accessToken: currentAccessToken,
+        refreshToken: currentRefreshToken,
+        expiresAt: token.expiresAt,
+      });
+
+      return sendWithCurrentToken(text);
+    }
+  };
+
+  const sendWithCurrentToken = (text) =>
+    sendKickChatMessage({
+      channel: normalizedChannel,
+      accessToken: currentAccessToken,
+      message: text,
+      fetchImpl,
+    });
+
   return {
     platform: 'kick',
     channel: normalizedChannel,
@@ -126,11 +171,12 @@ const createKickConnector = ({
     },
     connect,
     disconnect,
-    send: async () => {
-      throw new Error('Kick write is not configured. OAuth is required.');
-    },
+    send,
   };
 };
+
+const isUnauthorizedKickError = (error) =>
+  error instanceof Error && /status 401|unauthorized/i.test(error.message);
 
 module.exports = {
   KICK_PUSHER_APP_KEY,

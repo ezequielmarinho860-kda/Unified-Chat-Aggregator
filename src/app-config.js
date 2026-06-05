@@ -2,6 +2,9 @@ const { resolveEnabledConnectors } = require('./connector-config');
 
 const PLATFORM_ORDER = ['twitch', 'kick', 'x'];
 const DEFAULT_TWITCH_CLIENT_ID = 'juln34d24v0zdm6l2dtv8omk6g0cqd';
+const DEFAULT_KICK_CLIENT_ID = '01KTB84VBDCSE2QBMA531PZ5J1';
+const DEFAULT_KICK_OAUTH_BROKER_URL =
+  'https://kick-oauth-broker.ezequielmarinho860.workers.dev';
 const ENV_OVERRIDE_KEYS = [
   'CONNECTORS',
   'TWITCH_CHANNEL',
@@ -27,6 +30,15 @@ const DEFAULT_APP_CONFIG = Object.freeze({
       enabled: true,
       channel: 'xqc',
       chatroomId: '',
+      clientId: DEFAULT_KICK_CLIENT_ID,
+      clientSecret: '',
+      oauthBrokerUrl: DEFAULT_KICK_OAUTH_BROKER_URL,
+      accessToken: '',
+      refreshToken: '',
+      expiresAt: '',
+      userId: '',
+      login: '',
+      displayName: '',
     },
     x: {
       enabled: false,
@@ -54,6 +66,18 @@ const normalizeAppConfig = (config = {}) => {
         enabled: normalizeBoolean(connectors.kick?.enabled, true),
         channel: normalizeString(connectors.kick?.channel, 'xqc'),
         chatroomId: normalizeString(connectors.kick?.chatroomId, ''),
+        clientId: normalizeString(connectors.kick?.clientId, DEFAULT_KICK_CLIENT_ID),
+        clientSecret: normalizeString(connectors.kick?.clientSecret, ''),
+        oauthBrokerUrl: normalizeString(
+          connectors.kick?.oauthBrokerUrl,
+          DEFAULT_KICK_OAUTH_BROKER_URL,
+        ),
+        accessToken: normalizeString(connectors.kick?.accessToken, ''),
+        refreshToken: normalizeString(connectors.kick?.refreshToken, ''),
+        expiresAt: normalizeString(connectors.kick?.expiresAt, ''),
+        userId: normalizeString(connectors.kick?.userId, ''),
+        login: normalizeString(connectors.kick?.login, ''),
+        displayName: normalizeString(connectors.kick?.displayName, ''),
       },
       x: {
         enabled: normalizeBoolean(connectors.x?.enabled, false),
@@ -170,7 +194,18 @@ const createPublicAppConfig = (config = {}) => {
           displayName: twitch.displayName,
         },
       },
-      kick,
+      kick: {
+        enabled: kick.enabled,
+        channel: kick.channel,
+        chatroomId: kick.chatroomId,
+        auth: {
+          connected: Boolean(kick.accessToken),
+          userId: kick.userId,
+          login: kick.login,
+          displayName: kick.displayName,
+          expiresAt: kick.expiresAt,
+        },
+      },
       x,
     },
   };
@@ -194,6 +229,8 @@ const normalizeString = (value, fallback) => {
 
 module.exports = {
   DEFAULT_APP_CONFIG,
+  DEFAULT_KICK_CLIENT_ID,
+  DEFAULT_KICK_OAUTH_BROKER_URL,
   ENV_OVERRIDE_KEYS,
   PLATFORM_ORDER,
   applyEnvironmentOverrides,

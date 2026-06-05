@@ -122,6 +122,96 @@ test('responds to Pusher ping with pong', async () => {
   await connector.disconnect();
 });
 
+test('sends Kick chat messages through the public API', async () => {
+  const socket = new FakeWebSocket(KICK_PUSHER_URL);
+  const apiCalls = [];
+  const connector = createKickConnector({
+    channel: 'xqc',
+    chatroomId: '12345',
+    accessToken: 'token',
+    webSocketFactory: () => socket,
+    fetchImpl: async (url, options = {}) => {
+      apiCalls.push({ url, options });
+
+      if (String(url).startsWith('https://api.kick.com/public/v1/channels')) {
+        return createJsonResponse({
+          data: [{ broadcaster_user_id: 123, slug: 'xqc' }],
+        });
+      }
+
+      return createJsonResponse({ message: 'OK' });
+    },
+  });
+
+  const result = await connector.send('hello kick');
+
+  assert.deepEqual(result, { isSent: true, message: 'OK' });
+  assert.equal(apiCalls.at(-1).url, 'https://api.kick.com/public/v1/chat');
+});
+
+test('refreshes Kick access tokens and retries sends after 401', async () => {
+  const socket = new FakeWebSocket(KICK_PUSHER_URL);
+  const apiCalls = [];
+  const authUpdates = [];
+  let channelAttempts = 0;
+  const connector = createKickConnector({
+    channel: 'xqc',
+    chatroomId: '12345',
+    accessToken: 'expired-token',
+    refreshToken: 'refresh-1',
+    clientId: 'client-1',
+    oauthBrokerUrl: 'https://broker.example.com',
+    onAuthUpdate: async (authPatch) => {
+      authUpdates.push(authPatch);
+    },
+    webSocketFactory: () => socket,
+    fetchImpl: async (url, options = {}) => {
+      apiCalls.push({ url, options });
+
+      if (String(url).startsWith('https://api.kick.com/public/v1/channels')) {
+        channelAttempts += 1;
+
+        if (channelAttempts === 1) {
+          return createJsonResponse({ message: 'Unauthorized' }, { ok: false, status: 401 });
+        }
+
+        assert.equal(options.headers.Authorization, 'Bearer fresh-token');
+        return createJsonResponse({
+          data: [{ broadcaster_user_id: 123, slug: 'xqc' }],
+        });
+      }
+
+      if (url === 'https://broker.example.com/kick/refresh') {
+        assert.deepEqual(JSON.parse(options.body), {
+          clientId: 'client-1',
+          refreshToken: 'refresh-1',
+        });
+
+        return createJsonResponse({
+          access_token: 'fresh-token',
+          refresh_token: 'refresh-2',
+          expires_in: 3600,
+        });
+      }
+
+      return createJsonResponse({ message: 'OK' });
+    },
+  });
+
+  const result = await connector.send('hello kick');
+
+  assert.deepEqual(result, { isSent: true, message: 'OK' });
+  assert.equal(apiCalls.at(-1).url, 'https://api.kick.com/public/v1/chat');
+  assert.deepEqual(authUpdates, [
+    {
+      accessToken: 'fresh-token',
+      refreshToken: 'refresh-2',
+      expiresAt: authUpdates[0].expiresAt,
+    },
+  ]);
+  assert.match(authUpdates[0].expiresAt, /^\d{4}-\d{2}-\d{2}T/);
+});
+
 test('reports resolver failure without throwing from connect', async () => {
   const connector = createKickConnector({
     channel: 'xqc',
@@ -138,4 +228,10 @@ test('reports resolver failure without throwing from connect', async () => {
 
   unsubscribe();
   await connector.disconnect();
+});
+
+const createJsonResponse = (body, { ok = true, status = 200 } = {}) => ({
+  ok,
+  status,
+  json: async () => body,
 });
