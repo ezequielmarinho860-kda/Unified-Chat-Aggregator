@@ -6,6 +6,7 @@ const { normalizeKickChannelName, resolveKickChannel } = require('./kick-resolve
 const KICK_PUSHER_APP_KEY = '32cbd69e4b950bf97679';
 const KICK_PUSHER_URL = `wss://ws-us2.pusher.com/app/${KICK_PUSHER_APP_KEY}?protocol=7&client=js&version=8.4.0&flash=false`;
 const DEFAULT_RECONNECT_MS = 10_000;
+const DEFAULT_SEEN_MESSAGE_LIMIT = 500;
 
 const createKickConnector = ({
   channel,
@@ -17,6 +18,7 @@ const createKickConnector = ({
   oauthBrokerUrl,
   onAuthUpdate = async () => {},
   reconnectMs = DEFAULT_RECONNECT_MS,
+  seenMessageLimit = DEFAULT_SEEN_MESSAGE_LIMIT,
   fetchImpl = fetch,
   resolveChannel = resolveKickChannel,
   webSocketFactory = (url) => new WebSocket(url),
@@ -29,6 +31,7 @@ const createKickConnector = ({
   let socket;
   let reconnectTimer;
   let shouldReconnect = false;
+  const seenMessageIds = new Set();
 
   const connect = async () => {
     if (socket && socket.readyState <= WebSocket.OPEN) {
@@ -66,10 +69,16 @@ const createKickConnector = ({
   };
 
   const openSocket = () => {
-    socket = webSocketFactory(KICK_PUSHER_URL);
+    const nextSocket = webSocketFactory(KICK_PUSHER_URL);
 
-    socket.addEventListener('open', () => {
-      socket.send(
+    socket = nextSocket;
+
+    nextSocket.addEventListener('open', () => {
+      if (nextSocket !== socket) {
+        return;
+      }
+
+      nextSocket.send(
         JSON.stringify({
           event: 'pusher:subscribe',
           data: {
@@ -80,17 +89,24 @@ const createKickConnector = ({
       );
     });
 
-    socket.addEventListener('message', (event) => {
+    nextSocket.addEventListener('message', (event) => {
+      if (nextSocket !== socket) {
+        return;
+      }
+
       handlePusherMessage(event.data);
     });
 
-    socket.addEventListener('close', () => {
-      socket = undefined;
+    nextSocket.addEventListener('close', () => {
+      if (nextSocket === socket) {
+        socket = undefined;
+      }
+
       scheduleReconnect();
     });
 
-    socket.addEventListener('error', () => {
-      socket?.close();
+    nextSocket.addEventListener('error', () => {
+      nextSocket.close();
     });
   };
 
@@ -106,9 +122,29 @@ const createKickConnector = ({
       return;
     }
 
-    if (parsed.message) {
+    if (parsed.message && rememberMessageId(parsed.message.id)) {
       events.emit('message', parsed.message);
     }
+  };
+
+  const rememberMessageId = (messageId) => {
+    if (!messageId) {
+      return true;
+    }
+
+    if (seenMessageIds.has(messageId)) {
+      return false;
+    }
+
+    seenMessageIds.add(messageId);
+
+    if (seenMessageIds.size > seenMessageLimit) {
+      const oldestMessageId = seenMessageIds.values().next().value;
+
+      seenMessageIds.delete(oldestMessageId);
+    }
+
+    return true;
   };
 
   const scheduleReconnect = () => {
@@ -179,6 +215,7 @@ const isUnauthorizedKickError = (error) =>
   error instanceof Error && /status 401|unauthorized/i.test(error.message);
 
 module.exports = {
+  DEFAULT_SEEN_MESSAGE_LIMIT,
   KICK_PUSHER_APP_KEY,
   KICK_PUSHER_URL,
   createKickConnector,

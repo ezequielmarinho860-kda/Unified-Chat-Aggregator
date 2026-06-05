@@ -102,6 +102,91 @@ test('emits parsed Kick chat messages', async () => {
   await connector.disconnect();
 });
 
+test('deduplicates repeated Kick chat message ids', async () => {
+  const socket = new FakeWebSocket(KICK_PUSHER_URL);
+  const connector = createKickConnector({
+    channel: 'xqc',
+    chatroomId: '12345',
+    webSocketFactory: () => socket,
+  });
+  const received = [];
+  const unsubscribe = connector.onMessage((message) => received.push(message));
+  const rawMessage = JSON.stringify({
+    event: KICK_CHAT_MESSAGE_EVENT,
+    data: JSON.stringify({
+      id: 'message-1',
+      content: 'hello kick',
+      created_at: '2026-06-04T20:00:00.000Z',
+      sender: { id: 7, username: 'Ana' },
+    }),
+  });
+
+  await connector.connect();
+  socket.open();
+  socket.receive(rawMessage);
+  socket.receive(rawMessage);
+  socket.receive(rawMessage);
+
+  assert.equal(received.length, 1);
+
+  unsubscribe();
+  await connector.disconnect();
+});
+
+test('ignores messages from stale Kick sockets after reconnect', async () => {
+  const sockets = [];
+  const connector = createKickConnector({
+    channel: 'xqc',
+    chatroomId: '12345',
+    reconnectMs: 1,
+    webSocketFactory: (url) => {
+      const socket = new FakeWebSocket(url);
+      sockets.push(socket);
+      return socket;
+    },
+  });
+  const received = [];
+  const unsubscribe = connector.onMessage((message) => received.push(message));
+
+  await connector.connect();
+  sockets[0].open();
+  sockets[0].close();
+  await new Promise((resolve) => {
+    setTimeout(resolve, 5);
+  });
+  sockets[1].open();
+  sockets[0].receive(
+    JSON.stringify({
+      event: KICK_CHAT_MESSAGE_EVENT,
+      data: JSON.stringify({
+        id: 'stale-message',
+        content: 'old socket',
+        created_at: '2026-06-04T20:00:00.000Z',
+        sender: { id: 7, username: 'Ana' },
+      }),
+    }),
+  );
+  sockets[1].receive(
+    JSON.stringify({
+      event: KICK_CHAT_MESSAGE_EVENT,
+      data: JSON.stringify({
+        id: 'fresh-message',
+        content: 'fresh socket',
+        created_at: '2026-06-04T20:00:00.000Z',
+        sender: { id: 7, username: 'Ana' },
+      }),
+    }),
+  );
+
+  assert.deepEqual(
+    received.map((message) => message.text),
+    ['fresh socket'],
+  );
+
+  unsubscribe();
+  await connector.disconnect();
+});
+
 test('responds to Pusher ping with pong', async () => {
   const socket = new FakeWebSocket(KICK_PUSHER_URL);
   const connector = createKickConnector({
