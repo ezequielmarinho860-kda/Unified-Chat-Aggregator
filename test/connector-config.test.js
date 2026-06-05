@@ -19,11 +19,11 @@ test('keeps legacy X auto-enable when a live URL is configured', () => {
 
 test('parses an explicit connector list', () => {
   assert.deepEqual(resolveEnabledConnectors('x'), ['x']);
-  assert.deepEqual(resolveEnabledConnectors('mock,twitch'), ['mock', 'twitch']);
+  assert.deepEqual(resolveEnabledConnectors('kick,twitch'), ['kick', 'twitch']);
 });
 
 test('deduplicates explicit connectors', () => {
-  assert.deepEqual(resolveEnabledConnectors('x,x,mock'), ['x', 'mock']);
+  assert.deepEqual(resolveEnabledConnectors('x,x,kick'), ['x', 'kick']);
 });
 
 test('rejects unknown connectors', () => {

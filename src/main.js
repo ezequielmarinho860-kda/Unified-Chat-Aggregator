@@ -1,45 +1,182 @@
 const path = require('node:path');
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
+const {
+  PLATFORM_ORDER,
+  applyEnvironmentOverrides,
+  clearEnvironmentOverrides,
+  createPublicAppConfig,
+  normalizeAppConfig,
+} = require('./app-config');
+const { createAppConfigStore } = require('./app-config-store');
 const { createChatHub } = require('./chat-hub');
-const { resolveEnabledConnectors } = require('./connector-config');
+const {
+  resolveKickChannelWithBrowserFallback,
+} = require('./connectors/kick-browser-resolver');
+const { connectTwitchWithImplicitOAuth } = require('./connectors/twitch-auth');
 const { createKickConnector } = require('./connectors/kick-connector');
-const { createMockConnector } = require('./connectors/mock-connector');
 const { createTwitchConnector } = require('./connectors/twitch-connector');
 const { createXConnector } = require('./connectors/x-connector');
 
-const kickChannel = process.env.KICK_CHANNEL || 'xqc';
-const kickChatroomId = process.env.KICK_CHATROOM_ID;
-const twitchChannel = process.env.TWITCH_CHANNEL || 'monstercat';
-const xLiveUrl = process.env.X_LIVE_URL;
-const enabledConnectors = resolveEnabledConnectors(process.env.CONNECTORS, {
-  includeXWhenConfigured: Boolean(xLiveUrl),
-});
+const mainWindows = new Set();
+let configStore;
+let savedConfig;
+let runtimeConfig;
+let envOverrides = [];
+let chatHub = createChatHub();
+let unsubscribeHubMessage;
+let unsubscribeHubStatus;
 
-const connectorFactories = {
-  mock: () => createMockConnector(),
-  kick: () => createKickConnector({
-    channel: kickChannel,
-    chatroomId: kickChatroomId,
-  }),
-  twitch: () => createTwitchConnector({ channel: twitchChannel }),
-  x: () => {
-    if (!xLiveUrl) {
-      throw new TypeError('X_LIVE_URL is required when CONNECTORS includes x.');
-    }
+const buildConnectors = (config) => {
+  const connectors = [];
+  const { twitch, kick, x } = config.connectors;
 
-    return createXConnector({
-      liveUrl: xLiveUrl,
-      BrowserWindow,
-      show: process.env.X_SHOW_BROWSER === 'true',
-    });
-  },
+  if (kick.enabled) {
+    connectors.push(
+      createKickConnector({
+        channel: kick.channel,
+        chatroomId: kick.chatroomId || undefined,
+        resolveChannel: ({ channel, fetchImpl }) =>
+          resolveKickChannelWithBrowserFallback({
+            channel,
+            fetchImpl,
+            BrowserWindow,
+          }),
+      }),
+    );
+  }
+
+  if (twitch.enabled) {
+    connectors.push(
+      createTwitchConnector({
+        channel: twitch.channel,
+        accessToken: twitch.accessToken || undefined,
+      }),
+    );
+  }
+
+  if (x.enabled && x.liveUrl) {
+    connectors.push(
+      createXConnector({
+        liveUrl: x.liveUrl,
+        BrowserWindow,
+        show: x.showBrowser,
+      }),
+    );
+  }
+
+  return connectors;
 };
 
-const connectors = enabledConnectors.map((connector) => connectorFactories[connector]());
+const wireChatHub = (nextChatHub) => {
+  unsubscribeHubMessage?.();
+  unsubscribeHubStatus?.();
 
-const chatHub = createChatHub({
-  connectors,
+  unsubscribeHubMessage = nextChatHub.onMessage((message) => {
+    broadcastToWindows('chat:message', message);
+  });
+  unsubscribeHubStatus = nextChatHub.onStatus((status) => {
+    broadcastToWindows('chat:status', status);
+  });
+};
+
+const restartRuntime = async (nextSavedConfig = savedConfig) => {
+  savedConfig = normalizeAppConfig(nextSavedConfig);
+
+  await chatHub.stop();
+
+  const appliedConfig = applyEnvironmentOverrides(savedConfig, process.env);
+  runtimeConfig = appliedConfig.runtimeConfig;
+  envOverrides = appliedConfig.overrides;
+  chatHub = createChatHub({ connectors: buildConnectors(runtimeConfig) });
+  wireChatHub(chatHub);
+  await chatHub.start();
+  broadcastRuntimeSnapshot();
+};
+
+const broadcastRuntimeSnapshot = () => {
+  const snapshot = getRuntimeSnapshot();
+
+  broadcastToWindows('chat:config', snapshot);
+  broadcastToWindows('chat:statuses', snapshot.statuses);
+};
+
+const broadcastToWindows = (channel, payload) => {
+  for (const mainWindow of mainWindows) {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(channel, payload);
+    }
+  }
+};
+
+const getRuntimeSnapshot = () => ({
+  config: createPublicAppConfig(savedConfig),
+  runtimeConfig: createPublicAppConfig(runtimeConfig),
+  envOverrides,
+  configPath: configStore?.configPath,
+  statuses: getDisplayStatuses(),
 });
+
+const getDisplayStatuses = () => {
+  const statuses = new Map(
+    PLATFORM_ORDER.map((platform) => [
+      platform,
+      createDefaultPlatformStatus(platform, runtimeConfig?.connectors[platform]),
+    ]),
+  );
+
+  for (const status of chatHub.getStatuses()) {
+    statuses.set(status.platform, status);
+  }
+
+  return [...statuses.values()];
+};
+
+const createDefaultPlatformStatus = (platform, platformConfig = {}) => {
+  const enabled = Boolean(platformConfig.enabled);
+  const error =
+    platform === 'x' && enabled && !platformConfig.liveUrl
+      ? 'X live URL is required.'
+      : undefined;
+
+  return {
+    platform,
+    state: error ? 'error' : enabled ? 'idle' : 'disabled',
+    messageCount: 0,
+    lastMessageAt: undefined,
+    error,
+    details: {
+      channel: platformConfig.channel,
+      liveUrl: platformConfig.liveUrl,
+      authenticatedUser: platformConfig.login,
+    },
+  };
+};
+
+const mergeSavedAuth = (config) => {
+  const nextConfig = normalizeAppConfig(config);
+  const previousTwitch = savedConfig?.connectors?.twitch ?? {};
+  const incomingTwitch = config?.connectors?.twitch ?? {};
+  const hasIncomingClientId = Object.hasOwn(incomingTwitch, 'clientId');
+
+  if (hasIncomingClientId && nextConfig.connectors.twitch.clientId !== previousTwitch.clientId) {
+    return nextConfig;
+  }
+
+  return normalizeAppConfig({
+    ...nextConfig,
+    connectors: {
+      ...nextConfig.connectors,
+      twitch: {
+        ...nextConfig.connectors.twitch,
+        clientId: previousTwitch.clientId,
+        accessToken: previousTwitch.accessToken,
+        userId: previousTwitch.userId,
+        login: previousTwitch.login,
+        displayName: previousTwitch.displayName,
+      },
+    },
+  });
+};
 
 const createMainWindow = () => {
   const mainWindow = new BrowserWindow({
@@ -57,32 +194,27 @@ const createMainWindow = () => {
     },
   });
 
-  const unsubscribeFromHub = chatHub.onMessage((message) => {
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('chat:message', message);
-    }
-  });
-  const unsubscribeFromHubStatus = chatHub.onStatus((status) => {
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('chat:status', status);
-    }
-  });
+  mainWindows.add(mainWindow);
 
   mainWindow.webContents.once('did-finish-load', () => {
-    mainWindow.webContents.send('chat:statuses', chatHub.getStatuses());
+    const snapshot = getRuntimeSnapshot();
+
+    mainWindow.webContents.send('chat:config', snapshot);
+    mainWindow.webContents.send('chat:statuses', snapshot.statuses);
   });
 
   mainWindow.on('closed', () => {
-    unsubscribeFromHub();
-    unsubscribeFromHubStatus();
+    mainWindows.delete(mainWindow);
   });
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 };
 
 app.whenReady().then(async () => {
+  configStore = createAppConfigStore(path.join(app.getPath('userData'), 'config.json'));
+  savedConfig = configStore.load();
+  await restartRuntime(savedConfig);
   createMainWindow();
-  await chatHub.start();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -100,3 +232,76 @@ app.on('window-all-closed', () => {
 app.on('before-quit', async () => {
   await chatHub.stop();
 });
+
+ipcMain.handle('config:get', () => getRuntimeSnapshot());
+
+ipcMain.handle('config:save', async (_event, config) => {
+  const nextSavedConfig = configStore.save(mergeSavedAuth(config));
+  clearEnvironmentOverrides(process.env);
+  await restartRuntime(nextSavedConfig);
+  return getRuntimeSnapshot();
+});
+
+ipcMain.handle('connectors:restart', async () => {
+  await restartRuntime(savedConfig);
+  return getRuntimeSnapshot();
+});
+
+ipcMain.handle('chat:send', async (_event, payload) => chatHub.sendMessage(payload));
+
+ipcMain.handle('twitch:connect', async () => {
+  const clientId =
+    runtimeConfig?.connectors?.twitch?.clientId || savedConfig?.connectors?.twitch?.clientId;
+
+  if (!clientId) {
+    throw new Error('Twitch Client ID is not configured for this build.');
+  }
+
+  const auth = await connectTwitchWithImplicitOAuth({
+    BrowserWindow,
+    clientId,
+  });
+  const nextSavedConfig = configStore.save({
+    ...savedConfig,
+    connectors: {
+      ...savedConfig.connectors,
+      twitch: {
+        ...savedConfig.connectors.twitch,
+        clientId: auth.clientId,
+        accessToken: auth.accessToken,
+        userId: auth.userId,
+        login: auth.login,
+        displayName: auth.displayName,
+      },
+    },
+  });
+
+  await restartRuntime(nextSavedConfig);
+  return getRuntimeSnapshot();
+});
+
+ipcMain.handle('twitch:disconnect', async () => {
+  const nextSavedConfig = configStore.save({
+    ...savedConfig,
+    connectors: {
+      ...savedConfig.connectors,
+      twitch: {
+        ...savedConfig.connectors.twitch,
+        accessToken: '',
+        userId: '',
+        login: '',
+        displayName: '',
+      },
+    },
+  });
+
+  await restartRuntime(nextSavedConfig);
+  return getRuntimeSnapshot();
+});
+
+ipcMain.handle('kick:resolve-chatroom', async (_event, channel) =>
+  resolveKickChannelWithBrowserFallback({
+    channel,
+    BrowserWindow,
+  }),
+);

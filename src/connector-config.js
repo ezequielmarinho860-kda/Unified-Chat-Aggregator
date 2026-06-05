@@ -1,5 +1,5 @@
-const DEFAULT_CONNECTORS = ['mock', 'kick', 'twitch'];
-const KNOWN_CONNECTORS = new Set(['mock', 'kick', 'twitch', 'x']);
+const DEFAULT_CONNECTORS = ['kick', 'twitch'];
+const KNOWN_CONNECTORS = new Set(['kick', 'twitch', 'x']);
 
 const resolveEnabledConnectors = (value, { includeXWhenConfigured = false } = {}) => {
   if (typeof value !== 'string' || value.trim().length === 0) {

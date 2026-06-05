@@ -4,7 +4,7 @@ const { validateConnector } = require('../src/connectors/connector-contract');
 
 test('accepts a connector with the required contract', () => {
   const connector = {
-    platform: 'mock',
+    platform: 'twitch',
     connect: async () => {},
     disconnect: async () => {},
     send: async (_text) => {},
@@ -15,7 +15,7 @@ test('accepts a connector with the required contract', () => {
 
 test('rejects a connector without send()', () => {
   const connector = {
-    platform: 'mock',
+    platform: 'twitch',
     connect: async () => {},
     disconnect: async () => {},
   };

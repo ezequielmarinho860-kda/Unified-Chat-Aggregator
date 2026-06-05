@@ -49,7 +49,34 @@ const normalizeKickChannelName = (channel) => {
     throw new TypeError('Kick channel must be a non-empty string.');
   }
 
-  return channel.trim().replace(/^@/, '').toLowerCase();
+  const trimmedChannel = channel.trim();
+  let normalizedChannel = trimmedChannel;
+
+  try {
+    const url = new URL(
+      /^[a-z][a-z\d+.-]*:\/\//i.test(trimmedChannel)
+        ? trimmedChannel
+        : `https://${trimmedChannel}`,
+    );
+
+    if (url.hostname === 'kick.com' || url.hostname.endsWith('.kick.com')) {
+      normalizedChannel = url.pathname.split('/').filter(Boolean)[0] ?? '';
+    }
+  } catch {
+    normalizedChannel = trimmedChannel;
+  }
+
+  normalizedChannel = normalizedChannel
+    .replace(/^@/, '')
+    .replace(/^\/+/, '')
+    .split(/[/?#]/)[0]
+    .toLowerCase();
+
+  if (normalizedChannel.length === 0) {
+    throw new TypeError('Kick channel must include a channel slug.');
+  }
+
+  return normalizedChannel;
 };
 
 const normalizeRequiredId = (value, fieldName) => {

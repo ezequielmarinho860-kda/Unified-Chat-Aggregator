@@ -3,14 +3,14 @@ const test = require('node:test');
 const { EventEmitter } = require('node:events');
 const { createChatHub } = require('../src/chat-hub');
 
-const createTestConnector = () => {
+const createTestConnector = ({ sendImpl = async (_text) => {} } = {}) => {
   const events = new EventEmitter();
 
   return {
-    platform: 'mock',
+    platform: 'twitch',
     connect: async () => {},
     disconnect: async () => {},
-    send: async (_text) => {},
+    send: sendImpl,
     onMessage: (listener) => {
       events.on('message', listener);
       return () => events.off('message', listener);
@@ -33,7 +33,7 @@ test('publishes connector messages as canonical chat messages', async () => {
 
   connector.emitMessage({
     id: 'hub-1',
-    platform: 'mock',
+    platform: 'twitch',
     author: { id: 'author-1', name: 'Ana' },
     text: 'Message through the hub',
     timestamp: '2026-06-04T20:00:00.000Z',
@@ -55,7 +55,7 @@ test('tracks connector statuses and message counts', async () => {
   await hub.start();
   connector.emitMessage({
     id: 'hub-1',
-    platform: 'mock',
+    platform: 'twitch',
     author: { id: 'author-1', name: 'Ana' },
     text: 'Message through the hub',
     timestamp: '2026-06-04T20:00:00.000Z',
@@ -85,4 +85,50 @@ test('rejects duplicate connector platforms', () => {
     () => createChatHub({ connectors: [connector, createTestConnector()] }),
     /already registered/,
   );
+});
+
+test('sends a message through one registered connector', async () => {
+  const sent = [];
+  const connector = createTestConnector({
+    sendImpl: async (text) => {
+      sent.push(text);
+    },
+  });
+  const hub = createChatHub({ connectors: [connector] });
+
+  const result = await hub.sendMessage({
+    platform: ' twitch ',
+    text: ' hello chat ',
+  });
+
+  assert.deepEqual(sent, ['hello chat']);
+  assert.equal(result.platform, 'twitch');
+  assert.equal(result.text, 'hello chat');
+  assert.match(result.sentAt, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('rejects sends to inactive connectors', async () => {
+  const hub = createChatHub();
+
+  await assert.rejects(
+    () => hub.sendMessage({ platform: 'kick', text: 'hello' }),
+    /not active/,
+  );
+});
+
+test('tracks connector send failures as status errors', async () => {
+  const connector = createTestConnector({
+    sendImpl: async () => {
+      throw new Error('write disabled');
+    },
+  });
+  const hub = createChatHub({ connectors: [connector] });
+
+  await assert.rejects(
+    () => hub.sendMessage({ platform: 'twitch', text: 'hello' }),
+    /write disabled/,
+  );
+
+  assert.equal(hub.getStatuses()[0].state, 'error');
+  assert.equal(hub.getStatuses()[0].error, 'write disabled');
 });

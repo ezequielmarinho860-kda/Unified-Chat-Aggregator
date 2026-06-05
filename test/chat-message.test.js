@@ -5,7 +5,7 @@ const { normalizeChatMessage } = require('../src/chat-message');
 test('normalizes a canonical chat message', () => {
   const message = normalizeChatMessage({
     id: '1',
-    platform: 'mock',
+    platform: 'twitch',
     author: { id: 'author-1', name: 'Ana' },
     text: 'Test message',
     timestamp: '2026-06-04T20:00:00.000Z',
@@ -13,7 +13,7 @@ test('normalizes a canonical chat message', () => {
 
   assert.deepEqual(message, {
     id: '1',
-    platform: 'mock',
+    platform: 'twitch',
     author: { id: 'author-1', name: 'Ana', avatarUrl: undefined },
     text: 'Test message',
     timestamp: '2026-06-04T20:00:00.000Z',
@@ -27,7 +27,7 @@ test('rejects a message without text', () => {
     () =>
       normalizeChatMessage({
         id: '1',
-        platform: 'mock',
+        platform: 'twitch',
         author: { id: 'author-1', name: 'Ana' },
         timestamp: '2026-06-04T20:00:00.000Z',
       }),

@@ -43,6 +43,12 @@ class FakeWebSocket extends EventEmitter {
   }
 }
 
+const createJsonResponse = (body, { ok = true, status = 200 } = {}) => ({
+  ok,
+  status,
+  json: async () => body,
+});
+
 test('normalizes Twitch channel names', () => {
   assert.equal(normalizeChannelName(' #Monstercat '), 'monstercat');
 });
@@ -107,4 +113,41 @@ test('responds to Twitch PING messages with PONG', async () => {
   assert.equal(socket.sent.at(-1), 'PONG :tmi.twitch.tv');
 
   await connector.disconnect();
+});
+
+test('sends Twitch chat messages through the Helix API', async () => {
+  const socket = new FakeWebSocket(TWITCH_IRC_URL);
+  const apiCalls = [];
+  const connector = createTwitchConnector({
+    channel: 'monstercat',
+    accessToken: 'token',
+    webSocketFactory: () => socket,
+    fetchImpl: async (url, options = {}) => {
+      apiCalls.push({ url, options });
+
+      if (url === 'https://id.twitch.tv/oauth2/validate') {
+        return createJsonResponse({
+          client_id: 'client-1',
+          user_id: 'sender-1',
+          login: 'sender',
+          scopes: ['user:write:chat'],
+        });
+      }
+
+      if (String(url).startsWith('https://api.twitch.tv/helix/users')) {
+        return createJsonResponse({
+          data: [{ id: 'broadcaster-1', login: 'monstercat' }],
+        });
+      }
+
+      return createJsonResponse({
+        data: [{ message_id: 'message-1', is_sent: true }],
+      });
+    },
+  });
+
+  const result = await connector.send('hello twitch');
+
+  assert.deepEqual(result, { messageId: 'message-1', isSent: true });
+  assert.equal(apiCalls.at(-1).url, 'https://api.twitch.tv/helix/chat/messages');
 });

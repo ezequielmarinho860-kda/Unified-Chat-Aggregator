@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -14,19 +14,86 @@
     <main class="app-shell">
       <section class="dashboard">
         <div class="dashboard__header">
-          <p class="eyebrow">Bloco 1</p>
+          <p class="eyebrow">Reading dashboard</p>
           <h1>Unified Chat Aggregator</h1>
           <p class="summary">
-            Feed em tempo real recebendo mensagens pelo backbone IPC.
+            Live chat from active connectors in one desktop view.
           </p>
         </div>
 
-        <div class="status-grid" id="status-grid" aria-label="Status dos connectors">
-          <article class="status-card status-card--mock" data-platform="mock">
-            <span class="status-card__label">Mock</span>
-            <strong data-status-state>Disabled</strong>
-            <small data-status-detail>Dev mode</small>
-          </article>
+        <section class="config-panel" aria-labelledby="config-title">
+          <div class="config-panel__header">
+            <div>
+              <p class="eyebrow">Connections</p>
+              <h2 id="config-title">Connector setup</h2>
+            </div>
+            <div class="config-panel__actions">
+              <button class="tool-button" type="button" id="restart-connectors">Reconnect</button>
+              <button class="tool-button tool-button--primary" type="submit" form="connector-config-form">Save</button>
+            </div>
+          </div>
+
+          <form class="connector-form" id="connector-config-form">
+            <fieldset class="connector-settings connector-settings--twitch">
+              <legend>Twitch</legend>
+              <label class="toggle-row">
+                <input type="checkbox" name="twitch.enabled" />
+                <span>Enabled</span>
+              </label>
+              <label class="field-row">
+                <span>Channel</span>
+                <input type="text" name="twitch.channel" autocomplete="off" />
+              </label>
+              <div class="auth-actions" data-twitch-auth>
+                <span class="auth-actions__status" id="twitch-auth-status">Not connected</span>
+                <button class="tool-button" type="button" id="connect-twitch">Connect Twitch</button>
+                <button class="tool-button" type="button" id="disconnect-twitch" hidden>Disconnect</button>
+              </div>
+            </fieldset>
+
+            <fieldset class="connector-settings connector-settings--kick">
+              <legend>Kick</legend>
+              <label class="toggle-row">
+                <input type="checkbox" name="kick.enabled" />
+                <span>Enabled</span>
+              </label>
+              <label class="field-row">
+                <span>Channel</span>
+                <span class="field-action">
+                  <input type="text" name="kick.channel" autocomplete="off" placeholder="xqc or kick.com/xqc" />
+                  <button class="tool-button" type="button" id="resolve-kick-chatroom">Resolve</button>
+                </span>
+              </label>
+              <details class="advanced-settings">
+                <summary>Advanced</summary>
+                <label class="field-row">
+                  <span>Manual Chatroom ID</span>
+                  <input type="text" name="kick.chatroomId" autocomplete="off" />
+                </label>
+              </details>
+            </fieldset>
+
+            <fieldset class="connector-settings connector-settings--x">
+              <legend>X</legend>
+              <label class="toggle-row">
+                <input type="checkbox" name="x.enabled" />
+                <span>Enabled</span>
+              </label>
+              <label class="field-row">
+                <span>Live URL</span>
+                <input type="url" name="x.liveUrl" autocomplete="off" />
+              </label>
+              <label class="toggle-row">
+                <input type="checkbox" name="x.showBrowser" />
+                <span>Show capture window</span>
+              </label>
+            </fieldset>
+          </form>
+
+          <p class="config-panel__meta" id="config-meta">Loading configuration...</p>
+        </section>
+
+        <div class="status-grid" id="status-grid" aria-label="Connector status">
           <article class="status-card status-card--twitch" data-platform="twitch">
             <span class="status-card__label">Twitch</span>
             <strong data-status-state>Disabled</strong>
@@ -59,7 +126,6 @@
           <div class="feed-toolbar" aria-label="Feed controls">
             <div class="platform-filter" id="platform-filter" role="group" aria-label="Platform filter">
               <button class="filter-button is-active" type="button" data-filter-platform="all">All</button>
-              <button class="filter-button" type="button" data-filter-platform="mock">Mock</button>
               <button class="filter-button" type="button" data-filter-platform="twitch">Twitch</button>
               <button class="filter-button" type="button" data-filter-platform="kick">Kick</button>
               <button class="filter-button" type="button" data-filter-platform="x">X</button>
@@ -69,6 +135,30 @@
               <button class="tool-button" type="button" id="clear-feed">Clear</button>
             </div>
           </div>
+
+          <form class="composer-panel" id="message-composer" aria-label="Send message">
+            <label class="composer-panel__target">
+              <span>Send to</span>
+              <select name="platform">
+                <option value="twitch">Twitch</option>
+                <option value="kick">Kick</option>
+                <option value="x">X</option>
+              </select>
+            </label>
+            <label class="composer-panel__message">
+              <span>Message</span>
+              <textarea
+                name="text"
+                rows="2"
+                maxlength="500"
+                placeholder="Write a message to one platform"
+              ></textarea>
+            </label>
+            <button class="tool-button tool-button--primary" type="submit">Send</button>
+            <p class="composer-panel__meta" id="composer-meta" aria-live="polite">
+              Choose one platform and send a message.
+            </p>
+          </form>
 
           <ol class="message-feed" id="message-feed" aria-live="polite">
             <li class="empty-state" id="empty-state">Waiting for messages...</li>

@@ -130,6 +130,30 @@ const createChatHub = ({ connectors = [] } = {}) => {
         unsubscribe();
       }
     },
+    sendMessage: async ({ platform, text } = {}) => {
+      const normalizedPlatform = normalizeSendPlatform(platform);
+      const normalizedText = normalizeSendText(text);
+      const connector = registeredConnectors.get(normalizedPlatform);
+
+      if (!connector) {
+        throw new Error(`Connector is not active: ${normalizedPlatform}.`);
+      }
+
+      try {
+        await connector.send(normalizedText);
+        return {
+          platform: normalizedPlatform,
+          text: normalizedText,
+          sentAt: new Date().toISOString(),
+        };
+      } catch (error) {
+        setConnectorStatus(normalizedPlatform, {
+          state: 'error',
+          error: error.message,
+        });
+        throw error;
+      }
+    },
     getStatuses: () => [...connectorStatuses.values()],
   };
 };
@@ -138,6 +162,22 @@ const getConnectorDetails = (connector) => ({
   channel: connector.channel,
   liveUrl: connector.liveUrl,
 });
+
+const normalizeSendPlatform = (platform) => {
+  if (typeof platform !== 'string' || platform.trim().length === 0) {
+    throw new TypeError('Send target platform is required.');
+  }
+
+  return platform.trim().toLowerCase();
+};
+
+const normalizeSendText = (text) => {
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    throw new TypeError('Message text is required.');
+  }
+
+  return text.trim();
+};
 
 module.exports = {
   createChatHub,

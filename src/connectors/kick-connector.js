@@ -11,6 +11,7 @@ const createKickConnector = ({
   chatroomId,
   reconnectMs = DEFAULT_RECONNECT_MS,
   fetchImpl = fetch,
+  resolveChannel = resolveKickChannel,
   webSocketFactory = (url) => new WebSocket(url),
 } = {}) => {
   const normalizedChannel = normalizeKickChannelName(channel);
@@ -29,7 +30,7 @@ const createKickConnector = ({
 
     try {
       if (!resolvedChatroomId) {
-        const resolvedChannel = await resolveKickChannel({
+        const resolvedChannel = await resolveChannel({
           channel: normalizedChannel,
           fetchImpl,
         });
@@ -126,7 +127,7 @@ const createKickConnector = ({
     connect,
     disconnect,
     send: async () => {
-      throw new Error('Kick send is not implemented in the read MVP.');
+      throw new Error('Kick write is not configured. OAuth is required.');
     },
   };
 };

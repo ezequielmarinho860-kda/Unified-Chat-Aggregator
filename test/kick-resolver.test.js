@@ -15,6 +15,11 @@ test('normalizes Kick channel slugs', () => {
   assert.equal(normalizeKickChannelName(' @XQC '), 'xqc');
 });
 
+test('normalizes Kick channel URLs', () => {
+  assert.equal(normalizeKickChannelName('https://kick.com/XQC?ref=chat'), 'xqc');
+  assert.equal(normalizeKickChannelName('kick.com/XQC'), 'xqc');
+});
+
 test('resolves chatroom id from the channel endpoint', async () => {
   const calls = [];
   const fetchImpl = async (url) => {

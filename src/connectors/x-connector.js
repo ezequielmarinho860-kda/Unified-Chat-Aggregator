@@ -103,7 +103,7 @@ const createXConnector = ({
     connect,
     disconnect,
     send: async () => {
-      throw new Error('X send is not implemented in the read MVP.');
+      throw new Error('X write is not configured. Browser composer injection is pending.');
     },
   };
 };

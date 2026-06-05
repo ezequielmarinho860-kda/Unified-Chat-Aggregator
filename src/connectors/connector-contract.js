@@ -1,7 +1,7 @@
 const CONNECTOR_METHODS = ['connect', 'disconnect', 'send'];
 
 /**
- * @typedef {'twitch' | 'kick' | 'x' | 'youtube' | 'mock'} Platform
+ * @typedef {'twitch' | 'kick' | 'x' | 'youtube'} Platform
  *
  * @typedef {Object} ChatMessage
  * @property {string} id

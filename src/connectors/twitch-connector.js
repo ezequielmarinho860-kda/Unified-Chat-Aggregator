@@ -1,4 +1,5 @@
 const { EventEmitter } = require('node:events');
+const { sendTwitchChatMessage } = require('./twitch-api');
 const { parseTwitchPrivmsg } = require('./twitch-irc-parser');
 
 const TWITCH_IRC_URL = 'wss://irc-ws.chat.twitch.tv:443';
@@ -6,6 +7,8 @@ const DEFAULT_RECONNECT_MS = 5_000;
 
 const createTwitchConnector = ({
   channel,
+  accessToken,
+  fetchImpl = fetch,
   reconnectMs = DEFAULT_RECONNECT_MS,
   webSocketFactory = (url) => new WebSocket(url),
 } = {}) => {
@@ -90,9 +93,13 @@ const createTwitchConnector = ({
     },
     connect,
     disconnect,
-    send: async () => {
-      throw new Error('Twitch send is not implemented in the read MVP.');
-    },
+    send: (text) =>
+      sendTwitchChatMessage({
+        channel: normalizedChannel,
+        accessToken,
+        message: text,
+        fetchImpl,
+      }),
   };
 };
 

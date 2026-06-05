@@ -29,4 +29,20 @@ contextBridge.exposeInMainWorld('chatAggregator', {
       ipcRenderer.off('chat:statuses', listener);
     };
   },
+  onConfigChanged: (callback) => {
+    const listener = (_event, snapshot) => callback(snapshot);
+
+    ipcRenderer.on('chat:config', listener);
+
+    return () => {
+      ipcRenderer.off('chat:config', listener);
+    };
+  },
+  getConfig: () => ipcRenderer.invoke('config:get'),
+  saveConfig: (config) => ipcRenderer.invoke('config:save', config),
+  restartConnectors: () => ipcRenderer.invoke('connectors:restart'),
+  sendMessage: (payload) => ipcRenderer.invoke('chat:send', payload),
+  connectTwitch: () => ipcRenderer.invoke('twitch:connect'),
+  disconnectTwitch: () => ipcRenderer.invoke('twitch:disconnect'),
+  resolveKickChatroom: (channel) => ipcRenderer.invoke('kick:resolve-chatroom', channel),
 });
