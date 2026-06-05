@@ -21,18 +21,26 @@
           </p>
         </div>
 
-        <div class="status-grid" aria-label="Status dos connectors">
-          <article class="status-card status-card--twitch">
+        <div class="status-grid" id="status-grid" aria-label="Status dos connectors">
+          <article class="status-card status-card--mock" data-platform="mock">
+            <span class="status-card__label">Mock</span>
+            <strong data-status-state>Disabled</strong>
+            <small data-status-detail>Modo dev</small>
+          </article>
+          <article class="status-card status-card--twitch" data-platform="twitch">
             <span class="status-card__label">Twitch</span>
-            <strong>IRC anonimo ativo</strong>
+            <strong data-status-state>Disabled</strong>
+            <small data-status-detail>IRC anonimo</small>
           </article>
-          <article class="status-card status-card--kick">
+          <article class="status-card status-card--kick" data-platform="kick">
             <span class="status-card__label">Kick</span>
-            <strong>Pusher leitura configurada</strong>
+            <strong data-status-state>Disabled</strong>
+            <small data-status-detail>Pusher</small>
           </article>
-          <article class="status-card status-card--x">
+          <article class="status-card status-card--x" data-platform="x">
             <span class="status-card__label">X</span>
-            <strong>Use X_LIVE_URL</strong>
+            <strong data-status-state>Disabled</strong>
+            <small data-status-detail>Use X_LIVE_URL</small>
           </article>
         </div>
 
@@ -42,10 +50,29 @@
               <p class="eyebrow">Live feed</p>
               <h2 id="feed-title">Mensagens unificadas</h2>
             </div>
-            <span class="feed-panel__counter" id="message-count">0</span>
+            <div class="feed-panel__metrics" aria-label="Metricas do feed">
+              <span class="feed-panel__counter" id="visible-message-count">0</span>
+              <span class="feed-panel__counter feed-panel__counter--muted" id="message-count">0</span>
+            </div>
           </div>
 
-          <ol class="message-feed" id="message-feed" aria-live="polite"></ol>
+          <div class="feed-toolbar" aria-label="Controles do feed">
+            <div class="platform-filter" id="platform-filter" role="group" aria-label="Filtro por plataforma">
+              <button class="filter-button is-active" type="button" data-filter-platform="all">Todos</button>
+              <button class="filter-button" type="button" data-filter-platform="mock">Mock</button>
+              <button class="filter-button" type="button" data-filter-platform="twitch">Twitch</button>
+              <button class="filter-button" type="button" data-filter-platform="kick">Kick</button>
+              <button class="filter-button" type="button" data-filter-platform="x">X</button>
+            </div>
+            <div class="feed-actions">
+              <button class="tool-button" type="button" id="toggle-autoscroll">Pausar</button>
+              <button class="tool-button" type="button" id="clear-feed">Limpar</button>
+            </div>
+          </div>
+
+          <ol class="message-feed" id="message-feed" aria-live="polite">
+            <li class="empty-state" id="empty-state">Aguardando mensagens...</li>
+          </ol>
         </section>
       </section>
     </main>

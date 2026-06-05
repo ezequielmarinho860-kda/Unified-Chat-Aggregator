@@ -6,9 +6,41 @@ const createChatHub = ({ connectors = [] } = {}) => {
   const events = new EventEmitter();
   const registeredConnectors = new Map();
   const unsubscribeHandlers = [];
+  const connectorStatuses = new Map();
+
+  const setConnectorStatus = (platform, patch) => {
+    const previousStatus = connectorStatuses.get(platform) ?? {
+      platform,
+      state: 'disabled',
+      messageCount: 0,
+      lastMessageAt: undefined,
+      error: undefined,
+      details: {},
+    };
+    const nextStatus = {
+      ...previousStatus,
+      ...patch,
+      platform,
+    };
+
+    connectorStatuses.set(platform, nextStatus);
+    events.emit('status', nextStatus);
+  };
 
   const publishMessage = (message) => {
-    events.emit('message', normalizeChatMessage(message));
+    const normalizedMessage = normalizeChatMessage(message);
+    const previousStatus = connectorStatuses.get(normalizedMessage.platform);
+
+    if (previousStatus) {
+      setConnectorStatus(normalizedMessage.platform, {
+        state: 'connected',
+        messageCount: previousStatus.messageCount + 1,
+        lastMessageAt: normalizedMessage.timestamp,
+        error: undefined,
+      });
+    }
+
+    events.emit('message', normalizedMessage);
   };
 
   const registerConnector = (connector) => {
@@ -19,9 +51,38 @@ const createChatHub = ({ connectors = [] } = {}) => {
     }
 
     registeredConnectors.set(connector.platform, connector);
+    setConnectorStatus(connector.platform, {
+      state: 'idle',
+      details: getConnectorDetails(connector),
+    });
 
     if (typeof connector.onMessage === 'function') {
       unsubscribeHandlers.push(connector.onMessage(publishMessage));
+    }
+
+    if (typeof connector.onError === 'function') {
+      unsubscribeHandlers.push(
+        connector.onError((error) => {
+          setConnectorStatus(connector.platform, {
+            state: 'error',
+            error: error.message,
+          });
+        }),
+      );
+    }
+
+    if (typeof connector.onStatus === 'function') {
+      unsubscribeHandlers.push(
+        connector.onStatus((status) => {
+          setConnectorStatus(connector.platform, {
+            state: status.state ?? 'connected',
+            details: {
+              ...getConnectorDetails(connector),
+              ...status,
+            },
+          });
+        }),
+      );
     }
   };
 
@@ -35,14 +96,33 @@ const createChatHub = ({ connectors = [] } = {}) => {
       events.on('message', listener);
       return () => events.off('message', listener);
     },
+    onStatus: (listener) => {
+      events.on('status', listener);
+      return () => events.off('status', listener);
+    },
     start: async () => {
       for (const connector of registeredConnectors.values()) {
-        await connector.connect();
+        setConnectorStatus(connector.platform, { state: 'connecting', error: undefined });
+
+        try {
+          await connector.connect();
+          const currentStatus = connectorStatuses.get(connector.platform);
+
+          if (currentStatus?.state === 'connecting') {
+            setConnectorStatus(connector.platform, { state: 'connected' });
+          }
+        } catch (error) {
+          setConnectorStatus(connector.platform, {
+            state: 'error',
+            error: error.message,
+          });
+        }
       }
     },
     stop: async () => {
       for (const connector of registeredConnectors.values()) {
         await connector.disconnect();
+        setConnectorStatus(connector.platform, { state: 'disconnected' });
       }
 
       while (unsubscribeHandlers.length > 0) {
@@ -50,8 +130,14 @@ const createChatHub = ({ connectors = [] } = {}) => {
         unsubscribe();
       }
     },
+    getStatuses: () => [...connectorStatuses.values()],
   };
 };
+
+const getConnectorDetails = (connector) => ({
+  channel: connector.channel,
+  liveUrl: connector.liveUrl,
+});
 
 module.exports = {
   createChatHub,

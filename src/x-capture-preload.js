@@ -47,7 +47,29 @@ const getAvatarContainer = (element) => {
     return element;
   }
 
-  return element.querySelector("[data-testid^='UserAvatar-Container-']");
+  const descendantAvatar = element.querySelector("[data-testid^='UserAvatar-Container-']");
+
+  if (descendantAvatar) {
+    return descendantAvatar;
+  }
+
+  let current = element.parentElement;
+
+  while (current && current !== document.body) {
+    if (current.matches('[data-testid="chatContainer"]')) {
+      break;
+    }
+
+    const nearbyAvatar = current.querySelector("[data-testid^='UserAvatar-Container-']");
+
+    if (nearbyAvatar) {
+      return nearbyAvatar;
+    }
+
+    current = current.parentElement;
+  }
+
+  return undefined;
 };
 
 const findMessageRow = (element) => {
@@ -134,7 +156,7 @@ const isTimeLabel = (value) => /^\d{1,2}:\d{2}\s?(am|pm)?$/i.test(value);
 const processCandidate = (element) => {
   const row = findMessageRow(element);
 
-  if (!row || row.dataset.unifiedChatCaptured === 'true') {
+  if (!row) {
     return;
   }
 
@@ -148,12 +170,16 @@ const processCandidate = (element) => {
 
   const key = [username, authorName, text].join('|').toLowerCase();
 
-  if (!rememberMessageKey(key)) {
-    row.dataset.unifiedChatCaptured = 'true';
+  if (row.dataset.unifiedChatCapturedKey === key) {
     return;
   }
 
-  row.dataset.unifiedChatCaptured = 'true';
+  if (!rememberMessageKey(key)) {
+    row.dataset.unifiedChatCapturedKey = key;
+    return;
+  }
+
+  row.dataset.unifiedChatCapturedKey = key;
   ipcRenderer.send('x-capture:message', {
     authorName,
     username,
@@ -163,14 +189,24 @@ const processCandidate = (element) => {
   });
 };
 
-const markExistingMessages = (container) => {
+const processKnownMessages = (container) => {
   for (const avatar of container.querySelectorAll("[data-testid^='UserAvatar-Container-']")) {
-    const row = findMessageRow(avatar);
-
-    if (row) {
-      row.dataset.unifiedChatCaptured = 'true';
-    }
+    processCandidate(avatar);
   }
+};
+
+const scheduleCandidateProcessing = (element) => {
+  if (!element || element.nodeType !== Node.ELEMENT_NODE) {
+    return;
+  }
+
+  setTimeout(() => {
+    processCandidate(element);
+
+    for (const avatar of element.querySelectorAll("[data-testid^='UserAvatar-Container-']")) {
+      processCandidate(avatar);
+    }
+  }, 350);
 };
 
 const resolveChatContainer = () => {
@@ -192,19 +228,23 @@ const observeContainer = (container) => {
 
   observer?.disconnect();
   observedContainer = container;
-  markExistingMessages(container);
+  processKnownMessages(container);
   observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (node.nodeType !== Node.ELEMENT_NODE) {
-          continue;
-        }
+      if (mutation.target?.nodeType === Node.ELEMENT_NODE) {
+        scheduleCandidateProcessing(mutation.target);
+      }
 
-        setTimeout(() => processCandidate(node), 350);
+      if (mutation.target?.nodeType === Node.TEXT_NODE) {
+        scheduleCandidateProcessing(mutation.target.parentElement);
+      }
+
+      for (const node of mutation.addedNodes) {
+        scheduleCandidateProcessing(node);
       }
     }
   });
-  observer.observe(container, { childList: true, subtree: true });
+  observer.observe(container, { childList: true, characterData: true, subtree: true });
   ipcRenderer.send('x-capture:status', { state: 'observing' });
 };
 

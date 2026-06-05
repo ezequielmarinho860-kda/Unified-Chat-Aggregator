@@ -62,8 +62,20 @@ const createMainWindow = () => {
       mainWindow.webContents.send('chat:message', message);
     }
   });
+  const unsubscribeFromHubStatus = chatHub.onStatus((status) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('chat:status', status);
+    }
+  });
 
-  mainWindow.on('closed', unsubscribeFromHub);
+  mainWindow.webContents.once('did-finish-load', () => {
+    mainWindow.webContents.send('chat:statuses', chatHub.getStatuses());
+  });
+
+  mainWindow.on('closed', () => {
+    unsubscribeFromHub();
+    unsubscribeFromHubStatus();
+  });
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 };
