@@ -25,12 +25,12 @@
           <article class="status-card status-card--mock" data-platform="mock">
             <span class="status-card__label">Mock</span>
             <strong data-status-state>Disabled</strong>
-            <small data-status-detail>Modo dev</small>
+            <small data-status-detail>Dev mode</small>
           </article>
           <article class="status-card status-card--twitch" data-platform="twitch">
             <span class="status-card__label">Twitch</span>
             <strong data-status-state>Disabled</strong>
-            <small data-status-detail>IRC anonimo</small>
+            <small data-status-detail>Anonymous IRC</small>
           </article>
           <article class="status-card status-card--kick" data-platform="kick">
             <span class="status-card__label">Kick</span>
@@ -48,30 +48,30 @@
           <div class="feed-panel__header">
             <div>
               <p class="eyebrow">Live feed</p>
-              <h2 id="feed-title">Mensagens unificadas</h2>
+              <h2 id="feed-title">Unified messages</h2>
             </div>
-            <div class="feed-panel__metrics" aria-label="Metricas do feed">
+            <div class="feed-panel__metrics" aria-label="Feed metrics">
               <span class="feed-panel__counter" id="visible-message-count">0</span>
               <span class="feed-panel__counter feed-panel__counter--muted" id="message-count">0</span>
             </div>
           </div>
 
-          <div class="feed-toolbar" aria-label="Controles do feed">
-            <div class="platform-filter" id="platform-filter" role="group" aria-label="Filtro por plataforma">
-              <button class="filter-button is-active" type="button" data-filter-platform="all">Todos</button>
+          <div class="feed-toolbar" aria-label="Feed controls">
+            <div class="platform-filter" id="platform-filter" role="group" aria-label="Platform filter">
+              <button class="filter-button is-active" type="button" data-filter-platform="all">All</button>
               <button class="filter-button" type="button" data-filter-platform="mock">Mock</button>
               <button class="filter-button" type="button" data-filter-platform="twitch">Twitch</button>
               <button class="filter-button" type="button" data-filter-platform="kick">Kick</button>
               <button class="filter-button" type="button" data-filter-platform="x">X</button>
             </div>
             <div class="feed-actions">
-              <button class="tool-button" type="button" id="toggle-autoscroll">Pausar</button>
-              <button class="tool-button" type="button" id="clear-feed">Limpar</button>
+              <button class="tool-button" type="button" id="toggle-autoscroll">Pause</button>
+              <button class="tool-button" type="button" id="clear-feed">Clear</button>
             </div>
           </div>
 
           <ol class="message-feed" id="message-feed" aria-live="polite">
-            <li class="empty-state" id="empty-state">Aguardando mensagens...</li>
+            <li class="empty-state" id="empty-state">Waiting for messages...</li>
           </ol>
         </section>
       </section>

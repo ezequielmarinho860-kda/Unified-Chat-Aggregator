@@ -87,7 +87,7 @@ test('emits parsed Kick chat messages', async () => {
       event: KICK_CHAT_MESSAGE_EVENT,
       data: JSON.stringify({
         id: 'message-1',
-        content: 'ola kick',
+        content: 'hello kick',
         created_at: '2026-06-04T20:00:00.000Z',
         sender: { id: 7, username: 'Ana' },
       }),
@@ -96,7 +96,7 @@ test('emits parsed Kick chat messages', async () => {
 
   assert.equal(received.length, 1);
   assert.equal(received[0].platform, 'kick');
-  assert.equal(received[0].text, 'ola kick');
+  assert.equal(received[0].text, 'hello kick');
 
   unsubscribe();
   await connector.disconnect();

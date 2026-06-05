@@ -6,7 +6,7 @@ test('normalizes X capture payloads into canonical chat messages', () => {
   const message = normalizeXMessage({
     authorName: 'Ana',
     username: '@ana',
-    text: 'ola x',
+    text: 'hello x',
     avatarUrl: 'https://example.com/avatar.jpg',
     timestamp: '2026-06-04T20:00:00.000Z',
   });
@@ -15,7 +15,7 @@ test('normalizes X capture payloads into canonical chat messages', () => {
   assert.equal(message.author.id, 'ana');
   assert.equal(message.author.name, 'Ana');
   assert.equal(message.author.avatarUrl, 'https://example.com/avatar.jpg');
-  assert.equal(message.text, 'ola x');
+  assert.equal(message.text, 'hello x');
   assert.equal(message.timestamp, '2026-06-04T20:00:00.000Z');
 });
 

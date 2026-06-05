@@ -107,14 +107,14 @@ test('loads the X capture window and emits IPC messages', async () => {
   }, {
     authorName: 'Ana',
     username: '@ana',
-    text: 'ola x',
+    text: 'hello x',
     timestamp: '2026-06-04T20:00:00.000Z',
   });
 
   assert.equal(captureWindow.loadedUrl, 'https://x.com/i/broadcasts/1');
   assert.equal(received.length, 1);
   assert.equal(received[0].platform, 'x');
-  assert.equal(received[0].text, 'ola x');
+  assert.equal(received[0].text, 'hello x');
 
   unsubscribe();
   await connector.disconnect();

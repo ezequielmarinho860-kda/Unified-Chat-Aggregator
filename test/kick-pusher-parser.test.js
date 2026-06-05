@@ -12,7 +12,7 @@ test('parses Kick Pusher chat message events into canonical messages', () => {
       data: JSON.stringify({
         id: 'message-1',
         chatroom_id: 12345,
-        content: 'ola kick',
+        content: 'hello kick',
         created_at: '2026-06-04T20:00:00.000Z',
         sender: {
           id: 99,
@@ -29,7 +29,7 @@ test('parses Kick Pusher chat message events into canonical messages', () => {
   assert.equal(parsed.message.author.id, '99');
   assert.equal(parsed.message.author.name, 'Streamer');
   assert.equal(parsed.message.author.avatarUrl, 'https://example.com/avatar.png');
-  assert.equal(parsed.message.text, 'ola kick');
+  assert.equal(parsed.message.text, 'hello kick');
 });
 
 test('parses Pusher ping envelopes', () => {

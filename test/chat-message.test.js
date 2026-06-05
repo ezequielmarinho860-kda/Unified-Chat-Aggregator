@@ -7,7 +7,7 @@ test('normalizes a canonical chat message', () => {
     id: '1',
     platform: 'mock',
     author: { id: 'author-1', name: 'Ana' },
-    text: 'Mensagem de teste',
+    text: 'Test message',
     timestamp: '2026-06-04T20:00:00.000Z',
   });
 
@@ -15,7 +15,7 @@ test('normalizes a canonical chat message', () => {
     id: '1',
     platform: 'mock',
     author: { id: 'author-1', name: 'Ana', avatarUrl: undefined },
-    text: 'Mensagem de teste',
+    text: 'Test message',
     timestamp: '2026-06-04T20:00:00.000Z',
     avatarUrl: undefined,
     raw: null,

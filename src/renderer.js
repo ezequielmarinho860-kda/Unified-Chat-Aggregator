@@ -30,13 +30,13 @@ const platformLabels = {
 };
 
 const stateLabels = {
-  connected: 'Conectado',
-  connecting: 'Conectando',
-  disabled: 'Desativado',
-  disconnected: 'Desconectado',
-  error: 'Erro',
-  idle: 'Aguardando',
-  observing: 'Observando',
+  connected: 'Connected',
+  connecting: 'Connecting',
+  disabled: 'Disabled',
+  disconnected: 'Disconnected',
+  error: 'Error',
+  idle: 'Idle',
+  observing: 'Observing',
 };
 
 const formatTimestamp = (timestamp) =>
@@ -48,10 +48,10 @@ const formatTimestamp = (timestamp) =>
 
 const formatRelativeDetail = (timestamp) => {
   if (!timestamp) {
-    return 'Sem mensagens';
+    return 'No messages yet';
   }
 
-  return `Ultima: ${formatTimestamp(timestamp)}`;
+  return `Last: ${formatTimestamp(timestamp)}`;
 };
 
 const renderMessage = (message) => {
@@ -107,8 +107,8 @@ const renderFeed = () => {
   );
   emptyState.textContent =
     activeFilter === 'all'
-      ? 'Aguardando mensagens...'
-      : `Sem mensagens de ${platformLabels[activeFilter] ?? activeFilter}.`;
+      ? 'Waiting for messages...'
+      : `No ${platformLabels[activeFilter] ?? activeFilter} messages.`;
 
   if (autoscrollEnabled) {
     messageFeed.scrollTop = messageFeed.scrollHeight;
@@ -130,8 +130,8 @@ const renderConnectorStatus = (status) => {
   const messageCount = status.messageCount ?? platformCounts.get(status.platform) ?? 0;
   const detailParts = [
     status.error,
-    status.details?.channel ? `Canal: ${status.details.channel}` : undefined,
-    status.details?.liveUrl ? 'Live configurada' : undefined,
+    status.details?.channel ? `Channel: ${status.details.channel}` : undefined,
+    status.details?.liveUrl ? 'Live configured' : undefined,
     formatRelativeDetail(status.lastMessageAt),
     `${messageCount} msg`,
   ].filter(Boolean);
@@ -185,7 +185,7 @@ platformFilter?.addEventListener('click', (event) => {
 
 toggleAutoscroll?.addEventListener('click', () => {
   autoscrollEnabled = !autoscrollEnabled;
-  toggleAutoscroll.textContent = autoscrollEnabled ? 'Pausar' : 'Retomar';
+  toggleAutoscroll.textContent = autoscrollEnabled ? 'Pause' : 'Resume';
 
   if (autoscrollEnabled) {
     messageFeed.scrollTop = messageFeed.scrollHeight;

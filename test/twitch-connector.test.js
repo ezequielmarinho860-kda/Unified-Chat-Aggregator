@@ -82,12 +82,12 @@ test('emits parsed Twitch chat messages', async () => {
   await connector.connect();
   socket.open();
   socket.receive(
-    '@display-name=Ana;id=message-1;tmi-sent-ts=1780603200000;user-id=user-1 :ana!ana@ana.tmi.twitch.tv PRIVMSG #monstercat :ola twitch',
+    '@display-name=Ana;id=message-1;tmi-sent-ts=1780603200000;user-id=user-1 :ana!ana@ana.tmi.twitch.tv PRIVMSG #monstercat :hello twitch',
   );
 
   assert.equal(received.length, 1);
   assert.equal(received[0].platform, 'twitch');
-  assert.equal(received[0].text, 'ola twitch');
+  assert.equal(received[0].text, 'hello twitch');
 
   unsubscribe();
   await connector.disconnect();

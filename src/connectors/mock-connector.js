@@ -9,10 +9,10 @@ const MOCK_AUTHORS = [
 ];
 
 const MOCK_TEXTS = [
-  'Twitch e Kick vao cair no mesmo feed?',
-  'Esse dashboard ja parece app desktop.',
-  'Mensagem falsa chegando pelo IPC.',
-  'Quando entrar o X, esse pipe ja vai estar pronto.',
+  'Will Twitch and Kick land in the same feed?',
+  'This dashboard already feels like a desktop app.',
+  'Mock message arriving through IPC.',
+  'When X is active, this pipe will already be ready.',
 ];
 
 const createMockConnector = ({ intervalMs = 2200 } = {}) => {
@@ -49,7 +49,7 @@ const createMockConnector = ({ intervalMs = 2200 } = {}) => {
         return;
       }
 
-      emitMessage('Mock connector conectado.');
+      emitMessage('Mock connector connected.');
       timer = setInterval(emitMessage, intervalMs);
     },
     disconnect: async () => {

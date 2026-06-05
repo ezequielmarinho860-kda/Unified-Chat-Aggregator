@@ -35,12 +35,12 @@ test('publishes connector messages as canonical chat messages', async () => {
     id: 'hub-1',
     platform: 'mock',
     author: { id: 'author-1', name: 'Ana' },
-    text: 'Mensagem pelo hub',
+    text: 'Message through the hub',
     timestamp: '2026-06-04T20:00:00.000Z',
   });
 
   assert.equal(received.length, 1);
-  assert.equal(received[0].text, 'Mensagem pelo hub');
+  assert.equal(received[0].text, 'Message through the hub');
 
   await hub.stop();
 });
@@ -57,7 +57,7 @@ test('tracks connector statuses and message counts', async () => {
     id: 'hub-1',
     platform: 'mock',
     author: { id: 'author-1', name: 'Ana' },
-    text: 'Mensagem pelo hub',
+    text: 'Message through the hub',
     timestamp: '2026-06-04T20:00:00.000Z',
   });
 
