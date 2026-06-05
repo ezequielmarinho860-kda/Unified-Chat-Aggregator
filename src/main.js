@@ -4,20 +4,34 @@ const { createChatHub } = require('./chat-hub');
 const { createKickConnector } = require('./connectors/kick-connector');
 const { createMockConnector } = require('./connectors/mock-connector');
 const { createTwitchConnector } = require('./connectors/twitch-connector');
+const { createXConnector } = require('./connectors/x-connector');
 
 const kickChannel = process.env.KICK_CHANNEL || 'xqc';
 const kickChatroomId = process.env.KICK_CHATROOM_ID;
 const twitchChannel = process.env.TWITCH_CHANNEL || 'monstercat';
+const xLiveUrl = process.env.X_LIVE_URL;
+
+const connectors = [
+  createMockConnector(),
+  createKickConnector({
+    channel: kickChannel,
+    chatroomId: kickChatroomId,
+  }),
+  createTwitchConnector({ channel: twitchChannel }),
+];
+
+if (xLiveUrl) {
+  connectors.push(
+    createXConnector({
+      liveUrl: xLiveUrl,
+      BrowserWindow,
+      show: process.env.X_SHOW_BROWSER === 'true',
+    }),
+  );
+}
 
 const chatHub = createChatHub({
-  connectors: [
-    createMockConnector(),
-    createKickConnector({
-      channel: kickChannel,
-      chatroomId: kickChatroomId,
-    }),
-    createTwitchConnector({ channel: twitchChannel }),
-  ],
+  connectors,
 });
 
 const createMainWindow = () => {
