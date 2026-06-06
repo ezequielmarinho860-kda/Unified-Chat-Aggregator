@@ -49,6 +49,7 @@ const createJsonResponse = (body, { ok = true, status = 200 } = {}) => ({
   json: async () => body,
 });
 const createEmptyBttvResponse = async () => createJsonResponse([]);
+const flushAsyncMessages = () => new Promise((resolve) => setImmediate(resolve));
 
 test('normalizes Twitch channel names', () => {
   assert.equal(normalizeChannelName(' #Monstercat '), 'monstercat');
@@ -128,6 +129,7 @@ test('loads Twitch badge images before parsing chat messages', async () => {
   socket.receive(
     '@badges=subscriber/12;display-name=Ana;id=message-1;tmi-sent-ts=1780603200000;user-id=user-1 :ana!ana@ana.tmi.twitch.tv PRIVMSG #monstercat :hello twitch',
   );
+  await flushAsyncMessages();
 
   assert.deepEqual(received[0].author.badges, [
     {
@@ -157,6 +159,7 @@ test('emits parsed Twitch chat messages', async () => {
   socket.receive(
     '@display-name=Ana;id=message-1;tmi-sent-ts=1780603200000;user-id=user-1 :ana!ana@ana.tmi.twitch.tv PRIVMSG #monstercat :hello twitch',
   );
+  await flushAsyncMessages();
 
   assert.equal(received.length, 1);
   assert.equal(received[0].platform, 'twitch');
@@ -198,6 +201,7 @@ test('renders BetterTTV global emotes from Twitch chat text', async () => {
   socket.receive(
     '@display-name=Ana;id=message-1;tmi-sent-ts=1780603200000;user-id=user-1 :ana!ana@ana.tmi.twitch.tv PRIVMSG #monstercat :OMEGALUL chat',
   );
+  await flushAsyncMessages();
 
   assert.deepEqual(received[0].fragments, [
     {
@@ -208,6 +212,46 @@ test('renders BetterTTV global emotes from Twitch chat text', async () => {
     },
     { type: 'text', text: ' ' },
     { type: 'text', text: 'chat' },
+  ]);
+
+  unsubscribe();
+  await connector.disconnect();
+});
+
+test('resolves unknown shared BetterTTV emotes on first use', async () => {
+  const socket = new FakeWebSocket(TWITCH_IRC_URL);
+  const connector = createTwitchConnector({
+    channel: 'monstercat',
+    webSocketFactory: () => socket,
+    fetchImpl: async (url) => {
+      if (String(url).includes('/cached/emotes/global')) {
+        return createJsonResponse([]);
+      }
+
+      if (String(url).includes('/emotes/shared/search')) {
+        return createJsonResponse([{ id: 'shared-1', code: 'modCheck' }]);
+      }
+
+      return createJsonResponse([]);
+    },
+  });
+  const received = [];
+  const unsubscribe = connector.onMessage((message) => received.push(message));
+
+  await connector.connect();
+  socket.open();
+  socket.receive(
+    '@display-name=Ana;id=message-1;tmi-sent-ts=1780603200000;user-id=user-1 :ana!ana@ana.tmi.twitch.tv PRIVMSG #monstercat :modCheck',
+  );
+  await flushAsyncMessages();
+
+  assert.deepEqual(received[0].fragments, [
+    {
+      type: 'emote',
+      id: 'bttv:shared-1',
+      text: 'modCheck',
+      imageUrl: 'https://cdn.betterttv.net/emote/shared-1/2x',
+    },
   ]);
 
   unsubscribe();

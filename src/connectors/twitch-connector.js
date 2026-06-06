@@ -1,12 +1,16 @@
 const { EventEmitter } = require('node:events');
-const { fetchBttvEmoteCatalog } = require('./bttv-api');
+const {
+  fetchBttvEmoteCatalog,
+  fetchBttvSharedEmote,
+  findBttvSharedEmoteCandidates,
+} = require('./bttv-api');
 const {
   fetchTwitchChatBadgeCatalog,
   resolveTwitchUserByLogin,
   sendTwitchChatMessage,
   validateTwitchAccessToken,
 } = require('./twitch-api');
-const { parseTwitchPrivmsg } = require('./twitch-irc-parser');
+const { parseTwitchIrcLine, parseTwitchPrivmsg } = require('./twitch-irc-parser');
 
 const TWITCH_IRC_URL = 'wss://irc-ws.chat.twitch.tv:443';
 const DEFAULT_RECONNECT_MS = 5_000;
@@ -26,6 +30,8 @@ const createTwitchConnector = ({
   let badgeCatalog = {};
   let bttvEmoteCatalog = {};
   let hasLoadedBttvEmoteCatalog = false;
+  const missingBttvEmoteCodes = new Set();
+  let messageQueue = Promise.resolve();
 
   const connect = async () => {
     if (socket && socket.readyState <= WebSocket.OPEN) {
@@ -47,7 +53,12 @@ const createTwitchConnector = ({
 
     socket.addEventListener('message', (event) => {
       for (const line of String(event.data).split('\r\n').filter(Boolean)) {
-        handleIrcLine(line);
+        if (line.startsWith('PING')) {
+          void handleIrcLine(line);
+          continue;
+        }
+
+        messageQueue = messageQueue.then(() => handleIrcLine(line));
       }
     });
 
@@ -69,16 +80,46 @@ const createTwitchConnector = ({
     socket = undefined;
   };
 
-  const handleIrcLine = (line) => {
+  const handleIrcLine = async (line) => {
     if (line.startsWith('PING')) {
       socket?.send(line.replace('PING', 'PONG'));
       return;
     }
 
+    await loadSharedBttvEmotesForLine(line);
     const message = parseTwitchPrivmsg(line, { badgeCatalog, bttvEmoteCatalog });
 
     if (message) {
       events.emit('message', message);
+    }
+  };
+
+  const loadSharedBttvEmotesForLine = async (line) => {
+    const parsed = parseTwitchIrcLine(line);
+
+    if (parsed.command !== 'PRIVMSG' || !parsed.trailing) {
+      return;
+    }
+
+    const candidates = findBttvSharedEmoteCandidates(parsed.trailing, bttvEmoteCatalog)
+      .filter((code) => !missingBttvEmoteCodes.has(code));
+
+    const results = await Promise.all(
+      candidates.map(async (code) => {
+        try {
+          return [code, await fetchBttvSharedEmote({ code, fetchImpl })];
+        } catch {
+          return [code, undefined];
+        }
+      }),
+    );
+
+    for (const [code, emote] of results) {
+      if (emote) {
+        bttvEmoteCatalog[code] = emote;
+      } else {
+        missingBttvEmoteCodes.add(code);
+      }
     }
   };
 

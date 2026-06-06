@@ -57,6 +57,8 @@ Read support:
   emotes when the Twitch broadcaster ID can be resolved.
 - Applies BetterTTV emotes only to text not already recognized as a native
   Twitch emote.
+- Resolves likely shared BetterTTV emote codes on first use and caches both
+  successful and missing lookups.
 - Keeps the BetterTTV catalog cached across automatic IRC reconnects and reloads
   it when the Twitch connector is restarted.
 - Handles Twitch `PING` messages with `PONG`.
