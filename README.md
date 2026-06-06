@@ -25,6 +25,16 @@ desktop chat aggregator, not a fully automated moderation bot.
 - Renders badge images for Twitch and Kick when an image URL can be resolved,
   with text fallback when an image is unavailable.
 - Tracks message counts and last-message timestamps per platform.
+- Shows current viewer counts for Twitch and Kick and a combined available total.
+- Attempts to capture the X viewer count from the live page DOM.
+- Polls Kick viewers on a fixed 10-second cadence and Twitch from a 10-second
+  baseline that backs off dynamically using Twitch rate-limit response headers.
+- Publishes each platform viewer result as soon as it arrives so a slow Twitch
+  lookup does not delay Kick updates.
+- Caches Twitch token validation briefly so normal viewer polls require only
+  the stream lookup request.
+- Uses Kick's official authenticated livestream API, refreshes expired Kick
+  tokens when possible, and caches the resolved broadcaster ID between polls.
 - Supports feed filtering by platform.
 - Supports pausing/resuming autoscroll.
 - Supports clearing the visible feed locally.
@@ -217,10 +227,11 @@ connector startup, connector restart, and IPC handlers.
 
 Main responsibilities:
 
-- Create the main Electron window.
+- Create and coordinate the connector setup and dashboard windows.
 - Load and save app config.
 - Start and stop the chat hub.
 - Build enabled connectors from the runtime config.
+- Run the viewer monitor and broadcast viewer snapshots.
 - Broadcast messages, statuses, and config snapshots to renderer windows.
 - Handle Twitch OAuth connect/disconnect.
 - Handle Kick OAuth connect/disconnect.
@@ -229,17 +240,21 @@ Main responsibilities:
 
 ### Renderer
 
-`src/renderer.js` owns the dashboard UI behavior.
+`src/renderer.js` currently owns the shared setup and dashboard UI behavior.
+The windows load separate pages: `src/setup.html` and `src/dashboard.html`.
 
 Renderer responsibilities:
 
 - Populate connector settings from config snapshots.
+- Persist and apply the selected light or dark theme.
+- Open or focus the dashboard after an explicit connector setup save.
 - Save connector settings.
 - Trigger connector reconnects.
 - Trigger Kick chatroom resolution.
 - Trigger Twitch connect/disconnect.
 - Trigger Kick connect/disconnect.
 - Render connector statuses.
+- Render per-platform and total viewer counts.
 - Render the unified chat feed.
 - Filter messages by platform.
 - Send composer messages to the selected platform.
@@ -261,6 +276,16 @@ Chat hub responsibilities:
 - Normalize and publish incoming messages.
 - Track connector status and message counts.
 - Route outgoing messages to the selected active connector.
+
+### Viewer Monitor
+
+`src/viewer-monitor.js` schedules viewer collection and publishes normalized
+snapshots. `src/viewer-counts.js` owns the Twitch and Kick HTTP lookups and the
+X viewer-label parser.
+
+The monitor uses a 10-second polling baseline, adapts to Twitch rate-limit
+headers, and briefly caches Twitch token validation to avoid an extra request
+on every normal poll.
 
 ### Connectors
 
@@ -298,7 +323,8 @@ The saved config includes:
 - Kick chatroom ID;
 - Kick OAuth account data;
 - X live URL, live chat URL, or handle;
-- X capture window visibility preference.
+- X capture window visibility preference;
+- selected light or dark UI theme.
 
 Twitch and Kick access tokens are saved locally in this config file. Kick Client
 Secret is saved locally only when using the local development fallback instead
@@ -387,7 +413,8 @@ Important test areas:
 - Kick resolver and Pusher parsing;
 - Twitch and Kick author badge normalization/rendering;
 - Kick duplicate message suppression;
-- X capture message normalization.
+- X capture message normalization;
+- viewer count normalization, Twitch validation caching, and adaptive polling.
 
 ## Current Known Gaps
 
@@ -395,6 +422,10 @@ Important test areas:
   documented provider list does not include Kick.
 - X write support is best-effort browser composer injection, not an official
   API integration.
+- X viewer counts are best-effort DOM capture and may become unavailable when X
+  changes its live page labels or markup.
+- Twitch viewer counts require a connected Twitch account, even though
+  anonymous Twitch chat reading can work without one.
 - X account connection is handled through the capture browser session, not a
   first-class OAuth flow.
 - Twitch slash commands are limited to the supported command list above.

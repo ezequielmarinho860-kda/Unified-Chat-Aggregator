@@ -25,6 +25,7 @@ test('saves and reloads normalized config', () => {
 
   assert.equal(store.exists(), false);
   store.save({
+    ui: { theme: 'dark' },
     connectors: {
       twitch: { enabled: true, channel: '  xqc  ' },
     },
@@ -33,4 +34,5 @@ test('saves and reloads normalized config', () => {
   assert.equal(store.exists(), true);
   assert.equal(store.load().connectors.twitch.channel, 'xqc');
   assert.equal(store.load().connectors.kick.channel, 'xqc');
+  assert.equal(store.load().ui.theme, 'dark');
 });

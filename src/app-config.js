@@ -16,6 +16,9 @@ const ENV_OVERRIDE_KEYS = [
 ];
 
 const DEFAULT_APP_CONFIG = Object.freeze({
+  ui: {
+    theme: 'light',
+  },
   connectors: {
     twitch: {
       enabled: true,
@@ -52,6 +55,9 @@ const normalizeAppConfig = (config = {}) => {
   const connectors = config.connectors ?? {};
 
   return {
+    ui: {
+      theme: normalizeTheme(config.ui?.theme),
+    },
     connectors: {
       twitch: {
         enabled: normalizeBoolean(connectors.twitch?.enabled, true),
@@ -183,6 +189,7 @@ const createPublicAppConfig = (config = {}) => {
   const { twitch, kick, x } = normalizedConfig.connectors;
 
   return {
+    ui: normalizedConfig.ui,
     connectors: {
       twitch: {
         enabled: twitch.enabled,
@@ -226,6 +233,8 @@ const normalizeString = (value, fallback) => {
 
   return value.trim();
 };
+
+const normalizeTheme = (value) => (value === 'dark' ? 'dark' : 'light');
 
 module.exports = {
   DEFAULT_APP_CONFIG,

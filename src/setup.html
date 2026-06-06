@@ -7,25 +7,23 @@
       content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:;"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Unified Chat Aggregator</title>
+    <title>Connector Setup</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
+  <body class="setup-view">
     <main class="app-shell">
       <section class="dashboard">
-        <div class="dashboard__header">
-          <p class="eyebrow">Reading dashboard</p>
-          <h1>Unified Chat Aggregator</h1>
-          <p class="summary">
-            Live chat from active connectors in one desktop view.
-          </p>
-        </div>
+        <header class="dashboard__header">
+          <p class="eyebrow">Connections</p>
+          <h1>Connector setup</h1>
+          <p class="summary">Choose the platforms and appearance used by your dashboard.</p>
+        </header>
 
         <section class="config-panel" aria-labelledby="config-title">
           <div class="config-panel__header">
             <div>
-              <p class="eyebrow">Connections</p>
-              <h2 id="config-title">Connector setup</h2>
+              <p class="eyebrow">Configuration</p>
+              <h2 id="config-title">Streams and accounts</h2>
             </div>
             <div class="config-panel__actions">
               <button class="tool-button" type="button" id="restart-connectors">Reconnect</button>
@@ -34,6 +32,18 @@
           </div>
 
           <form class="connector-form" id="connector-config-form">
+            <fieldset class="connector-settings connector-settings--appearance">
+              <legend>Appearance</legend>
+              <label class="field-row">
+                <span>Theme</span>
+                <select name="ui.theme">
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </select>
+              </label>
+              <p class="connector-settings__note">Applies to setup and dashboard after saving.</p>
+            </fieldset>
+
             <fieldset class="connector-settings connector-settings--twitch">
               <legend>Twitch</legend>
               <label class="toggle-row">
@@ -93,78 +103,6 @@
           </form>
 
           <p class="config-panel__meta" id="config-meta">Loading configuration...</p>
-        </section>
-
-        <div class="status-grid" id="status-grid" aria-label="Connector status">
-          <article class="status-card status-card--twitch" data-platform="twitch">
-            <span class="status-card__label">Twitch</span>
-            <strong data-status-state>Disabled</strong>
-            <small data-status-detail>Anonymous IRC</small>
-          </article>
-          <article class="status-card status-card--kick" data-platform="kick">
-            <span class="status-card__label">Kick</span>
-            <strong data-status-state>Disabled</strong>
-            <small data-status-detail>Pusher</small>
-          </article>
-          <article class="status-card status-card--x" data-platform="x">
-            <span class="status-card__label">X</span>
-            <strong data-status-state>Disabled</strong>
-            <small data-status-detail>Use X_LIVE_URL</small>
-          </article>
-        </div>
-
-        <section class="feed-panel" aria-labelledby="feed-title">
-          <div class="feed-panel__header">
-            <div>
-              <p class="eyebrow">Live feed</p>
-              <h2 id="feed-title">Unified messages</h2>
-            </div>
-            <div class="feed-panel__metrics" aria-label="Feed metrics">
-              <span class="feed-panel__counter" id="visible-message-count">0</span>
-              <span class="feed-panel__counter feed-panel__counter--muted" id="message-count">0</span>
-            </div>
-          </div>
-
-          <div class="feed-toolbar" aria-label="Feed controls">
-            <div class="platform-filter" id="platform-filter" role="group" aria-label="Platform filter">
-              <button class="filter-button is-active" type="button" data-filter-platform="all">All</button>
-              <button class="filter-button" type="button" data-filter-platform="twitch">Twitch</button>
-              <button class="filter-button" type="button" data-filter-platform="kick">Kick</button>
-              <button class="filter-button" type="button" data-filter-platform="x">X</button>
-            </div>
-            <div class="feed-actions">
-              <button class="tool-button" type="button" id="toggle-autoscroll">Pause</button>
-              <button class="tool-button" type="button" id="clear-feed">Clear</button>
-            </div>
-          </div>
-
-          <form class="composer-panel" id="message-composer" aria-label="Send message">
-            <label class="composer-panel__target">
-              <span>Send to</span>
-              <select name="platform">
-                <option value="twitch">Twitch</option>
-                <option value="kick">Kick</option>
-                <option value="x">X</option>
-              </select>
-            </label>
-            <label class="composer-panel__message">
-              <span>Message</span>
-              <textarea
-                name="text"
-                rows="2"
-                maxlength="500"
-                placeholder="Write a message to one platform"
-              ></textarea>
-            </label>
-            <button class="tool-button tool-button--primary" type="submit">Send</button>
-            <p class="composer-panel__meta" id="composer-meta" aria-live="polite">
-              Choose one platform and send a message.
-            </p>
-          </form>
-
-          <ol class="message-feed" id="message-feed" aria-live="polite">
-            <li class="empty-state" id="empty-state">Waiting for messages...</li>
-          </ol>
         </section>
       </section>
     </main>

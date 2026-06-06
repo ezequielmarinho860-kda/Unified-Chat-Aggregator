@@ -1,9 +1,11 @@
 const { ipcRenderer } = require('electron');
+const { parseViewerCountText } = require('./viewer-counts');
 
 const MESSAGE_KEY_TTL = 5 * 60 * 1000;
 const MAX_MESSAGE_KEYS = 500;
 const MESSAGE_RETRY_LIMIT = 4;
 const OBSERVE_INTERVAL_MS = 2_000;
+const VIEWER_OBSERVE_INTERVAL_MS = 10_000;
 const INITIAL_BACKLOG_SUPPRESSION_MS = 8_000;
 const BACKLOG_REFRESH_SUPPRESSION_MS = 6_000;
 const BACKLOG_REFRESH_ROW_THRESHOLD = 6;
@@ -14,6 +16,9 @@ let observer;
 let observedContainer;
 let initialBacklogSuppressUntil = 0;
 let lastStatusKey = '';
+let currentStatus = { state: 'connected' };
+let lastViewerCount;
+let lastViewerCountCheckedAt = 0;
 
 const normalizeText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 
@@ -21,8 +26,9 @@ const sendIpc = (channel, payload) => {
   ipcRenderer?.send?.(channel, payload);
 };
 
-const sendStatus = (status) => {
-  const payload = { state: 'connected', ...status };
+const sendStatus = (status = {}) => {
+  currentStatus = { ...currentStatus, ...status };
+  const payload = { ...currentStatus, viewerCount: getXViewerCount() };
   const key = JSON.stringify(payload);
 
   if (key === lastStatusKey) {
@@ -31,6 +37,31 @@ const sendStatus = (status) => {
 
   lastStatusKey = key;
   sendIpc('x-capture:status', payload);
+};
+
+const getXViewerCount = () => {
+  if (Date.now() - lastViewerCountCheckedAt < VIEWER_OBSERVE_INTERVAL_MS) {
+    return lastViewerCount;
+  }
+
+  lastViewerCountCheckedAt = Date.now();
+  const labeledCandidates = document.querySelectorAll(
+    "[aria-label*='viewer' i], [aria-label*='watching' i], [data-testid*='viewer' i]",
+  );
+
+  for (const candidate of labeledCandidates) {
+    const count = parseViewerCountText(
+      [candidate.getAttribute('aria-label'), candidate.textContent].filter(Boolean).join(' '),
+    );
+
+    if (count !== undefined) {
+      lastViewerCount = count;
+      return lastViewerCount;
+    }
+  }
+
+  lastViewerCount = parseViewerCountText(document.body?.innerText);
+  return lastViewerCount;
 };
 
 const suppressBacklogUntil = (timestamp) => {
@@ -558,6 +589,7 @@ const startCaptureLoop = () => {
   setInterval(() => {
     keepPageVisible();
     observeContainer(resolveChatContainer());
+    sendStatus();
   }, OBSERVE_INTERVAL_MS);
 };
 
@@ -572,6 +604,7 @@ if (typeof module !== 'undefined' && module.exports) {
       getAuthorName,
       getMessageText,
       getUsername,
+      getXViewerCount,
       processCandidate,
       resolveChatContainer,
     },

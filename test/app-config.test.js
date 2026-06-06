@@ -21,10 +21,12 @@ test('normalizes missing app config with defaults', () => {
   assert.equal(config.connectors.kick.accessToken, '');
   assert.equal(config.connectors.kick.oauthBrokerUrl, DEFAULT_KICK_OAUTH_BROKER_URL);
   assert.equal(config.connectors.x.enabled, false);
+  assert.equal(config.ui.theme, 'light');
 });
 
 test('normalizes user connector settings', () => {
   const config = normalizeAppConfig({
+    ui: { theme: 'dark' },
     connectors: {
       twitch: {
         enabled: true,
@@ -71,6 +73,11 @@ test('normalizes user connector settings', () => {
   assert.equal(config.connectors.kick.displayName, 'Kick Sender');
   assert.equal(config.connectors.x.liveUrl, 'https://x.com/live');
   assert.equal(config.connectors.x.showBrowser, true);
+  assert.equal(config.ui.theme, 'dark');
+});
+
+test('falls back to light for unsupported themes', () => {
+  assert.equal(normalizeAppConfig({ ui: { theme: 'sepia' } }).ui.theme, 'light');
 });
 
 test('applies environment connector overrides', () => {
@@ -193,6 +200,7 @@ test('creates a public app config without exposing access tokens', () => {
   assert.equal(publicConfig.connectors.kick.refreshToken, undefined);
   assert.equal(publicConfig.connectors.kick.clientId, undefined);
   assert.equal(publicConfig.connectors.kick.oauthBrokerUrl, undefined);
+  assert.equal(publicConfig.ui.theme, 'light');
   assert.deepEqual(publicConfig.connectors.twitch.auth, {
     connected: true,
     userId: 'user-1',

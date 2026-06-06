@@ -23,14 +23,22 @@ const disconnectX = document.querySelector('#disconnect-x');
 const xAuthStatus = document.querySelector('#x-auth-status');
 const messageComposer = document.querySelector('#message-composer');
 const composerMeta = document.querySelector('#composer-meta');
+const totalViewerCount = document.querySelector('#total-viewer-count');
 const statusCards = new Map(
   [...document.querySelectorAll('[data-platform]')].map((card) => [
     card.dataset.platform,
     card,
   ]),
 );
+const viewerCards = new Map(
+  [...document.querySelectorAll('[data-viewer-count]')].map((element) => [
+    element.closest('[data-platform]')?.dataset.platform,
+    element.closest('[data-platform]'),
+  ]),
+);
 const messages = [];
 const platformCounts = new Map();
+const viewerUpdateTimes = new Map();
 const loggedIdentities = new Map();
 const pendingOutgoingMessages = new Map();
 const maxRenderedMessages = 250;
@@ -41,8 +49,9 @@ let feedPinnedToBottom = true;
 let totalMessages = 0;
 let xAuthState = { connected: false };
 let xAuthPollingTimer;
+const view = document.body.classList.contains('dashboard-view') ? 'dashboard' : 'setup';
 
-document.title = title;
+document.title = view === 'setup' ? 'Connector Setup' : title;
 
 const platformLabels = {
   twitch: 'Twitch',
@@ -70,6 +79,12 @@ const stateLabels = {
   observing: 'Observing',
 };
 
+const viewerStateLabels = {
+  available: 'current viewers',
+  disabled: 'connector disabled',
+  unavailable: 'viewers unavailable',
+};
+
 const formatTimestamp = (timestamp) =>
   new Intl.DateTimeFormat('pt-BR', {
     hour: '2-digit',
@@ -95,6 +110,10 @@ const isFeedScrolledToBottom = () => {
 const isAutoscrollEnabled = () => !autoscrollManuallyPaused && feedPinnedToBottom;
 
 const updateAutoscrollControl = () => {
+  if (!toggleAutoscroll) {
+    return;
+  }
+
   toggleAutoscroll.textContent = isAutoscrollEnabled() ? 'Pause' : 'Resume';
 };
 
@@ -338,6 +357,10 @@ const renderAuthorBadges = (badges = []) =>
   });
 
 const updateMessageMetrics = () => {
+  if (!messageCount || !visibleMessageCount) {
+    return;
+  }
+
   messageCount.textContent = String(totalMessages);
   visibleMessageCount.textContent = String(
     activeFilter === 'all'
@@ -347,6 +370,10 @@ const updateMessageMetrics = () => {
 };
 
 const renderFeed = () => {
+  if (!messageFeed || !emptyState) {
+    return;
+  }
+
   const filteredMessages =
     activeFilter === 'all'
       ? messages
@@ -397,6 +424,43 @@ const renderConnectorStatus = (status) => {
   detailElement.textContent = detailParts.join(' | ');
 };
 
+const renderViewerSnapshot = (snapshot) => {
+  if (!snapshot?.platforms) {
+    return;
+  }
+
+  for (const viewer of snapshot.platforms) {
+    const card = viewerCards.get(viewer.platform);
+
+    if (!card) {
+      continue;
+    }
+
+    card.dataset.viewerState = viewer.state;
+    const countElement = card.querySelector('[data-viewer-count]');
+
+    countElement.textContent = viewer.count === undefined ? '--' : formatViewerCount(viewer.count);
+    countElement.title = viewer.updatedAt
+      ? `Last response: ${formatTimestamp(viewer.updatedAt)}`
+      : 'No viewer response yet';
+
+    if (viewer.state === 'available' && viewerUpdateTimes.get(viewer.platform) !== viewer.updatedAt) {
+      viewerUpdateTimes.set(viewer.platform, viewer.updatedAt);
+      countElement.classList.remove('status-card__viewer-count--updated');
+      void countElement.offsetWidth;
+      countElement.classList.add('status-card__viewer-count--updated');
+    }
+    card.querySelector('[data-viewer-detail]').textContent =
+      viewer.error || viewerStateLabels[viewer.state] || 'viewers unavailable';
+  }
+
+  if (totalViewerCount) {
+    totalViewerCount.textContent = formatViewerCount(snapshot.total ?? 0);
+  }
+};
+
+const formatViewerCount = (count) => new Intl.NumberFormat('en-US').format(count);
+
 const setFormValue = (name, value) => {
   const field = configForm?.elements.namedItem(name);
 
@@ -437,6 +501,7 @@ const populateConfigForm = (config) => {
     return;
   }
 
+  setFormValue('ui.theme', config.ui?.theme);
   setFormValue('twitch.enabled', config.connectors.twitch.enabled);
   setFormValue('twitch.channel', config.connectors.twitch.channel);
   renderTwitchAuthStatus(config.connectors.twitch.auth);
@@ -450,6 +515,9 @@ const populateConfigForm = (config) => {
 };
 
 const readConfigForm = () => ({
+  ui: {
+    theme: getFormValue('ui.theme'),
+  },
   connectors: {
     twitch: {
       enabled: getFormValue('twitch.enabled'),
@@ -468,9 +536,13 @@ const readConfigForm = () => ({
 });
 
 const renderConfigSnapshot = (snapshot) => {
+  document.documentElement.dataset.theme = snapshot.config.ui?.theme ?? 'light';
   updateLoggedIdentities(snapshot.config);
-  populateConfigForm(snapshot.config);
   renderFeed();
+
+  if (configForm) {
+    populateConfigForm(snapshot.config);
+  }
 
   if (Array.isArray(snapshot.statuses)) {
     for (const status of snapshot.statuses) {
@@ -478,14 +550,18 @@ const renderConfigSnapshot = (snapshot) => {
     }
   }
 
+  renderViewerSnapshot(snapshot.viewers);
+
   const overrideText =
     snapshot.envOverrides?.length > 0
       ? `Environment overrides active: ${snapshot.envOverrides.join(', ')}. Saved changes apply after clearing those variables.`
       : 'Using saved configuration.';
   const pathText = snapshot.configPath ? ` Saved at ${snapshot.configPath}.` : '';
 
-  configMeta.textContent = `${overrideText}${pathText}`;
-  void refreshXAuthStatus();
+  if (configMeta) {
+    configMeta.textContent = `${overrideText}${pathText}`;
+    void refreshXAuthStatus();
+  }
 };
 
 const setConfigBusy = (isBusy) => {
@@ -588,6 +664,8 @@ window.chatAggregator?.onConfigChanged((snapshot) => {
   renderConfigSnapshot(snapshot);
 });
 
+window.chatAggregator?.onViewerCounts(renderViewerSnapshot);
+
 window.chatAggregator?.onConnectorStatus((status) => {
   renderConnectorStatus(status);
 });
@@ -654,6 +732,12 @@ configForm?.addEventListener('submit', async (event) => {
     const snapshot = await window.chatAggregator.saveConfig(readConfigForm());
     renderConfigSnapshot(snapshot);
     configMeta.textContent = 'Configuration saved.';
+
+    try {
+      await window.chatAggregator.openDashboard();
+    } catch (error) {
+      configMeta.textContent = `Configuration saved, but dashboard failed to open: ${error.message}`;
+    }
   } catch (error) {
     configMeta.textContent = `Save failed: ${error.message}`;
   } finally {

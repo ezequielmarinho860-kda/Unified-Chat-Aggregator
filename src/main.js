@@ -9,12 +9,18 @@ const {
 } = require('./app-config');
 const { createAppConfigStore } = require('./app-config-store');
 const { createChatHub } = require('./chat-hub');
+const { createViewerMonitor } = require('./viewer-monitor');
+const {
+  createRefreshingKickViewerFetcher,
+  fetchKickViewerCount,
+} = require('./viewer-counts');
 const {
   resolveKickChannelWithBrowserFallback,
 } = require('./connectors/kick-browser-resolver');
 const { resolveKickChatroomForConfig } = require('./connectors/kick-config-resolver');
 const { clearAuthBrowserSession } = require('./connectors/auth-browser-session');
 const { connectKickWithOAuth, KICK_AUTH_PARTITION } = require('./connectors/kick-auth');
+const { refreshKickAccessToken } = require('./connectors/kick-api');
 const {
   connectTwitchWithImplicitOAuth,
   TWITCH_AUTH_PARTITION,
@@ -28,8 +34,10 @@ const {
 } = require('./connectors/x-connector');
 const { clearXSessionAuth, getXSessionAuthStatus } = require('./connectors/x-auth-session');
 
-const mainWindows = new Set();
+const rendererWindows = new Set();
 const CONNECTOR_PLATFORMS = ['kick', 'twitch', 'x'];
+let setupWindow;
+let dashboardWindow;
 let configStore;
 let savedConfig;
 let runtimeConfig;
@@ -38,20 +46,19 @@ let allowEnvironmentOverrides = false;
 let chatHub = createChatHub();
 let unsubscribeHubMessage;
 let unsubscribeHubStatus;
+let viewerMonitor;
 
-const focusMainWindow = () => {
-  const mainWindow = [...mainWindows].find((window) => !window.isDestroyed());
-
-  if (!mainWindow) {
+const focusWindow = (window) => {
+  if (!window || window.isDestroyed()) {
     return;
   }
 
-  if (mainWindow.isMinimized()) {
-    mainWindow.restore();
+  if (window.isMinimized()) {
+    window.restore();
   }
 
-  mainWindow.show();
-  mainWindow.focus();
+  window.show();
+  window.focus();
 };
 
 const buildConnectors = (config) => {
@@ -116,6 +123,10 @@ const wireChatHub = (nextChatHub) => {
     broadcastToWindows('chat:message', message);
   });
   unsubscribeHubStatus = nextChatHub.onStatus((status) => {
+    if (status.platform === 'x' && Object.hasOwn(status.details ?? {}, 'viewerCount')) {
+      viewerMonitor?.updateExternalCount('x', status.details.viewerCount);
+    }
+
     broadcastToWindows('chat:status', status);
   });
 };
@@ -123,11 +134,13 @@ const wireChatHub = (nextChatHub) => {
 const restartRuntime = async (nextSavedConfig = savedConfig) => {
   await chatHub.stop();
   applyRuntimeConfig(nextSavedConfig);
+  viewerMonitor?.updateExternalCount('x', undefined);
 
   chatHub = createChatHub({ connectors: buildConnectors(runtimeConfig) });
   wireChatHub(chatHub);
   await chatHub.start();
   broadcastRuntimeSnapshot();
+  void viewerMonitor?.refresh();
 };
 
 const applyRuntimeConfig = (nextSavedConfig) => {
@@ -151,6 +164,10 @@ const restartChangedConnectors = async (nextSavedConfig, forcePlatforms = []) =>
       ? forcePlatforms
       : getChangedConnectorPlatforms(previousRuntimeConfig, runtimeConfig);
 
+  if (changedPlatforms.includes('x')) {
+    viewerMonitor?.updateExternalCount('x', undefined);
+  }
+
   for (const platform of changedPlatforms) {
     const connector = buildConnectorForPlatform(runtimeConfig, platform);
 
@@ -162,6 +179,7 @@ const restartChangedConnectors = async (nextSavedConfig, forcePlatforms = []) =>
   }
 
   broadcastRuntimeSnapshot();
+  void viewerMonitor?.refresh();
 };
 
 const getChangedConnectorPlatforms = (previousConfig, nextConfig) =>
@@ -179,9 +197,9 @@ const broadcastRuntimeSnapshot = () => {
 };
 
 const broadcastToWindows = (channel, payload) => {
-  for (const mainWindow of mainWindows) {
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(channel, payload);
+  for (const rendererWindow of rendererWindows) {
+    if (!rendererWindow.isDestroyed()) {
+      rendererWindow.webContents.send(channel, payload);
     }
   }
 };
@@ -192,6 +210,7 @@ const getRuntimeSnapshot = () => ({
   envOverrides,
   configPath: configStore?.configPath,
   statuses: getDisplayStatuses(),
+  viewers: viewerMonitor?.getSnapshot(),
 });
 
 const getDisplayStatuses = () => {
@@ -393,14 +412,10 @@ const sendChatMessage = async (payload) => {
   }
 };
 
-const createMainWindow = () => {
-  const mainWindow = new BrowserWindow({
-    width: 1120,
-    height: 760,
-    minWidth: 900,
-    minHeight: 620,
-    title: 'Unified Chat Aggregator',
-    backgroundColor: '#f6f4ef',
+const createRendererWindow = ({ view, windowOptions }) => {
+  const rendererWindow = new BrowserWindow({
+    backgroundColor: savedConfig?.ui?.theme === 'dark' ? '#111418' : '#f6f4ef',
+    ...windowOptions,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -409,20 +424,69 @@ const createMainWindow = () => {
     },
   });
 
-  mainWindows.add(mainWindow);
+  rendererWindows.add(rendererWindow);
 
-  mainWindow.webContents.once('did-finish-load', () => {
+  rendererWindow.webContents.once('did-finish-load', () => {
     const snapshot = getRuntimeSnapshot();
 
-    mainWindow.webContents.send('chat:config', snapshot);
-    mainWindow.webContents.send('chat:statuses', snapshot.statuses);
+    rendererWindow.webContents.send('chat:config', snapshot);
+    rendererWindow.webContents.send('chat:statuses', snapshot.statuses);
+    rendererWindow.webContents.send('viewers:update', snapshot.viewers);
   });
 
-  mainWindow.on('closed', () => {
-    mainWindows.delete(mainWindow);
+  rendererWindow.on('closed', () => {
+    rendererWindows.delete(rendererWindow);
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  rendererWindow.loadFile(path.join(__dirname, `${view}.html`));
+
+  return rendererWindow;
+};
+
+const createSetupWindow = () => {
+  if (setupWindow && !setupWindow.isDestroyed()) {
+    focusWindow(setupWindow);
+    return setupWindow;
+  }
+
+  setupWindow = createRendererWindow({
+    view: 'setup',
+    windowOptions: {
+      width: 1120,
+      height: 760,
+      minWidth: 760,
+      minHeight: 560,
+      title: 'Connector Setup',
+    },
+  });
+  setupWindow.on('closed', () => {
+    setupWindow = undefined;
+  });
+
+  return setupWindow;
+};
+
+const openDashboardWindow = () => {
+  if (dashboardWindow && !dashboardWindow.isDestroyed()) {
+    focusWindow(dashboardWindow);
+    return dashboardWindow;
+  }
+
+  dashboardWindow = createRendererWindow({
+    view: 'dashboard',
+    windowOptions: {
+      width: 1120,
+      height: 760,
+      minWidth: 420,
+      minHeight: 480,
+      title: 'Unified Chat Dashboard',
+    },
+  });
+  dashboardWindow.on('closed', () => {
+    dashboardWindow = undefined;
+  });
+
+  return dashboardWindow;
 };
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -431,19 +495,29 @@ if (!hasSingleInstanceLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    focusMainWindow();
+    focusWindow(setupWindow ?? dashboardWindow);
   });
 
   app.whenReady().then(async () => {
     configStore = createAppConfigStore(path.join(app.getPath('userData'), 'config.json'));
     allowEnvironmentOverrides = !configStore.exists();
     savedConfig = configStore.load();
+    viewerMonitor = createViewerMonitor({
+      getConfig: () => runtimeConfig,
+      onUpdate: (snapshot) => broadcastToWindows('viewers:update', snapshot),
+      fetchKick: createRefreshingKickViewerFetcher({
+        fetchViewerCount: fetchKickViewerCount,
+        refreshAccessToken: (config) => refreshKickAccessToken(config),
+        onAuthUpdate: persistKickAuthUpdate,
+      }),
+    });
     await restartRuntime(savedConfig);
-    createMainWindow();
+    viewerMonitor.start();
+    createSetupWindow();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
-        createMainWindow();
+        createSetupWindow();
       }
     });
   });
@@ -455,6 +529,7 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on('before-quit', async () => {
+    viewerMonitor?.stop();
     await chatHub.stop();
   });
 }
@@ -483,6 +558,11 @@ ipcMain.handle('config:save', async (_event, config) => {
 ipcMain.handle('connectors:restart', async () => {
   await restartRuntime(savedConfig);
   return getRuntimeSnapshot();
+});
+
+ipcMain.handle('dashboard:open', () => {
+  openDashboardWindow();
+  return { opened: true };
 });
 
 ipcMain.handle('chat:send', async (_event, payload) => sendChatMessage(payload));

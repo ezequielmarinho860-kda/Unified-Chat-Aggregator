@@ -54,9 +54,19 @@ contextBridge.exposeInMainWorld('chatAggregator', {
       ipcRenderer.off('chat:config', listener);
     };
   },
+  onViewerCounts: (callback) => {
+    const listener = (_event, snapshot) => callback(snapshot);
+
+    ipcRenderer.on('viewers:update', listener);
+
+    return () => {
+      ipcRenderer.off('viewers:update', listener);
+    };
+  },
   getConfig: () => ipcRenderer.invoke('config:get'),
   saveConfig: (config) => ipcRenderer.invoke('config:save', config),
   restartConnectors: () => ipcRenderer.invoke('connectors:restart'),
+  openDashboard: () => ipcRenderer.invoke('dashboard:open'),
   sendMessage: invokeChatSend,
   connectTwitch: () => ipcRenderer.invoke('twitch:connect'),
   disconnectTwitch: () => ipcRenderer.invoke('twitch:disconnect'),
