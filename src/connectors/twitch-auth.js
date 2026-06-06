@@ -4,6 +4,7 @@ const { validateTwitchAccessToken } = require('./twitch-api');
 const TWITCH_AUTHORIZE_URL = 'https://id.twitch.tv/oauth2/authorize';
 const DEFAULT_TWITCH_REDIRECT_URI = 'http://localhost/twitch/callback';
 const DEFAULT_TWITCH_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+const TWITCH_AUTH_PARTITION = 'persist:twitch-auth';
 const TWITCH_AUTH_SCOPES = [
   'user:write:chat',
   'moderator:manage:announcements',
@@ -41,7 +42,7 @@ const connectTwitchWithImplicitOAuth = async ({
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      partition: 'persist:twitch-auth',
+      partition: TWITCH_AUTH_PARTITION,
     },
   });
 
@@ -170,6 +171,7 @@ const normalizeRequiredString = (value, fieldName) => {
 
 module.exports = {
   DEFAULT_TWITCH_REDIRECT_URI,
+  TWITCH_AUTH_PARTITION,
   TWITCH_AUTH_SCOPES,
   buildTwitchAuthorizeUrl,
   connectTwitchWithImplicitOAuth,

@@ -48,6 +48,7 @@
                 <span class="auth-actions__status" id="twitch-auth-status">Not connected</span>
                 <button class="tool-button" type="button" id="connect-twitch">Connect Twitch</button>
                 <button class="tool-button" type="button" id="disconnect-twitch" hidden>Disconnect</button>
+                <button class="tool-button" type="button" id="clear-twitch-session">Clear login session</button>
               </div>
             </fieldset>
 
@@ -59,23 +60,14 @@
               </label>
               <label class="field-row">
                 <span>Channel</span>
-                <span class="field-action">
-                  <input type="text" name="kick.channel" autocomplete="off" placeholder="xqc or kick.com/xqc" />
-                  <button class="tool-button" type="button" id="resolve-kick-chatroom">Resolve</button>
-                </span>
+                <input type="text" name="kick.channel" autocomplete="off" placeholder="xqc or kick.com/xqc" />
               </label>
               <div class="auth-actions" data-kick-auth>
                 <span class="auth-actions__status" id="kick-auth-status">Not connected</span>
                 <button class="tool-button" type="button" id="connect-kick">Connect Kick</button>
                 <button class="tool-button" type="button" id="disconnect-kick" hidden>Disconnect</button>
+                <button class="tool-button" type="button" id="clear-kick-session">Clear login session</button>
               </div>
-              <details class="advanced-settings">
-                <summary>Advanced</summary>
-                <label class="field-row">
-                  <span>Manual Chatroom ID</span>
-                  <input type="text" name="kick.chatroomId" autocomplete="off" />
-                </label>
-              </details>
             </fieldset>
 
             <fieldset class="connector-settings connector-settings--x">
@@ -85,13 +77,18 @@
                 <span>Enabled</span>
               </label>
               <label class="field-row">
-                <span>Live URL</span>
-                <input type="url" name="x.liveUrl" autocomplete="off" />
+                <span>Live chat handle or URL</span>
+                <input type="text" name="x.liveUrl" autocomplete="off" placeholder="@chooserich" />
               </label>
               <label class="toggle-row">
                 <input type="checkbox" name="x.showBrowser" />
                 <span>Show capture window</span>
               </label>
+              <div class="auth-actions" data-x-auth>
+                <span class="auth-actions__status" id="x-auth-status">Uses browser session</span>
+                <button class="tool-button" type="button" id="connect-x">Connect X</button>
+                <button class="tool-button" type="button" id="disconnect-x" hidden>Disconnect</button>
+              </div>
             </fieldset>
           </form>
 
@@ -171,6 +168,7 @@
         </section>
       </section>
     </main>
+    <script src="./message-highlights.js"></script>
     <script src="./renderer.js"></script>
   </body>
 </html>

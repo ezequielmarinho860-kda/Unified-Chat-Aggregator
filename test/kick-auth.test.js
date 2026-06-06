@@ -2,10 +2,15 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   DEFAULT_KICK_REDIRECT_URI,
+  KICK_AUTH_PARTITION,
   buildKickAuthorizeUrl,
   createPkceCodeChallenge,
   extractKickAuthorizationCode,
 } = require('../src/connectors/kick-auth');
+
+test('uses a persistent Kick auth browser partition', () => {
+  assert.equal(KICK_AUTH_PARTITION, 'persist:kick-auth');
+});
 
 test('builds a Kick authorization code OAuth URL with PKCE', () => {
   const url = new URL(

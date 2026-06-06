@@ -4,6 +4,7 @@ const {
   KICK_CHAT_MESSAGE_EVENT,
   KICK_GLOBAL_BADGE_IMAGE_URLS,
   normalizeKickBadges,
+  parseKickEmoteFragments,
   parseKickPusherEnvelope,
 } = require('../src/connectors/kick-pusher-parser');
 
@@ -47,6 +48,63 @@ test('parses Kick Pusher chat message events into canonical messages', () => {
     },
   ]);
   assert.equal(parsed.message.text, 'hello kick');
+});
+
+test('parses Kick markup emotes into message fragments', () => {
+  const parsed = parseKickPusherEnvelope(
+    JSON.stringify({
+      event: KICK_CHAT_MESSAGE_EVENT,
+      data: JSON.stringify({
+        id: 'message-1',
+        content: 'hello [emote:123:kickpog]',
+        sender: { id: 99, username: 'Streamer' },
+      }),
+    }),
+  );
+
+  assert.equal(parsed.message.text, 'hello kickpog');
+  assert.deepEqual(parsed.message.fragments, [
+    { type: 'text', text: 'hello ' },
+    {
+      type: 'emote',
+      id: '123',
+      text: 'kickpog',
+      imageUrl: 'https://files.kick.com/emotes/123/fullsize',
+    },
+  ]);
+});
+
+test('parses Kick named emotes from payload metadata', () => {
+  const parsed = parseKickPusherEnvelope(
+    JSON.stringify({
+      event: KICK_CHAT_MESSAGE_EVENT,
+      data: JSON.stringify({
+        id: 'message-1',
+        content: ':kickpog: hello kickpog',
+        emotes: [{ id: 123, name: 'kickpog' }],
+        sender: { id: 99, username: 'Streamer' },
+      }),
+    }),
+  );
+
+  assert.deepEqual(parsed.message.fragments, [
+    {
+      type: 'emote',
+      id: '123',
+      text: 'kickpog',
+      imageUrl: 'https://files.kick.com/emotes/123/fullsize',
+    },
+    { type: 'text', text: ' hello ' },
+    {
+      type: 'emote',
+      id: '123',
+      text: 'kickpog',
+      imageUrl: 'https://files.kick.com/emotes/123/fullsize',
+    },
+  ]);
+  assert.deepEqual(parseKickEmoteFragments('hello kick', []), [
+    { type: 'text', text: 'hello kick' },
+  ]);
 });
 
 test('normalizes Kick badge objects with images', () => {

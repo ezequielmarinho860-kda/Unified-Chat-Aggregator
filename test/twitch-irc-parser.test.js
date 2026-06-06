@@ -1,8 +1,10 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  applyBttvEmotesToFragments,
   parseTwitchIrcLine,
   parseTwitchBadges,
+  parseTwitchEmoteFragments,
   parseTwitchPrivmsg,
 } = require('../src/connectors/twitch-irc-parser');
 
@@ -58,6 +60,82 @@ test('parses Twitch badges from IRC tags', () => {
     { id: 'premium', label: 'Prime', version: '1', imageUrl: undefined },
     { id: 'unknown', label: 'unknown', version: '3', imageUrl: undefined },
   ]);
+});
+
+test('parses Twitch emotes into message fragments', () => {
+  const message = parseTwitchPrivmsg(
+    '@display-name=Ana;emotes=25:0-4,12-16/1902:6-10;id=message-1;tmi-sent-ts=1780603200000;user-id=user-1 :ana!ana@ana.tmi.twitch.tv PRIVMSG #channel :Kappa Keepo Kappa',
+  );
+
+  assert.deepEqual(message.fragments, [
+    {
+      type: 'emote',
+      id: '25',
+      text: 'Kappa',
+      imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0',
+    },
+    { type: 'text', text: ' ' },
+    {
+      type: 'emote',
+      id: '1902',
+      text: 'Keepo',
+      imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/1902/default/dark/2.0',
+    },
+    { type: 'text', text: ' ' },
+    {
+      type: 'emote',
+      id: '25',
+      text: 'Kappa',
+      imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0',
+    },
+  ]);
+});
+
+test('falls back to text fragments when Twitch emotes are missing', () => {
+  assert.deepEqual(parseTwitchEmoteFragments('hello chat', ''), [
+    { type: 'text', text: 'hello chat' },
+  ]);
+});
+
+test('parses BetterTTV emotes only from remaining text fragments', () => {
+  assert.deepEqual(
+    applyBttvEmotesToFragments(
+      [
+        { type: 'text', text: 'OMEGALUL ' },
+        {
+          type: 'emote',
+          id: '25',
+          text: 'Kappa',
+          imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0',
+        },
+      ],
+      {
+        OMEGALUL: {
+          id: 'bttv-1',
+          imageUrl: 'https://cdn.betterttv.net/emote/bttv-1/2x',
+        },
+        Kappa: {
+          id: 'bttv-2',
+          imageUrl: 'https://cdn.betterttv.net/emote/bttv-2/2x',
+        },
+      },
+    ),
+    [
+      {
+        type: 'emote',
+        id: 'bttv:bttv-1',
+        text: 'OMEGALUL',
+        imageUrl: 'https://cdn.betterttv.net/emote/bttv-1/2x',
+      },
+      { type: 'text', text: ' ' },
+      {
+        type: 'emote',
+        id: '25',
+        text: 'Kappa',
+        imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0',
+      },
+    ],
+  );
 });
 
 test('ignores non chat commands', () => {

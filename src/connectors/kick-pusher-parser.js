@@ -17,6 +17,7 @@ const KICK_GLOBAL_BADGE_IMAGE_URLS = {
   verified: 'https://www.kickdatabase.com/kickBadges/verified.svg',
   vip: 'https://www.kickdatabase.com/kickBadges/vip.svg',
 };
+const KICK_EMOTE_IMAGE_URL = 'https://files.kick.com/emotes';
 
 const parseKickPusherEnvelope = (rawMessage) => {
   const envelope =
@@ -42,7 +43,9 @@ const parseKickPusherEnvelope = (rawMessage) => {
 const normalizeKickChatMessage = (data, envelope) => {
   const sender = data.sender ?? data.user ?? {};
   const username = sender.username ?? sender.slug ?? sender.name ?? 'unknown';
-  const text = String(data.content ?? data.message ?? '').trim();
+  const rawContent = String(data.content ?? data.message ?? '').trim();
+  const fragments = parseKickEmoteFragments(rawContent, normalizeKickEmotes(data));
+  const text = fragments.map((fragment) => fragment.text).join('').trim();
 
   if (!text) {
     return undefined;
@@ -58,6 +61,7 @@ const normalizeKickChatMessage = (data, envelope) => {
       badges: normalizeKickBadges(data),
     },
     text,
+    fragments,
     timestamp: normalizeKickTimestamp(data.created_at ?? data.createdAt),
     raw: {
       envelope,
@@ -65,6 +69,167 @@ const normalizeKickChatMessage = (data, envelope) => {
     },
   });
 };
+
+const parseKickEmoteFragments = (content, emotes = []) => {
+  const markupFragments = parseKickMarkupEmoteFragments(content);
+
+  if (markupFragments) {
+    return markupFragments;
+  }
+
+  if (emotes.length === 0) {
+    return [{ type: 'text', text: content }];
+  }
+
+  return parseKickNamedEmoteFragments(content, emotes);
+};
+
+const parseKickMarkupEmoteFragments = (content) => {
+  const pattern = /\[emote:([^:\]]+):([^\]]+)\]/gu;
+  const fragments = [];
+  let cursor = 0;
+  let matched = false;
+
+  for (const match of content.matchAll(pattern)) {
+    const [token, firstValue, secondValue] = match;
+    const id = /^\d+$/u.test(firstValue) ? firstValue : secondValue;
+    const name = /^\d+$/u.test(firstValue) ? secondValue : firstValue;
+
+    if (!/^\d+$/u.test(id)) {
+      continue;
+    }
+
+    matched = true;
+
+    if (match.index > cursor) {
+      fragments.push({ type: 'text', text: content.slice(cursor, match.index) });
+    }
+
+    fragments.push({
+      type: 'emote',
+      id,
+      text: normalizeKickEmoteName(name),
+      imageUrl: createKickEmoteImageUrl(id),
+    });
+    cursor = match.index + token.length;
+  }
+
+  if (!matched) {
+    return undefined;
+  }
+
+  if (cursor < content.length) {
+    fragments.push({ type: 'text', text: content.slice(cursor) });
+  }
+
+  return fragments.filter((fragment) => fragment.text.length > 0);
+};
+
+const parseKickNamedEmoteFragments = (content, emotes) => {
+  const emoteByToken = new Map(
+    emotes
+      .filter((emote) => emote.imageUrl && emote.text)
+      .flatMap((emote) => [
+        [emote.text, emote],
+        [`:${emote.text}:`, emote],
+      ]),
+  );
+
+  if (emoteByToken.size === 0) {
+    return [{ type: 'text', text: content }];
+  }
+
+  const escapedTokens = [...emoteByToken.keys()]
+    .sort((left, right) => right.length - left.length)
+    .map(escapeRegExp);
+  const pattern = new RegExp(`(${escapedTokens.join('|')})`, 'gu');
+  const fragments = [];
+  let cursor = 0;
+
+  for (const match of content.matchAll(pattern)) {
+    const token = match[0];
+    const emote = emoteByToken.get(token);
+
+    if (!emote) {
+      continue;
+    }
+
+    if (match.index > cursor) {
+      fragments.push({ type: 'text', text: content.slice(cursor, match.index) });
+    }
+
+    fragments.push({
+      type: 'emote',
+      id: emote.id,
+      text: emote.text,
+      imageUrl: emote.imageUrl,
+    });
+    cursor = match.index + token.length;
+  }
+
+  if (cursor < content.length) {
+    fragments.push({ type: 'text', text: content.slice(cursor) });
+  }
+
+  return fragments.length > 0 ? fragments : [{ type: 'text', text: content }];
+};
+
+const normalizeKickEmotes = (data = {}) =>
+  [
+    ...normalizeEmoteCollection(data.emotes),
+    ...normalizeEmoteCollection(data.message?.emotes),
+    ...normalizeEmoteCollection(data.metadata?.emotes),
+  ]
+    .map(normalizeKickEmote)
+    .filter(Boolean);
+
+const normalizeEmoteCollection = (emotes) => {
+  if (!emotes) {
+    return [];
+  }
+
+  return Array.isArray(emotes) ? emotes : [emotes];
+};
+
+const normalizeKickEmote = (emote) => {
+  if (!emote || typeof emote !== 'object') {
+    return undefined;
+  }
+
+  const id = normalizeOptionalEmoteValue(
+    emote.id ?? emote.emote_id ?? emote.emoteId ?? emote.uuid,
+  );
+  const text = normalizeKickEmoteName(
+    emote.name ?? emote.text ?? emote.code ?? emote.slug,
+  );
+  const imageUrl = normalizeOptionalString(
+    emote.imageUrl ?? emote.image_url ?? emote.url ?? emote.src ?? emote.image,
+  ) ?? (id ? createKickEmoteImageUrl(id) : undefined);
+
+  if (!text || !imageUrl) {
+    return undefined;
+  }
+
+  return { id, text, imageUrl };
+};
+
+const normalizeKickEmoteName = (value) =>
+  typeof value === 'string' ? value.trim().replace(/^:/u, '').replace(/:$/u, '') : '';
+
+const normalizeOptionalEmoteValue = (value) => {
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    return undefined;
+  }
+
+  const normalizedValue = String(value).trim();
+
+  return normalizedValue || undefined;
+};
+
+const createKickEmoteImageUrl = (id) =>
+  `${KICK_EMOTE_IMAGE_URL}/${encodeURIComponent(id)}/fullsize`;
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
 const normalizeKickBadges = (data = {}) => {
   const sender = data.sender ?? data.user ?? {};
@@ -296,5 +461,6 @@ module.exports = {
   KICK_CHAT_MESSAGE_EVENT,
   KICK_GLOBAL_BADGE_IMAGE_URLS,
   normalizeKickBadges,
+  parseKickEmoteFragments,
   parseKickPusherEnvelope,
 };

@@ -1,4 +1,5 @@
 const title = window.chatAggregator?.appName ?? 'Unified Chat Aggregator';
+const messageHighlightUtils = window.messageHighlights;
 const emptyState = document.querySelector('#empty-state');
 const messageFeed = document.querySelector('#message-feed');
 const messageCount = document.querySelector('#message-count');
@@ -9,13 +10,17 @@ const clearFeed = document.querySelector('#clear-feed');
 const configForm = document.querySelector('#connector-config-form');
 const configMeta = document.querySelector('#config-meta');
 const restartConnectors = document.querySelector('#restart-connectors');
-const resolveKickChatroom = document.querySelector('#resolve-kick-chatroom');
 const connectTwitch = document.querySelector('#connect-twitch');
 const disconnectTwitch = document.querySelector('#disconnect-twitch');
+const clearTwitchSession = document.querySelector('#clear-twitch-session');
 const twitchAuthStatus = document.querySelector('#twitch-auth-status');
 const connectKick = document.querySelector('#connect-kick');
 const disconnectKick = document.querySelector('#disconnect-kick');
+const clearKickSession = document.querySelector('#clear-kick-session');
 const kickAuthStatus = document.querySelector('#kick-auth-status');
+const connectX = document.querySelector('#connect-x');
+const disconnectX = document.querySelector('#disconnect-x');
+const xAuthStatus = document.querySelector('#x-auth-status');
 const messageComposer = document.querySelector('#message-composer');
 const composerMeta = document.querySelector('#composer-meta');
 const statusCards = new Map(
@@ -26,10 +31,15 @@ const statusCards = new Map(
 );
 const messages = [];
 const platformCounts = new Map();
+const loggedIdentities = new Map();
+const pendingOutgoingMessages = new Map();
 const maxRenderedMessages = 250;
+const outgoingMessageMatchWindowMs = 30_000;
 let activeFilter = 'all';
 let autoscrollEnabled = true;
 let totalMessages = 0;
+let xAuthState = { connected: false };
+let xAuthPollingTimer;
 
 document.title = title;
 
@@ -38,6 +48,15 @@ const platformLabels = {
   kick: 'Kick',
   x: 'X',
   youtube: 'YouTube',
+};
+
+const platformSymbols = {
+  kick: 'K',
+  x: 'X',
+};
+
+const platformIconUrls = {
+  twitch: 'https://upload.wikimedia.org/wikipedia/commons/4/41/Twitch_Glitch_Logo_White.svg',
 };
 
 const stateLabels = {
@@ -67,12 +86,15 @@ const formatRelativeDetail = (timestamp) => {
 
 const renderMessage = (message) => {
   const item = document.createElement('li');
+  const isOwnMessage = classifyOwnMessage(message);
+
   item.className = 'message';
   item.dataset.platform = message.platform;
+  item.classList.toggle('message--own', isOwnMessage);
 
-  const badge = document.createElement('span');
-  badge.className = `message__badge message__badge--${message.platform}`;
-  badge.textContent = platformLabels[message.platform] ?? message.platform;
+  const avatar = shouldRenderAuthorAvatar(message) ? renderAuthorAvatar(message) : undefined;
+
+  const badge = renderPlatformBadge(message.platform);
 
   const author = document.createElement('strong');
   author.className = 'message__author';
@@ -87,14 +109,195 @@ const renderMessage = (message) => {
 
   const text = document.createElement('p');
   text.className = 'message__text';
-  text.textContent = message.text;
+  text.append(...renderMessageTextFragments(message));
 
   const metadata = document.createElement('div');
   metadata.className = 'message__metadata';
   metadata.append(badge, author, ...badges, time);
 
-  item.append(metadata, text);
+  const content = document.createElement('div');
+  content.className = 'message__content';
+  content.append(metadata, text);
+
+  item.append(...[avatar, content].filter(Boolean));
   return item;
+};
+
+const classifyOwnMessage = (message) => {
+  const identity = loggedIdentities.get(message.platform);
+
+  return (
+    Boolean(message.isOwnFromOutgoing) ||
+    messageHighlightUtils.isMessageFromIdentity(message, identity)
+  );
+};
+
+const updateLoggedIdentities = (config = {}) => {
+  for (const platform of ['twitch', 'kick']) {
+    const identity = messageHighlightUtils.createLoggedIdentity(
+      config.connectors?.[platform]?.auth,
+    );
+
+    if (identity) {
+      loggedIdentities.set(platform, identity);
+    } else {
+      loggedIdentities.delete(platform);
+    }
+  }
+};
+
+const rememberPendingOutgoingMessage = (platform, text) => {
+  const pendingId = `${platform}:${Date.now()}:${Math.random()}`;
+  const pending = pendingOutgoingMessages.get(platform) ?? [];
+
+  pending.push({ id: pendingId, text, createdAt: Date.now() });
+  pendingOutgoingMessages.set(platform, pending);
+  return pendingId;
+};
+
+const forgetPendingOutgoingMessage = (platform, pendingId) => {
+  const pending = pendingOutgoingMessages.get(platform) ?? [];
+  const remaining = pending.filter((message) => message.id !== pendingId);
+
+  pendingOutgoingMessages.set(platform, remaining);
+};
+
+const matchPendingOutgoingMessage = (message) => {
+  const cutoff = Date.now() - outgoingMessageMatchWindowMs;
+  const pending = (pendingOutgoingMessages.get(message.platform) ?? []).filter(
+    (candidate) => candidate.createdAt >= cutoff,
+  );
+  const matchIndex = pending.findIndex((candidate) => candidate.text === message.text);
+
+  if (matchIndex === -1) {
+    pendingOutgoingMessages.set(message.platform, pending);
+    return false;
+  }
+
+  pending.splice(matchIndex, 1);
+  pendingOutgoingMessages.set(message.platform, pending);
+  return true;
+};
+
+const identifyOwnIncomingMessage = (message) => {
+  if (!matchPendingOutgoingMessage(message)) {
+    return;
+  }
+
+  message.isOwnFromOutgoing = true;
+
+  if (message.platform === 'x') {
+    const identity = messageHighlightUtils.createIdentityFromMessageAuthor(message);
+
+    if (identity) {
+      loggedIdentities.set('x', identity);
+    }
+  }
+};
+
+const shouldRenderAuthorAvatar = (message) => !['kick', 'twitch'].includes(message.platform);
+
+const renderPlatformBadge = (platform) => {
+  const badge = document.createElement('span');
+  const label = document.createElement('span');
+
+  badge.className = `message__badge message__badge--${platform}`;
+  label.textContent = platformLabels[platform] ?? platform;
+
+  if (platformIconUrls[platform]) {
+    const icon = document.createElement('img');
+
+    icon.className = 'message__badge-symbol message__badge-symbol--image';
+    icon.src = platformIconUrls[platform];
+    icon.alt = '';
+    icon.referrerPolicy = 'no-referrer';
+    icon.addEventListener('error', () => {
+      icon.replaceWith(renderPlatformSymbol(platform));
+    });
+    badge.append(icon);
+  } else if (platformSymbols[platform]) {
+    badge.append(renderPlatformSymbol(platform));
+  }
+
+  badge.append(label);
+  return badge;
+};
+
+const renderPlatformSymbol = (platform) => {
+  const symbol = document.createElement('span');
+
+  symbol.className = 'message__badge-symbol';
+  symbol.textContent = platformSymbols[platform] ?? platform.charAt(0).toUpperCase();
+  return symbol;
+};
+
+const renderMessageTextFragments = (message) => {
+  const fragments =
+    Array.isArray(message.fragments) && message.fragments.length > 0
+      ? message.fragments
+      : [{ type: 'text', text: message.text }];
+
+  return fragments.map((fragment) => {
+    if (fragment.type !== 'emote' || !fragment.imageUrl) {
+      return renderMentionedText(fragment.text);
+    }
+
+    return [renderChatEmote(fragment)];
+  }).flat();
+};
+
+const renderMentionedText = (text) =>
+  messageHighlightUtils
+    .splitTextByMention(text, [...loggedIdentities.values()])
+    .map((part) => {
+      if (part.type !== 'mention') {
+        return document.createTextNode(part.text);
+      }
+
+      const mention = document.createElement('span');
+
+      mention.className = 'message__mention';
+      mention.textContent = part.text;
+      return mention;
+    });
+
+const renderChatEmote = (fragment) => {
+  const image = document.createElement('img');
+
+  image.className = 'chat-emote';
+  image.src = fragment.imageUrl;
+  image.alt = fragment.text;
+  image.title = fragment.text;
+  image.loading = 'lazy';
+  image.referrerPolicy = 'no-referrer';
+  image.addEventListener('error', () => {
+    image.replaceWith(document.createTextNode(fragment.text));
+  });
+
+  return image;
+};
+
+const renderAuthorAvatar = (message) => {
+  const avatarUrl = message.author.avatarUrl || message.avatarUrl;
+  const fallback = document.createElement('span');
+
+  fallback.className = 'message__avatar message__avatar--fallback';
+  fallback.textContent = (message.author.name || message.platform || '?').trim().charAt(0) || '?';
+
+  if (!avatarUrl) {
+    return fallback;
+  }
+
+  const image = document.createElement('img');
+
+  image.className = 'message__avatar';
+  image.src = avatarUrl;
+  image.alt = '';
+  image.loading = 'lazy';
+  image.referrerPolicy = 'no-referrer';
+  image.addEventListener('error', () => image.replaceWith(fallback));
+
+  return image;
 };
 
 const renderAuthorBadges = (badges = []) =>
@@ -225,11 +428,11 @@ const populateConfigForm = (config) => {
   renderTwitchAuthStatus(config.connectors.twitch.auth);
   setFormValue('kick.enabled', config.connectors.kick.enabled);
   setFormValue('kick.channel', config.connectors.kick.channel);
-  setFormValue('kick.chatroomId', config.connectors.kick.chatroomId);
   renderKickAuthStatus(config.connectors.kick.auth);
   setFormValue('x.enabled', config.connectors.x.enabled);
   setFormValue('x.liveUrl', config.connectors.x.liveUrl);
   setFormValue('x.showBrowser', config.connectors.x.showBrowser);
+  renderXAuthStatus(xAuthState);
 };
 
 const readConfigForm = () => ({
@@ -241,7 +444,6 @@ const readConfigForm = () => ({
     kick: {
       enabled: getFormValue('kick.enabled'),
       channel: getFormValue('kick.channel'),
-      chatroomId: getFormValue('kick.chatroomId'),
     },
     x: {
       enabled: getFormValue('x.enabled'),
@@ -252,7 +454,9 @@ const readConfigForm = () => ({
 });
 
 const renderConfigSnapshot = (snapshot) => {
+  updateLoggedIdentities(snapshot.config);
   populateConfigForm(snapshot.config);
+  renderFeed();
 
   if (Array.isArray(snapshot.statuses)) {
     for (const status of snapshot.statuses) {
@@ -267,6 +471,7 @@ const renderConfigSnapshot = (snapshot) => {
   const pathText = snapshot.configPath ? ` Saved at ${snapshot.configPath}.` : '';
 
   configMeta.textContent = `${overrideText}${pathText}`;
+  void refreshXAuthStatus();
 };
 
 const setConfigBusy = (isBusy) => {
@@ -277,8 +482,12 @@ const setConfigBusy = (isBusy) => {
   restartConnectors.disabled = isBusy;
   connectTwitch.disabled = isBusy;
   disconnectTwitch.disabled = isBusy;
+  clearTwitchSession.disabled = isBusy;
   connectKick.disabled = isBusy;
   disconnectKick.disabled = isBusy;
+  clearKickSession.disabled = isBusy;
+  connectX.disabled = isBusy;
+  disconnectX.disabled = isBusy;
 };
 
 const renderTwitchAuthStatus = (auth = {}) => {
@@ -296,6 +505,53 @@ const renderKickAuthStatus = (auth = {}) => {
   kickAuthStatus.textContent = auth.connected && label ? `Connected as ${label}` : 'Not connected';
   connectKick.hidden = Boolean(auth.connected);
   disconnectKick.hidden = !auth.connected;
+};
+
+const renderXAuthStatus = (auth = {}) => {
+  xAuthState = { connected: Boolean(auth.connected) };
+
+  if (!xAuthState.connected) {
+    loggedIdentities.delete('x');
+  }
+
+  xAuthStatus.textContent = xAuthState.connected
+    ? 'Connected browser session'
+    : 'Not connected';
+  connectX.hidden = xAuthState.connected;
+  disconnectX.hidden = !xAuthState.connected;
+};
+
+const refreshXAuthStatus = async () => {
+  if (typeof window.chatAggregator?.getXAuthStatus !== 'function') {
+    renderXAuthStatus({ connected: false });
+    return xAuthState;
+  }
+
+  let auth;
+
+  try {
+    auth = await window.chatAggregator.getXAuthStatus();
+  } catch (error) {
+    xAuthStatus.textContent = `Session check failed: ${error.message}`;
+    return xAuthState;
+  }
+
+  renderXAuthStatus(auth);
+  return auth;
+};
+
+const startXAuthPolling = () => {
+  clearInterval(xAuthPollingTimer);
+  const expiresAt = Date.now() + 60_000;
+
+  xAuthPollingTimer = setInterval(async () => {
+    const auth = await refreshXAuthStatus();
+
+    if (auth.connected || Date.now() >= expiresAt) {
+      clearInterval(xAuthPollingTimer);
+      xAuthPollingTimer = undefined;
+    }
+  }, 2_000);
 };
 
 const setComposerBusy = (isBusy) => {
@@ -324,6 +580,7 @@ window.chatAggregator?.onConnectorStatus((status) => {
 
 window.chatAggregator?.onChatMessage((message) => {
   totalMessages += 1;
+  identifyOwnIncomingMessage(message);
   messages.push(message);
   updateStatusForMessage(message);
 
@@ -369,10 +626,14 @@ clearFeed?.addEventListener('click', () => {
 configForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
   setConfigBusy(true);
+  configMeta.textContent = 'Saving configuration...';
 
   try {
     const snapshot = await window.chatAggregator.saveConfig(readConfigForm());
     renderConfigSnapshot(snapshot);
+    configMeta.textContent = 'Configuration saved.';
+  } catch (error) {
+    configMeta.textContent = `Save failed: ${error.message}`;
   } finally {
     setConfigBusy(false);
   }
@@ -384,30 +645,6 @@ restartConnectors?.addEventListener('click', async () => {
   try {
     const snapshot = await window.chatAggregator.restartConnectors();
     renderConfigSnapshot(snapshot);
-  } finally {
-    setConfigBusy(false);
-  }
-});
-
-resolveKickChatroom?.addEventListener('click', async () => {
-  const channel = getFormValue('kick.channel');
-
-  if (!channel) {
-    configMeta.textContent = 'Kick channel is required.';
-    return;
-  }
-
-  setConfigBusy(true);
-  configMeta.textContent = 'Resolving Kick chatroom...';
-
-  try {
-    const resolved = await window.chatAggregator.resolveKickChatroom(channel);
-
-    setFormValue('kick.channel', resolved.channel);
-    setFormValue('kick.chatroomId', resolved.chatroomId);
-    configMeta.textContent = `Kick chatroom resolved for ${resolved.channel}. Save to apply.`;
-  } catch (error) {
-    configMeta.textContent = `Kick resolver failed: ${error.message}`;
   } finally {
     setConfigBusy(false);
   }
@@ -446,6 +683,20 @@ disconnectTwitch?.addEventListener('click', async () => {
   }
 });
 
+clearTwitchSession?.addEventListener('click', async () => {
+  setConfigBusy(true);
+  configMeta.textContent = 'Clearing Twitch login session...';
+
+  try {
+    await window.chatAggregator.clearTwitchSession();
+    configMeta.textContent = 'Twitch login session cleared. Connect again to choose an account.';
+  } catch (error) {
+    configMeta.textContent = `Twitch session clear failed: ${error.message}`;
+  } finally {
+    setConfigBusy(false);
+  }
+});
+
 connectKick?.addEventListener('click', async () => {
   setConfigBusy(true);
   configMeta.textContent = 'Opening Kick authorization...';
@@ -458,6 +709,44 @@ connectKick?.addEventListener('click', async () => {
     configMeta.textContent = 'Kick account connected.';
   } catch (error) {
     configMeta.textContent = `Kick connection failed: ${error.message}`;
+  } finally {
+    setConfigBusy(false);
+  }
+});
+
+connectX?.addEventListener('click', async () => {
+  setConfigBusy(true);
+  configMeta.textContent = 'Opening X login window...';
+
+  try {
+    await window.chatAggregator.saveConfig(readConfigForm());
+    await window.chatAggregator.connectX();
+    const auth = await refreshXAuthStatus();
+
+    configMeta.textContent =
+      auth.connected
+        ? 'X browser session is connected.'
+        : 'X login window opened. Log into X there, then close it when the session is ready.';
+    startXAuthPolling();
+  } catch (error) {
+    configMeta.textContent = `X connection failed: ${error.message}`;
+  } finally {
+    setConfigBusy(false);
+  }
+});
+
+disconnectX?.addEventListener('click', async () => {
+  setConfigBusy(true);
+  configMeta.textContent = 'Disconnecting X browser session...';
+
+  try {
+    const snapshot = await window.chatAggregator.disconnectX();
+
+    renderConfigSnapshot(snapshot);
+    await refreshXAuthStatus();
+    configMeta.textContent = 'X browser session disconnected.';
+  } catch (error) {
+    configMeta.textContent = `X disconnect failed: ${error.message}`;
   } finally {
     setConfigBusy(false);
   }
@@ -479,6 +768,29 @@ disconnectKick?.addEventListener('click', async () => {
   }
 });
 
+clearKickSession?.addEventListener('click', async () => {
+  setConfigBusy(true);
+  configMeta.textContent = 'Clearing Kick login session...';
+
+  try {
+    await window.chatAggregator.clearKickSession();
+    configMeta.textContent = 'Kick login session cleared. Connect again to choose an account.';
+  } catch (error) {
+    configMeta.textContent = `Kick session clear failed: ${error.message}`;
+  } finally {
+    setConfigBusy(false);
+  }
+});
+
+messageComposer?.elements.namedItem('text')?.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
+    return;
+  }
+
+  event.preventDefault();
+  messageComposer.requestSubmit();
+});
+
 messageComposer?.addEventListener('submit', async (event) => {
   event.preventDefault();
 
@@ -492,6 +804,7 @@ messageComposer?.addEventListener('submit', async (event) => {
 
   setComposerBusy(true);
   composerMeta.textContent = `Sending to ${platformLabels[platform] ?? platform}...`;
+  const pendingId = rememberPendingOutgoingMessage(platform, text);
 
   try {
     const result = await window.chatAggregator.sendMessage({ platform, text });
@@ -499,6 +812,7 @@ messageComposer?.addEventListener('submit', async (event) => {
     messageComposer.elements.namedItem('text').value = '';
     composerMeta.textContent = `Sent to ${platformLabels[result.platform] ?? result.platform}.`;
   } catch (error) {
+    forgetPendingOutgoingMessage(platform, pendingId);
     composerMeta.textContent = `Send failed: ${error.message}`;
   } finally {
     setComposerBusy(false);

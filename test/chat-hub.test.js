@@ -3,13 +3,18 @@ const test = require('node:test');
 const { EventEmitter } = require('node:events');
 const { createChatHub } = require('../src/chat-hub');
 
-const createTestConnector = ({ sendImpl = async (_text) => {} } = {}) => {
+const createTestConnector = ({
+  platform = 'twitch',
+  sendImpl = async (_text) => {},
+  onConnect = async () => {},
+  onDisconnect = async () => {},
+} = {}) => {
   const events = new EventEmitter();
 
   return {
-    platform: 'twitch',
-    connect: async () => {},
-    disconnect: async () => {},
+    platform,
+    connect: onConnect,
+    disconnect: onDisconnect,
     send: sendImpl,
     onMessage: (listener) => {
       events.on('message', listener);
@@ -131,4 +136,31 @@ test('tracks connector send failures as status errors', async () => {
 
   assert.equal(hub.getStatuses()[0].state, 'error');
   assert.equal(hub.getStatuses()[0].error, 'write disabled');
+});
+
+test('replaces one connector without disconnecting other platforms', async () => {
+  const disconnected = [];
+  const sent = [];
+  const twitch = createTestConnector({
+    platform: 'twitch',
+    onDisconnect: async () => disconnected.push('old-twitch'),
+  });
+  const x = createTestConnector({
+    platform: 'x',
+    onDisconnect: async () => disconnected.push('x'),
+  });
+  const replacementTwitch = createTestConnector({
+    platform: 'twitch',
+    sendImpl: async (text) => sent.push(text),
+  });
+  const hub = createChatHub({ connectors: [twitch, x] });
+
+  await hub.start();
+  await hub.replaceConnector(replacementTwitch);
+  await hub.sendMessage({ platform: 'twitch', text: 'new token send' });
+
+  assert.deepEqual(disconnected, ['old-twitch']);
+  assert.deepEqual(sent, ['new token send']);
+
+  await hub.stop();
 });

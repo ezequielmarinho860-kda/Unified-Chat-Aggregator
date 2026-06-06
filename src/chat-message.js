@@ -13,6 +13,10 @@ const normalizeChatMessage = (message) => {
     raw: message.raw ?? null,
   };
 
+  if (message.fragments !== undefined && message.fragments !== null) {
+    normalized.fragments = normalizeFragments(message.fragments);
+  }
+
   return normalized;
 };
 
@@ -52,6 +56,36 @@ const normalizeBadge = (badge) => {
     version: optionalString(badge.version),
     imageUrl: optionalString(badge.imageUrl),
   };
+};
+
+const normalizeFragments = (fragments) => {
+  if (!Array.isArray(fragments)) {
+    throw new TypeError('Chat message fragments must be an array.');
+  }
+
+  return fragments.map(normalizeFragment);
+};
+
+const normalizeFragment = (fragment) => {
+  if (!fragment || typeof fragment !== 'object') {
+    throw new TypeError('Chat message fragment must be an object.');
+  }
+
+  const type = requireString(fragment.type, 'fragments.type');
+  const normalizedFragment = {
+    type,
+    text: requireString(fragment.text, 'fragments.text'),
+  };
+
+  if (fragment.id !== undefined && fragment.id !== null) {
+    normalizedFragment.id = optionalString(fragment.id);
+  }
+
+  if (fragment.imageUrl !== undefined && fragment.imageUrl !== null) {
+    normalizedFragment.imageUrl = optionalString(fragment.imageUrl);
+  }
+
+  return normalizedFragment;
 };
 
 const requireString = (value, fieldName) => {

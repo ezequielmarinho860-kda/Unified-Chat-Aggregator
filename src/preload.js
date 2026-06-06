@@ -1,5 +1,21 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+const invokeChatSend = async (payload) => {
+  const response = await ipcRenderer.invoke('chat:send', payload);
+
+  if (response?.ok === false) {
+    const error = new Error(response.error || 'Send failed.');
+
+    if (response.code) {
+      error.code = response.code;
+    }
+
+    throw error;
+  }
+
+  return response;
+};
+
 contextBridge.exposeInMainWorld('chatAggregator', {
   appName: 'Unified Chat Aggregator',
   onChatMessage: (callback) => {
@@ -41,10 +57,14 @@ contextBridge.exposeInMainWorld('chatAggregator', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   saveConfig: (config) => ipcRenderer.invoke('config:save', config),
   restartConnectors: () => ipcRenderer.invoke('connectors:restart'),
-  sendMessage: (payload) => ipcRenderer.invoke('chat:send', payload),
+  sendMessage: invokeChatSend,
   connectTwitch: () => ipcRenderer.invoke('twitch:connect'),
   disconnectTwitch: () => ipcRenderer.invoke('twitch:disconnect'),
+  clearTwitchSession: () => ipcRenderer.invoke('twitch:clear-auth-session'),
   connectKick: () => ipcRenderer.invoke('kick:connect'),
   disconnectKick: () => ipcRenderer.invoke('kick:disconnect'),
-  resolveKickChatroom: (channel) => ipcRenderer.invoke('kick:resolve-chatroom', channel),
+  clearKickSession: () => ipcRenderer.invoke('kick:clear-auth-session'),
+  connectX: () => ipcRenderer.invoke('x:connect'),
+  disconnectX: () => ipcRenderer.invoke('x:disconnect'),
+  getXAuthStatus: () => ipcRenderer.invoke('x:auth-status'),
 });

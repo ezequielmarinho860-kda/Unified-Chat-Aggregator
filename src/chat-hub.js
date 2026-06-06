@@ -5,7 +5,7 @@ const { validateConnector } = require('./connectors/connector-contract');
 const createChatHub = ({ connectors = [] } = {}) => {
   const events = new EventEmitter();
   const registeredConnectors = new Map();
-  const unsubscribeHandlers = [];
+  const connectorSubscriptions = new Map();
   const connectorStatuses = new Map();
 
   const setConnectorStatus = (platform, patch) => {
@@ -51,17 +51,18 @@ const createChatHub = ({ connectors = [] } = {}) => {
     }
 
     registeredConnectors.set(connector.platform, connector);
+    connectorSubscriptions.set(connector.platform, []);
     setConnectorStatus(connector.platform, {
       state: 'idle',
       details: getConnectorDetails(connector),
     });
 
     if (typeof connector.onMessage === 'function') {
-      unsubscribeHandlers.push(connector.onMessage(publishMessage));
+      connectorSubscriptions.get(connector.platform).push(connector.onMessage(publishMessage));
     }
 
     if (typeof connector.onError === 'function') {
-      unsubscribeHandlers.push(
+      connectorSubscriptions.get(connector.platform).push(
         connector.onError((error) => {
           setConnectorStatus(connector.platform, {
             state: 'error',
@@ -72,7 +73,7 @@ const createChatHub = ({ connectors = [] } = {}) => {
     }
 
     if (typeof connector.onStatus === 'function') {
-      unsubscribeHandlers.push(
+      connectorSubscriptions.get(connector.platform).push(
         connector.onStatus((status) => {
           setConnectorStatus(connector.platform, {
             state: status.state ?? 'connected',
@@ -84,6 +85,66 @@ const createChatHub = ({ connectors = [] } = {}) => {
         }),
       );
     }
+  };
+
+  const unsubscribeConnector = (platform) => {
+    const subscriptions = connectorSubscriptions.get(platform) ?? [];
+
+    while (subscriptions.length > 0) {
+      const unsubscribe = subscriptions.pop();
+      unsubscribe();
+    }
+
+    connectorSubscriptions.delete(platform);
+  };
+
+  const removeConnector = async (platform) => {
+    const connector = registeredConnectors.get(platform);
+
+    if (!connector) {
+      return false;
+    }
+
+    await connector.disconnect();
+    unsubscribeConnector(platform);
+    registeredConnectors.delete(platform);
+    connectorStatuses.delete(platform);
+    events.emit('status', {
+      platform,
+      state: 'disabled',
+      messageCount: 0,
+      lastMessageAt: undefined,
+      error: undefined,
+      details: {},
+    });
+    return true;
+  };
+
+  const startConnector = async (connector) => {
+    setConnectorStatus(connector.platform, { state: 'connecting', error: undefined });
+
+    try {
+      await connector.connect();
+      const currentStatus = connectorStatuses.get(connector.platform);
+
+      if (currentStatus?.state === 'connecting') {
+        setConnectorStatus(connector.platform, { state: 'connected' });
+      }
+    } catch (error) {
+      setConnectorStatus(connector.platform, {
+        state: 'error',
+        error: error.message,
+      });
+    }
+  };
+
+  const replaceConnector = async (connector) => {
+    validateConnector(connector);
+
+    await removeConnector(connector.platform);
+
+    registerConnector(connector);
+    await startConnector(connector);
   };
 
   for (const connector of connectors) {
@@ -102,34 +163,18 @@ const createChatHub = ({ connectors = [] } = {}) => {
     },
     start: async () => {
       for (const connector of registeredConnectors.values()) {
-        setConnectorStatus(connector.platform, { state: 'connecting', error: undefined });
-
-        try {
-          await connector.connect();
-          const currentStatus = connectorStatuses.get(connector.platform);
-
-          if (currentStatus?.state === 'connecting') {
-            setConnectorStatus(connector.platform, { state: 'connected' });
-          }
-        } catch (error) {
-          setConnectorStatus(connector.platform, {
-            state: 'error',
-            error: error.message,
-          });
-        }
+        await startConnector(connector);
       }
     },
     stop: async () => {
       for (const connector of registeredConnectors.values()) {
         await connector.disconnect();
         setConnectorStatus(connector.platform, { state: 'disconnected' });
-      }
-
-      while (unsubscribeHandlers.length > 0) {
-        const unsubscribe = unsubscribeHandlers.pop();
-        unsubscribe();
+        unsubscribeConnector(connector.platform);
       }
     },
+    removeConnector,
+    replaceConnector,
     sendMessage: async ({ platform, text } = {}) => {
       const normalizedPlatform = normalizeSendPlatform(platform);
       const normalizedText = normalizeSendText(text);

@@ -1,5 +1,11 @@
 const { EventEmitter } = require('node:events');
-const { fetchTwitchChatBadgeCatalog, sendTwitchChatMessage } = require('./twitch-api');
+const { fetchBttvEmoteCatalog } = require('./bttv-api');
+const {
+  fetchTwitchChatBadgeCatalog,
+  resolveTwitchUserByLogin,
+  sendTwitchChatMessage,
+  validateTwitchAccessToken,
+} = require('./twitch-api');
 const { parseTwitchPrivmsg } = require('./twitch-irc-parser');
 
 const TWITCH_IRC_URL = 'wss://irc-ws.chat.twitch.tv:443';
@@ -18,6 +24,8 @@ const createTwitchConnector = ({
   let reconnectTimer;
   let shouldReconnect = false;
   let badgeCatalog = {};
+  let bttvEmoteCatalog = {};
+  let hasLoadedBttvEmoteCatalog = false;
 
   const connect = async () => {
     if (socket && socket.readyState <= WebSocket.OPEN) {
@@ -25,7 +33,7 @@ const createTwitchConnector = ({
     }
 
     shouldReconnect = true;
-    await loadBadgeCatalog();
+    await loadCatalogs();
     socket = webSocketFactory(TWITCH_IRC_URL);
 
     socket.addEventListener('open', () => {
@@ -67,27 +75,73 @@ const createTwitchConnector = ({
       return;
     }
 
-    const message = parseTwitchPrivmsg(line, { badgeCatalog });
+    const message = parseTwitchPrivmsg(line, { badgeCatalog, bttvEmoteCatalog });
 
     if (message) {
       events.emit('message', message);
     }
   };
 
+  const loadCatalogs = async () => {
+    const [nextBadgeCatalog, nextBttvEmoteCatalog] = await Promise.all([
+      loadBadgeCatalog(),
+      loadBttvEmoteCatalog(),
+    ]);
+
+    badgeCatalog = nextBadgeCatalog;
+    bttvEmoteCatalog = nextBttvEmoteCatalog;
+  };
+
   const loadBadgeCatalog = async () => {
     if (!accessToken) {
-      badgeCatalog = {};
-      return;
+      return {};
     }
 
     try {
-      badgeCatalog = await fetchTwitchChatBadgeCatalog({
+      return await fetchTwitchChatBadgeCatalog({
         channel: normalizedChannel,
         accessToken,
         fetchImpl,
       });
     } catch {
-      badgeCatalog = {};
+      return {};
+    }
+  };
+
+  const loadBttvEmoteCatalog = async () => {
+    if (hasLoadedBttvEmoteCatalog) {
+      return bttvEmoteCatalog;
+    }
+
+    let providerId;
+
+    if (accessToken) {
+      try {
+        const tokenInfo = await validateTwitchAccessToken({ accessToken, fetchImpl });
+        const broadcaster = await resolveTwitchUserByLogin({
+          login: normalizedChannel,
+          accessToken,
+          clientId: tokenInfo.clientId,
+          fetchImpl,
+        });
+
+        providerId = broadcaster.id;
+      } catch {
+        providerId = undefined;
+      }
+    }
+
+    try {
+      const catalog = await fetchBttvEmoteCatalog({
+        provider: 'twitch',
+        providerId,
+        fetchImpl,
+      });
+
+      hasLoadedBttvEmoteCatalog = true;
+      return catalog;
+    } catch {
+      return {};
     }
   };
 

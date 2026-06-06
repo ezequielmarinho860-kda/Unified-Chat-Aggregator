@@ -52,6 +52,33 @@ test('normalizes author badges', () => {
   ]);
 });
 
+test('normalizes message fragments', () => {
+  const message = normalizeChatMessage({
+    id: '1',
+    platform: 'twitch',
+    author: { id: 'author-1', name: 'Ana' },
+    text: 'Kappa',
+    fragments: [
+      {
+        type: 'emote',
+        id: '25',
+        text: 'Kappa',
+        imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0',
+      },
+    ],
+    timestamp: '2026-06-04T20:00:00.000Z',
+  });
+
+  assert.deepEqual(message.fragments, [
+    {
+      type: 'emote',
+      id: '25',
+      text: 'Kappa',
+      imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0',
+    },
+  ]);
+});
+
 test('rejects a message without text', () => {
   assert.throws(
     () =>

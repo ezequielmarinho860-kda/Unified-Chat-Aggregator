@@ -150,12 +150,6 @@ h1 {
   font: inherit;
 }
 
-.field-action {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-}
-
 .field-row input:focus {
   border-color: #1f2428;
   outline: none;
@@ -428,12 +422,59 @@ h1 {
 }
 
 .message {
+  --mention-border: #e0b648;
+  --mention-color: #c58a00;
   display: grid;
   gap: 8px;
   padding: 14px;
   border: 1px solid #ebe5db;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.message--own {
+  border-color: #e29a9a;
+  background: #fff3f3;
+  box-shadow: inset 4px 0 0 #c62828;
+}
+
+.message[data-platform='kick'] {
+  --mention-border: #70c984;
+  --mention-color: #168a35;
+}
+
+.message[data-platform='twitch'] {
+  --mention-border: #bda2ed;
+  --mention-color: #7c3aed;
+}
+
+.message[data-platform='x'] {
+  --mention-border: #9aa0a6;
+  --mention-color: #24292f;
+  grid-template-columns: 36px minmax(0, 1fr);
+}
+
+.message__avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: #24292f;
+  color: #fffdfa;
+  font-size: 0.9rem;
+  font-weight: 800;
+  object-fit: cover;
+}
+
+.message__avatar--fallback {
+  text-transform: uppercase;
+}
+
+.message__content {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
 }
 
 .message__metadata {
@@ -444,7 +485,10 @@ h1 {
 }
 
 .message__badge {
+  display: inline-flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
   padding: 4px 8px;
   border-radius: 999px;
   color: #ffffff;
@@ -452,12 +496,59 @@ h1 {
   font-weight: 800;
 }
 
+.message__badge-symbol {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 0.62rem;
+  line-height: 1;
+}
+
+.message__badge--kick .message__badge-symbol {
+  width: auto;
+  min-width: 12px;
+  border-radius: 0;
+  background: transparent;
+  color: #53fc18;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-shadow:
+    -1px -1px 0 #07140a,
+    1px -1px 0 #07140a,
+    -1px 1px 0 #07140a,
+    1px 1px 0 #07140a,
+    -3px 0 7px rgba(83, 252, 24, 0.9),
+    -1px 0 5px rgba(255, 255, 255, 0.7);
+}
+
+.message__badge-symbol--image {
+  display: block;
+  object-fit: contain;
+}
+
+.message__badge--twitch .message__badge-symbol {
+  width: 12px;
+  height: 14px;
+  border-radius: 0;
+  background: transparent;
+  filter:
+    drop-shadow(-1px 0 1px #1a082d)
+    drop-shadow(-3px 0 5px rgba(191, 148, 255, 0.9));
+}
+
 .message__badge--twitch {
-  background: #7c3aed;
+  background: rgba(89, 45, 142, 0.9);
+  box-shadow: 0 0 0 1px rgba(191, 148, 255, 0.22);
+  color: #bf94ff;
 }
 
 .message__badge--kick {
-  background: #2ebf4f;
+  background: rgba(23, 128, 52, 0.9);
+  box-shadow: 0 0 0 1px rgba(83, 252, 24, 0.2);
+  color: #53fc18;
 }
 
 .message__badge--x {
@@ -467,6 +558,14 @@ h1 {
 .message__author {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.message[data-platform='kick'] .message__author {
+  color: #168a35;
+}
+
+.message[data-platform='twitch'] .message__author {
+  color: #7c3aed;
 }
 
 .author-badge {
@@ -564,6 +663,24 @@ h1 {
   color: #30363d;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.message__mention {
+  padding: 1px 4px 2px;
+  border-radius: 3px;
+  background: var(--mention-color);
+  box-shadow: 0 0 0 1px var(--mention-border);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.chat-emote {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  margin: 0 2px;
+  object-fit: contain;
+  vertical-align: middle;
 }
 
 @media (max-width: 760px) {

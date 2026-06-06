@@ -48,6 +48,7 @@ const createJsonResponse = (body, { ok = true, status = 200 } = {}) => ({
   status,
   json: async () => body,
 });
+const createEmptyBttvResponse = async () => createJsonResponse([]);
 
 test('normalizes Twitch channel names', () => {
   assert.equal(normalizeChannelName(' #Monstercat '), 'monstercat');
@@ -57,6 +58,7 @@ test('connects to Twitch IRC and joins the configured channel', async () => {
   const sockets = [];
   const connector = createTwitchConnector({
     channel: 'Monstercat',
+    fetchImpl: createEmptyBttvResponse,
     webSocketFactory: (url) => {
       const socket = new FakeWebSocket(url);
       sockets.push(socket);
@@ -144,6 +146,7 @@ test('emits parsed Twitch chat messages', async () => {
   const socket = new FakeWebSocket(TWITCH_IRC_URL);
   const connector = createTwitchConnector({
     channel: 'monstercat',
+    fetchImpl: createEmptyBttvResponse,
     webSocketFactory: () => socket,
   });
   const received = [];
@@ -167,6 +170,7 @@ test('responds to Twitch PING messages with PONG', async () => {
   const socket = new FakeWebSocket(TWITCH_IRC_URL);
   const connector = createTwitchConnector({
     channel: 'monstercat',
+    fetchImpl: createEmptyBttvResponse,
     webSocketFactory: () => socket,
   });
 
@@ -176,6 +180,37 @@ test('responds to Twitch PING messages with PONG', async () => {
 
   assert.equal(socket.sent.at(-1), 'PONG :tmi.twitch.tv');
 
+  await connector.disconnect();
+});
+
+test('renders BetterTTV global emotes from Twitch chat text', async () => {
+  const socket = new FakeWebSocket(TWITCH_IRC_URL);
+  const connector = createTwitchConnector({
+    channel: 'monstercat',
+    webSocketFactory: () => socket,
+    fetchImpl: async () => createJsonResponse([{ id: 'bttv-1', code: 'OMEGALUL' }]),
+  });
+  const received = [];
+  const unsubscribe = connector.onMessage((message) => received.push(message));
+
+  await connector.connect();
+  socket.open();
+  socket.receive(
+    '@display-name=Ana;id=message-1;tmi-sent-ts=1780603200000;user-id=user-1 :ana!ana@ana.tmi.twitch.tv PRIVMSG #monstercat :OMEGALUL chat',
+  );
+
+  assert.deepEqual(received[0].fragments, [
+    {
+      type: 'emote',
+      id: 'bttv:bttv-1',
+      text: 'OMEGALUL',
+      imageUrl: 'https://cdn.betterttv.net/emote/bttv-1/2x',
+    },
+    { type: 'text', text: ' ' },
+    { type: 'text', text: 'chat' },
+  ]);
+
+  unsubscribe();
   await connector.disconnect();
 });
 

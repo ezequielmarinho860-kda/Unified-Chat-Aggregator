@@ -2,9 +2,14 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   DEFAULT_TWITCH_REDIRECT_URI,
+  TWITCH_AUTH_PARTITION,
   buildTwitchAuthorizeUrl,
   extractTwitchImplicitAuthResult,
 } = require('../src/connectors/twitch-auth');
+
+test('uses a persistent Twitch auth browser partition', () => {
+  assert.equal(TWITCH_AUTH_PARTITION, 'persist:twitch-auth');
+});
 
 test('builds a Twitch implicit OAuth URL', () => {
   const url = new URL(

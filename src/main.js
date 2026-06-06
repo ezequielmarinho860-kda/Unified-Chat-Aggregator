@@ -1,5 +1,5 @@
 const path = require('node:path');
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, session } = require('electron');
 const {
   PLATFORM_ORDER,
   clearEnvironmentOverrides,
@@ -12,13 +12,24 @@ const { createChatHub } = require('./chat-hub');
 const {
   resolveKickChannelWithBrowserFallback,
 } = require('./connectors/kick-browser-resolver');
-const { connectKickWithOAuth } = require('./connectors/kick-auth');
-const { connectTwitchWithImplicitOAuth } = require('./connectors/twitch-auth');
+const { resolveKickChatroomForConfig } = require('./connectors/kick-config-resolver');
+const { clearAuthBrowserSession } = require('./connectors/auth-browser-session');
+const { connectKickWithOAuth, KICK_AUTH_PARTITION } = require('./connectors/kick-auth');
+const {
+  connectTwitchWithImplicitOAuth,
+  TWITCH_AUTH_PARTITION,
+} = require('./connectors/twitch-auth');
 const { createKickConnector } = require('./connectors/kick-connector');
 const { createTwitchConnector } = require('./connectors/twitch-connector');
-const { createXConnector } = require('./connectors/x-connector');
+const {
+  createXConnector,
+  isXComposerUnavailableError,
+  X_CAPTURE_PARTITION,
+} = require('./connectors/x-connector');
+const { clearXSessionAuth, getXSessionAuthStatus } = require('./connectors/x-auth-session');
 
 const mainWindows = new Set();
+const CONNECTOR_PLATFORMS = ['kick', 'twitch', 'x'];
 let configStore;
 let savedConfig;
 let runtimeConfig;
@@ -28,51 +39,73 @@ let chatHub = createChatHub();
 let unsubscribeHubMessage;
 let unsubscribeHubStatus;
 
+const focusMainWindow = () => {
+  const mainWindow = [...mainWindows].find((window) => !window.isDestroyed());
+
+  if (!mainWindow) {
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  mainWindow.show();
+  mainWindow.focus();
+};
+
 const buildConnectors = (config) => {
   const connectors = [];
-  const { twitch, kick, x } = config.connectors;
 
-  if (kick.enabled) {
-    connectors.push(
-      createKickConnector({
-        channel: kick.channel,
-        chatroomId: kick.chatroomId || undefined,
-        accessToken: kick.accessToken || undefined,
-        refreshToken: kick.refreshToken || undefined,
-        clientId: kick.clientId || undefined,
-        clientSecret: kick.clientSecret || undefined,
-        oauthBrokerUrl: kick.oauthBrokerUrl || undefined,
-        onAuthUpdate: persistKickAuthUpdate,
-        resolveChannel: ({ channel, fetchImpl }) =>
-          resolveKickChannelWithBrowserFallback({
-            channel,
-            fetchImpl,
-            BrowserWindow,
-          }),
-      }),
-    );
-  }
+  for (const platform of CONNECTOR_PLATFORMS) {
+    const connector = buildConnectorForPlatform(config, platform);
 
-  if (twitch.enabled) {
-    connectors.push(
-      createTwitchConnector({
-        channel: twitch.channel,
-        accessToken: twitch.accessToken || undefined,
-      }),
-    );
-  }
-
-  if (x.enabled && x.liveUrl) {
-    connectors.push(
-      createXConnector({
-        liveUrl: x.liveUrl,
-        BrowserWindow,
-        show: x.showBrowser,
-      }),
-    );
+    if (connector) {
+      connectors.push(connector);
+    }
   }
 
   return connectors;
+};
+
+const buildConnectorForPlatform = (config, platform) => {
+  const { twitch, kick, x } = config.connectors;
+
+  if (platform === 'kick' && kick.enabled) {
+    return createKickConnector({
+      channel: kick.channel,
+      chatroomId: kick.chatroomId || undefined,
+      accessToken: kick.accessToken || undefined,
+      refreshToken: kick.refreshToken || undefined,
+      clientId: kick.clientId || undefined,
+      clientSecret: kick.clientSecret || undefined,
+      oauthBrokerUrl: kick.oauthBrokerUrl || undefined,
+      onAuthUpdate: persistKickAuthUpdate,
+      resolveChannel: ({ channel, fetchImpl }) =>
+        resolveKickChannelWithBrowserFallback({
+          channel,
+          fetchImpl,
+          BrowserWindow,
+        }),
+    });
+  }
+
+  if (platform === 'twitch' && twitch.enabled) {
+    return createTwitchConnector({
+      channel: twitch.channel,
+      accessToken: twitch.accessToken || undefined,
+    });
+  }
+
+  if (platform === 'x' && x.enabled && x.liveUrl) {
+    return createXConnector({
+      liveUrl: x.liveUrl,
+      BrowserWindow,
+      show: x.showBrowser,
+    });
+  }
+
+  return undefined;
 };
 
 const wireChatHub = (nextChatHub) => {
@@ -88,9 +121,17 @@ const wireChatHub = (nextChatHub) => {
 };
 
 const restartRuntime = async (nextSavedConfig = savedConfig) => {
-  savedConfig = normalizeAppConfig(nextSavedConfig);
-
   await chatHub.stop();
+  applyRuntimeConfig(nextSavedConfig);
+
+  chatHub = createChatHub({ connectors: buildConnectors(runtimeConfig) });
+  wireChatHub(chatHub);
+  await chatHub.start();
+  broadcastRuntimeSnapshot();
+};
+
+const applyRuntimeConfig = (nextSavedConfig) => {
+  savedConfig = normalizeAppConfig(nextSavedConfig);
 
   const appliedConfig = createRuntimeAppConfig(savedConfig, {
     allowEnvironmentOverrides,
@@ -98,11 +139,37 @@ const restartRuntime = async (nextSavedConfig = savedConfig) => {
   });
   runtimeConfig = appliedConfig.runtimeConfig;
   envOverrides = appliedConfig.overrides;
-  chatHub = createChatHub({ connectors: buildConnectors(runtimeConfig) });
-  wireChatHub(chatHub);
-  await chatHub.start();
+};
+
+const restartChangedConnectors = async (nextSavedConfig, forcePlatforms = []) => {
+  const previousRuntimeConfig = runtimeConfig;
+
+  applyRuntimeConfig(nextSavedConfig);
+
+  const changedPlatforms =
+    forcePlatforms.length > 0
+      ? forcePlatforms
+      : getChangedConnectorPlatforms(previousRuntimeConfig, runtimeConfig);
+
+  for (const platform of changedPlatforms) {
+    const connector = buildConnectorForPlatform(runtimeConfig, platform);
+
+    if (connector) {
+      await chatHub.replaceConnector(connector);
+    } else {
+      await chatHub.removeConnector(platform);
+    }
+  }
+
   broadcastRuntimeSnapshot();
 };
+
+const getChangedConnectorPlatforms = (previousConfig, nextConfig) =>
+  CONNECTOR_PLATFORMS.filter(
+    (platform) =>
+      JSON.stringify(previousConfig?.connectors?.[platform] ?? {}) !==
+      JSON.stringify(nextConfig?.connectors?.[platform] ?? {}),
+  );
 
 const broadcastRuntimeSnapshot = () => {
   const snapshot = getRuntimeSnapshot();
@@ -227,6 +294,10 @@ const mergeSavedKickAuth = (config, nextConfig) => {
     clientId,
     clientSecret,
     oauthBrokerUrl,
+    chatroomId:
+      nextKick.channel === previousKick.channel && !Object.hasOwn(incomingKick, 'chatroomId')
+        ? previousKick.chatroomId
+        : nextKick.chatroomId,
     accessToken: credentialsChanged ? '' : previousKick.accessToken,
     refreshToken: credentialsChanged ? '' : previousKick.refreshToken,
     expiresAt: credentialsChanged ? '' : previousKick.expiresAt,
@@ -268,6 +339,60 @@ const persistKickAuthUpdate = (authPatch) => {
   broadcastRuntimeSnapshot();
 };
 
+const openXLoginWindow = async () => {
+  const loginWindow = new BrowserWindow({
+    width: 960,
+    height: 760,
+    minWidth: 720,
+    minHeight: 560,
+    title: 'Connect X',
+    autoHideMenuBar: true,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      partition: X_CAPTURE_PARTITION,
+    },
+  });
+
+  await loginWindow.loadURL('https://x.com/login');
+
+  return {
+    opened: true,
+    partition: X_CAPTURE_PARTITION,
+    auth: await getXAuthStatus(),
+  };
+};
+
+const getXAuthStatus = () => getXSessionAuthStatus(session.fromPartition(X_CAPTURE_PARTITION));
+
+const disconnectXSession = async () => {
+  await clearXSessionAuth(session.fromPartition(X_CAPTURE_PARTITION));
+  await restartChangedConnectors(savedConfig, ['x']);
+
+  return getRuntimeSnapshot();
+};
+
+const clearAuthPartition = (partition) =>
+  clearAuthBrowserSession(session.fromPartition(partition));
+
+const sendChatMessage = async (payload) => {
+  try {
+    return await chatHub.sendMessage(payload);
+  } catch (error) {
+    if (isXComposerUnavailableError(error)) {
+      console.warn(`[X send] ${error.message}`);
+      return {
+        ok: false,
+        code: error.code,
+        error: error.message,
+      };
+    }
+
+    throw error;
+  }
+};
+
 const createMainWindow = () => {
   const mainWindow = new BrowserWindow({
     width: 1120,
@@ -300,38 +425,58 @@ const createMainWindow = () => {
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 };
 
-app.whenReady().then(async () => {
-  configStore = createAppConfigStore(path.join(app.getPath('userData'), 'config.json'));
-  allowEnvironmentOverrides = !configStore.exists();
-  savedConfig = configStore.load();
-  await restartRuntime(savedConfig);
-  createMainWindow();
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    focusMainWindow();
+  });
+
+  app.whenReady().then(async () => {
+    configStore = createAppConfigStore(path.join(app.getPath('userData'), 'config.json'));
+    allowEnvironmentOverrides = !configStore.exists();
+    savedConfig = configStore.load();
+    await restartRuntime(savedConfig);
+    createMainWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createMainWindow();
+      }
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit();
     }
   });
-});
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-
-app.on('before-quit', async () => {
-  await chatHub.stop();
-});
+  app.on('before-quit', async () => {
+    await chatHub.stop();
+  });
+}
 
 ipcMain.handle('config:get', () => getRuntimeSnapshot());
 
 ipcMain.handle('config:save', async (_event, config) => {
-  const nextSavedConfig = configStore.save(mergeSavedAuth(config));
+  const mergedConfig = mergeSavedAuth(config);
+  const resolvedConfig = await resolveKickChatroomForConfig({
+    config: mergedConfig,
+    previousConfig: savedConfig,
+    resolveChannel: ({ channel }) =>
+      resolveKickChannelWithBrowserFallback({
+        channel,
+        BrowserWindow,
+      }),
+  });
+  const nextSavedConfig = configStore.save(resolvedConfig);
 
   allowEnvironmentOverrides = false;
   clearEnvironmentOverrides(process.env);
-  await restartRuntime(nextSavedConfig);
+  await restartChangedConnectors(nextSavedConfig);
   return getRuntimeSnapshot();
 });
 
@@ -340,7 +485,7 @@ ipcMain.handle('connectors:restart', async () => {
   return getRuntimeSnapshot();
 });
 
-ipcMain.handle('chat:send', async (_event, payload) => chatHub.sendMessage(payload));
+ipcMain.handle('chat:send', async (_event, payload) => sendChatMessage(payload));
 
 ipcMain.handle('twitch:connect', async () => {
   const clientId =
@@ -370,7 +515,7 @@ ipcMain.handle('twitch:connect', async () => {
   });
 
   allowEnvironmentOverrides = false;
-  await restartRuntime(nextSavedConfig);
+  await restartChangedConnectors(nextSavedConfig, ['twitch']);
   return getRuntimeSnapshot();
 });
 
@@ -390,8 +535,13 @@ ipcMain.handle('twitch:disconnect', async () => {
   });
 
   allowEnvironmentOverrides = false;
-  await restartRuntime(nextSavedConfig);
+  await restartChangedConnectors(nextSavedConfig, ['twitch']);
   return getRuntimeSnapshot();
+});
+
+ipcMain.handle('twitch:clear-auth-session', async () => {
+  await clearAuthPartition(TWITCH_AUTH_PARTITION);
+  return { cleared: true };
 });
 
 ipcMain.handle('kick:connect', async () => {
@@ -434,7 +584,7 @@ ipcMain.handle('kick:connect', async () => {
   });
 
   allowEnvironmentOverrides = false;
-  await restartRuntime(nextSavedConfig);
+  await restartChangedConnectors(nextSavedConfig, ['kick']);
   return getRuntimeSnapshot();
 });
 
@@ -456,13 +606,15 @@ ipcMain.handle('kick:disconnect', async () => {
   });
 
   allowEnvironmentOverrides = false;
-  await restartRuntime(nextSavedConfig);
+  await restartChangedConnectors(nextSavedConfig, ['kick']);
   return getRuntimeSnapshot();
 });
 
-ipcMain.handle('kick:resolve-chatroom', async (_event, channel) =>
-  resolveKickChannelWithBrowserFallback({
-    channel,
-    BrowserWindow,
-  }),
-);
+ipcMain.handle('kick:clear-auth-session', async () => {
+  await clearAuthPartition(KICK_AUTH_PARTITION);
+  return { cleared: true };
+});
+
+ipcMain.handle('x:connect', async () => openXLoginWindow());
+ipcMain.handle('x:auth-status', async () => getXAuthStatus());
+ipcMain.handle('x:disconnect', async () => disconnectXSession());

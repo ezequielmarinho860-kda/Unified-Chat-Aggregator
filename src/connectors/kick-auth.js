@@ -8,6 +8,7 @@ const {
 const KICK_AUTHORIZE_URL = 'https://id.kick.com/oauth/authorize';
 const DEFAULT_KICK_REDIRECT_URI = 'http://localhost/kick/callback';
 const DEFAULT_KICK_AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+const KICK_AUTH_PARTITION = 'persist:kick-auth';
 const KICK_AUTH_SCOPES = ['user:read', 'channel:read', 'chat:write'];
 
 const connectKickWithOAuth = async ({
@@ -50,7 +51,7 @@ const connectKickWithOAuth = async ({
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      partition: 'persist:kick-auth',
+      partition: KICK_AUTH_PARTITION,
     },
   });
 
@@ -213,6 +214,7 @@ const normalizeOptionalString = (value) =>
 
 module.exports = {
   DEFAULT_KICK_REDIRECT_URI,
+  KICK_AUTH_PARTITION,
   KICK_AUTH_SCOPES,
   buildKickAuthorizeUrl,
   connectKickWithOAuth,
