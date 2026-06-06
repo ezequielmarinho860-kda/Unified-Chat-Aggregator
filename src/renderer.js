@@ -36,7 +36,8 @@ const pendingOutgoingMessages = new Map();
 const maxRenderedMessages = 250;
 const outgoingMessageMatchWindowMs = 30_000;
 let activeFilter = 'all';
-let autoscrollEnabled = true;
+let autoscrollManuallyPaused = false;
+let feedPinnedToBottom = true;
 let totalMessages = 0;
 let xAuthState = { connected: false };
 let xAuthPollingTimer;
@@ -82,6 +83,19 @@ const formatRelativeDetail = (timestamp) => {
   }
 
   return `Last: ${formatTimestamp(timestamp)}`;
+};
+
+const isFeedScrolledToBottom = () => {
+  const remainingScroll =
+    messageFeed.scrollHeight - messageFeed.clientHeight - messageFeed.scrollTop;
+
+  return remainingScroll <= 2;
+};
+
+const isAutoscrollEnabled = () => !autoscrollManuallyPaused && feedPinnedToBottom;
+
+const updateAutoscrollControl = () => {
+  toggleAutoscroll.textContent = isAutoscrollEnabled() ? 'Pause' : 'Resume';
 };
 
 const renderMessage = (message) => {
@@ -349,7 +363,7 @@ const renderFeed = () => {
       ? 'Waiting for messages...'
       : `No ${platformLabels[activeFilter] ?? activeFilter} messages.`;
 
-  if (autoscrollEnabled) {
+  if (isAutoscrollEnabled()) {
     messageFeed.scrollTop = messageFeed.scrollHeight;
   }
 
@@ -608,12 +622,20 @@ platformFilter?.addEventListener('click', (event) => {
 });
 
 toggleAutoscroll?.addEventListener('click', () => {
-  autoscrollEnabled = !autoscrollEnabled;
-  toggleAutoscroll.textContent = autoscrollEnabled ? 'Pause' : 'Resume';
-
-  if (autoscrollEnabled) {
+  if (isAutoscrollEnabled()) {
+    autoscrollManuallyPaused = true;
+  } else {
+    autoscrollManuallyPaused = false;
+    feedPinnedToBottom = true;
     messageFeed.scrollTop = messageFeed.scrollHeight;
   }
+
+  updateAutoscrollControl();
+});
+
+messageFeed?.addEventListener('scroll', () => {
+  feedPinnedToBottom = isFeedScrolledToBottom();
+  updateAutoscrollControl();
 });
 
 clearFeed?.addEventListener('click', () => {
