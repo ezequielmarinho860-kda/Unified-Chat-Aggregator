@@ -79,6 +79,46 @@ test('normalizes message fragments', () => {
   ]);
 });
 
+test('normalizes an optional message source', () => {
+  const message = normalizeChatMessage({
+    id: '1',
+    platform: 'twitch',
+    source: {
+      sourceId: 'twitch:monstercat',
+      platform: 'twitch',
+      channelLabel: 'monstercat',
+    },
+    author: { id: 'author-1', name: 'Ana' },
+    text: 'Test message',
+    timestamp: '2026-06-04T20:00:00.000Z',
+  });
+
+  assert.deepEqual(message.source, {
+    sourceId: 'twitch:monstercat',
+    platform: 'twitch',
+    broadcasterName: undefined,
+    channelLabel: 'monstercat',
+  });
+});
+
+test('rejects a source from a different platform', () => {
+  assert.throws(
+    () =>
+      normalizeChatMessage({
+        id: '1',
+        platform: 'twitch',
+        source: {
+          sourceId: 'kick:xqc',
+          platform: 'kick',
+        },
+        author: { id: 'author-1', name: 'Ana' },
+        text: 'Test message',
+        timestamp: '2026-06-04T20:00:00.000Z',
+      }),
+    /source platform/,
+  );
+});
+
 test('rejects a message without text', () => {
   assert.throws(
     () =>

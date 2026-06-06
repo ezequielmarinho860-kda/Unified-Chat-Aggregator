@@ -397,7 +397,8 @@ preserve os payloads definidos aqui.
 
 O contrato descreve o alvo publico. Nem todos os campos existem hoje:
 
-- `source` sera adicionado ao modelo canonico no Bloco A2;
+- `source` ja existe como campo opcional no modelo canonico e o `chat-hub`
+  preenche sua identidade a partir do connector atual;
 - labels visuais de origem entram no Bloco A3;
 - serializadores por allowlist entram no Bloco B1;
 - snapshot HTTP entra no Bloco B2;

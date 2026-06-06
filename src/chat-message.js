@@ -17,7 +17,28 @@ const normalizeChatMessage = (message) => {
     normalized.fragments = normalizeFragments(message.fragments);
   }
 
+  if (message.source !== undefined && message.source !== null) {
+    normalized.source = normalizeSource(message.source);
+
+    if (normalized.source.platform !== normalized.platform) {
+      throw new TypeError('Chat message source platform must match message platform.');
+    }
+  }
+
   return normalized;
+};
+
+const normalizeSource = (source) => {
+  if (!source || typeof source !== 'object') {
+    throw new TypeError('Chat message source must be an object.');
+  }
+
+  return {
+    sourceId: requireString(source.sourceId, 'source.sourceId'),
+    platform: requireString(source.platform, 'source.platform'),
+    broadcasterName: optionalString(source.broadcasterName),
+    channelLabel: optionalString(source.channelLabel),
+  };
 };
 
 const normalizeAuthor = (author) => {

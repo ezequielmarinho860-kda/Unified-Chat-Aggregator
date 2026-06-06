@@ -1,6 +1,7 @@
 const { EventEmitter } = require('node:events');
 const { normalizeChatMessage } = require('./chat-message');
 const { validateConnector } = require('./connectors/connector-contract');
+const { createConnectorSource } = require('./source-identity');
 
 const createChatHub = ({ connectors = [] } = {}) => {
   const events = new EventEmitter();
@@ -27,8 +28,11 @@ const createChatHub = ({ connectors = [] } = {}) => {
     events.emit('status', nextStatus);
   };
 
-  const publishMessage = (message) => {
-    const normalizedMessage = normalizeChatMessage(message);
+  const publishMessage = (message, connectorSource) => {
+    const normalizedMessage = normalizeChatMessage({
+      ...message,
+      source: message?.source ?? connectorSource,
+    });
     const previousStatus = connectorStatuses.get(normalizedMessage.platform);
 
     if (previousStatus) {
@@ -58,7 +62,11 @@ const createChatHub = ({ connectors = [] } = {}) => {
     });
 
     if (typeof connector.onMessage === 'function') {
-      connectorSubscriptions.get(connector.platform).push(connector.onMessage(publishMessage));
+      const connectorSource = createConnectorSource(connector);
+
+      connectorSubscriptions
+        .get(connector.platform)
+        .push(connector.onMessage((message) => publishMessage(message, connectorSource)));
     }
 
     if (typeof connector.onError === 'function') {

@@ -5,6 +5,8 @@ const { createChatHub } = require('../src/chat-hub');
 
 const createTestConnector = ({
   platform = 'twitch',
+  channel,
+  liveUrl,
   sendImpl = async (_text) => {},
   onConnect = async () => {},
   onDisconnect = async () => {},
@@ -13,6 +15,8 @@ const createTestConnector = ({
 
   return {
     platform,
+    channel,
+    liveUrl,
     connect: onConnect,
     disconnect: onDisconnect,
     send: sendImpl,
@@ -30,7 +34,7 @@ const createTestConnector = ({
 };
 
 test('publishes connector messages as canonical chat messages', async () => {
-  const connector = createTestConnector();
+  const connector = createTestConnector({ channel: 'monstercat' });
   const hub = createChatHub({ connectors: [connector] });
   const received = [];
 
@@ -46,8 +50,37 @@ test('publishes connector messages as canonical chat messages', async () => {
 
   assert.equal(received.length, 1);
   assert.equal(received[0].text, 'Message through the hub');
+  assert.deepEqual(received[0].source, {
+    sourceId: 'twitch:monstercat',
+    platform: 'twitch',
+    broadcasterName: undefined,
+    channelLabel: 'monstercat',
+  });
 
   await hub.stop();
+});
+
+test('preserves a source supplied by the connector', () => {
+  const connector = createTestConnector({ channel: 'monstercat' });
+  const hub = createChatHub({ connectors: [connector] });
+  const received = [];
+
+  hub.onMessage((message) => received.push(message));
+  connector.emitMessage({
+    id: 'hub-1',
+    platform: 'twitch',
+    source: {
+      sourceId: 'twitch:special-event',
+      platform: 'twitch',
+      broadcasterName: 'Special Event',
+    },
+    author: { id: 'author-1', name: 'Ana' },
+    text: 'Message through the hub',
+    timestamp: '2026-06-04T20:00:00.000Z',
+  });
+
+  assert.equal(received[0].source.sourceId, 'twitch:special-event');
+  assert.equal(received[0].source.broadcasterName, 'Special Event');
 });
 
 test('tracks connector statuses and message counts', async () => {

@@ -6,6 +6,11 @@ const CONNECTOR_METHODS = ['connect', 'disconnect', 'send'];
  * @typedef {Object} ChatMessage
  * @property {string} id
  * @property {Platform} platform
+ * @property {Object | undefined} source
+ * @property {string} source.sourceId
+ * @property {Platform} source.platform
+ * @property {string | undefined} source.broadcasterName
+ * @property {string | undefined} source.channelLabel
  * @property {Object} author
  * @property {string} author.id
  * @property {string} author.name

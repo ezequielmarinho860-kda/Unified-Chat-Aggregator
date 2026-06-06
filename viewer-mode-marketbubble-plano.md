@@ -203,6 +203,9 @@ OBS Browser Source / dock opcional
 
 **Objetivo:** distinguir plataforma de streamer/canal sem quebrar conectores.
 
+**Status:** concluido com `source` opcional no modelo canonico e preenchimento
+automatico pelo `chat-hub`.
+
 **Mudancas previstas:**
 
 - estender o modelo canonico com `source` opcional;
