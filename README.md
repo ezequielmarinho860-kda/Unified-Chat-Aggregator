@@ -13,8 +13,12 @@ desktop chat aggregator, not a fully automated moderation bot.
 ### Unified Live Feed
 
 - Displays messages from active connectors in one shared feed.
+- Highlights messages written by connected accounts and messages that mention a
+  connected account handle.
 - Normalizes incoming messages into a common shape with platform, author,
   message text, timestamp, and platform-specific metadata.
+- Renders structured message fragments so platform emotes can appear inline
+  beside normal text.
 - Shows connector status cards for Twitch, Kick, and X.
 - Shows platform badges and author badges when the platform payload provides
   badge metadata.
@@ -48,6 +52,13 @@ Read support:
 - Parses Twitch author badges from IRC tags.
 - Loads Twitch global and channel chat badge catalogs through Helix so badge
   images can be rendered in the feed.
+- Parses Twitch IRC emote tags so global and subscriber emotes render inline.
+- Loads BetterTTV global emotes through the BetterTTV API and channel/shared
+  emotes when the Twitch broadcaster ID can be resolved.
+- Applies BetterTTV emotes only to text not already recognized as a native
+  Twitch emote.
+- Keeps the BetterTTV catalog cached across automatic IRC reconnects and reloads
+  it when the Twitch connector is restarted.
 - Handles Twitch `PING` messages with `PONG`.
 
 Account connection:
@@ -58,6 +69,9 @@ Account connection:
   config.
 - Hides the connect button once the account is connected and shows a
   disconnect action instead.
+- Disconnect clears the saved Twitch token and account identity from the app.
+- `Clear login session` clears the Twitch OAuth browser session when the user
+  wants the next connect to choose a different Twitch account.
 - Does not expose the raw access token to the renderer/public config snapshot.
 
 Write support:
@@ -108,8 +122,12 @@ Read support:
 - Resolves Kick chatroom IDs through Kick HTTP endpoints.
 - Falls back to an Electron browser resolver when the HTTP resolver is blocked.
 - Connects to Kick's Pusher websocket channel for the resolved chatroom.
+- Resolves and saves the Kick chatroom ID automatically when the channel is
+  changed and the connector settings are saved.
 - Parses Kick Pusher chat events into the normalized chat message model.
 - Parses Kick author badge metadata from common Pusher payload locations.
+- Parses Kick emotes from Pusher payload metadata and Kick emote markup when an
+  emote ID/image can be resolved.
 - Renders Kick badge images when the payload provides image URLs or when a known
   global badge can be mapped to the current fallback catalog.
 - Deduplicates repeated Kick chat message IDs so reconnect or duplicate Pusher
@@ -136,6 +154,9 @@ Write support:
 - Uses the build's configured Kick Client ID and OAuth Broker URL by default.
 - Stores the Kick access token, refresh token, and account identity locally in
   the app config.
+- Disconnect clears the saved Kick tokens and account identity from the app.
+- `Clear login session` clears the Kick OAuth browser session when the user
+  wants the next connect to choose a different Kick account.
 - Refreshes Kick access tokens when a send receives an unauthorized response and
   a refresh token is available.
 - Reports Kick permission failures with a clearer message when the channel may
@@ -154,23 +175,36 @@ Badge note:
 
 ### X
 
-Current X support is read-only and browser-capture based.
+Current X support is browser-capture based.
 
 Read support:
 
-- Accepts an X/Twitter live URL.
+- Accepts an X/Twitter live chat URL, broadcast URL, or handle such as
+  `@chooserich`.
+- Converts handles into `https://x.com/<handle>/livechat` for capture.
 - Opens a dedicated Electron capture window for the configured live URL.
 - Can run the capture window hidden or visible, based on the `Show capture
   window` setting.
 - Uses a persistent browser partition for the X capture session.
+- Provides a `Connect X` button that opens a visible X login window using the
+  same persistent browser partition as the capture session.
+- Shows whether that browser partition currently has an X login cookie.
+- Provides a `Disconnect` action for X that clears the capture browser session
+  and restarts only the X connector.
 - Sends captured chat messages from the capture preload back to the main app.
 - Normalizes captured X messages into the shared chat message model.
+- Suppresses the initial captured chat backlog so the feed starts with new
+  messages after the capture session begins.
 
-Current limitation:
+Write support:
 
-- Sending messages to X is not implemented yet.
-- The current connector throws `X write is not configured. Browser composer
-  injection is pending.` when the app tries to send to X.
+- Sends messages by injecting text into the X live chat composer in the capture
+  browser session.
+- Requires the persistent X capture session to be logged into an account that
+  can chat in the live. Use `Connect X` to open the login window for that
+  browser session.
+- Treats X write as best-effort because it depends on X's browser DOM and chat
+  composer behavior rather than an official public chat API.
 
 ## App Architecture
 
@@ -261,7 +295,7 @@ The saved config includes:
 - Kick channel;
 - Kick chatroom ID;
 - Kick OAuth account data;
-- X live URL;
+- X live URL, live chat URL, or handle;
 - X capture window visibility preference.
 
 Twitch and Kick access tokens are saved locally in this config file. Kick Client
@@ -284,7 +318,7 @@ Supported variables:
 | `TWITCH_CLIENT_ID` | Overrides the Twitch Client ID. |
 | `KICK_CHANNEL` | Overrides the Kick channel before saved config exists. |
 | `KICK_CHATROOM_ID` | Provides a Kick chatroom ID manually. |
-| `X_LIVE_URL` | Sets the X live URL and enables X before saved config exists. |
+| `X_LIVE_URL` | Sets the X live URL, live chat URL, or handle and enables X before saved config exists. |
 | `X_SHOW_BROWSER` | Shows the X capture window when set to `true`. |
 
 After a saved config file exists, the app prioritizes saved configuration on
@@ -355,7 +389,10 @@ Important test areas:
 
 ## Current Known Gaps
 
-- X write support is not implemented.
+- BetterTTV integration currently applies only to Twitch because BetterTTV's
+  documented provider list does not include Kick.
+- X write support is best-effort browser composer injection, not an official
+  API integration.
 - X account connection is handled through the capture browser session, not a
   first-class OAuth flow.
 - Twitch slash commands are limited to the supported command list above.
