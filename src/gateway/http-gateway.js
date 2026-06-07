@@ -1,4 +1,6 @@
 const http = require('node:http');
+const fs = require('node:fs/promises');
+const path = require('node:path');
 const { WebSocketServer, WebSocket } = require('ws');
 const { createPublicEvent } = require('../public-realtime');
 
@@ -6,7 +8,15 @@ const GATEWAY_HOST = '127.0.0.1';
 const DEFAULT_GATEWAY_PORT = 47831;
 const SNAPSHOT_PATH = '/api/v1/snapshot';
 const EVENTS_PATH = '/api/v1/events';
+const VIEWER_PATH = '/viewer';
+const VIEWER_ASSETS = new Map([
+  [VIEWER_PATH, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
+  [`${VIEWER_PATH}/`, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
+  [`${VIEWER_PATH}/viewer-mode.css`, { file: 'viewer-mode.css', contentType: 'text/css; charset=utf-8' }],
+  [`${VIEWER_PATH}/viewer-mode.js`, { file: 'viewer-mode.js', contentType: 'text/javascript; charset=utf-8' }],
+]);
 const DEFAULT_HEARTBEAT_MS = 30_000;
+const VIEWER_ASSET_DIR = path.join(__dirname, '..', 'viewer');
 
 const createHttpGateway = ({
   getSnapshot,
@@ -163,11 +173,20 @@ const closeWebSocketClients = (webSocketServer) => {
 const handleRequest = async (request, response, getSnapshot) => {
   const url = new URL(request.url ?? '/', `http://${GATEWAY_HOST}`);
 
-  if (url.pathname !== SNAPSHOT_PATH) {
-    sendJson(response, 404, { error: 'Not found.' });
+  if (url.pathname === SNAPSHOT_PATH) {
+    await handleSnapshotRequest(request, response, getSnapshot);
     return;
   }
 
+  if (VIEWER_ASSETS.has(url.pathname)) {
+    await handleViewerAssetRequest(request, response, url.pathname);
+    return;
+  }
+
+  sendJson(response, 404, { error: 'Not found.' });
+};
+
+const handleSnapshotRequest = async (request, response, getSnapshot) => {
   if (request.method !== 'GET') {
     response.setHeader('Allow', 'GET');
     sendJson(response, 405, { error: 'Method not allowed.' });
@@ -181,16 +200,38 @@ const handleRequest = async (request, response, getSnapshot) => {
   }
 };
 
+const handleViewerAssetRequest = async (request, response, pathname) => {
+  if (request.method !== 'GET') {
+    response.setHeader('Allow', 'GET');
+    sendJson(response, 405, { error: 'Method not allowed.' });
+    return;
+  }
+
+  const asset = VIEWER_ASSETS.get(pathname);
+
+  try {
+    const body = await fs.readFile(path.join(VIEWER_ASSET_DIR, asset.file));
+
+    sendResponse(response, 200, body, asset.contentType);
+  } catch {
+    sendJson(response, 500, { error: 'Viewer asset unavailable.' });
+  }
+};
+
 const sendJson = (response, statusCode, body) => {
   const payload = JSON.stringify(body);
 
+  sendResponse(response, statusCode, payload, 'application/json; charset=utf-8');
+};
+
+const sendResponse = (response, statusCode, body, contentType) => {
   response.writeHead(statusCode, {
     'Cache-Control': 'no-store',
-    'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(payload),
+    'Content-Type': contentType,
+    'Content-Length': Buffer.byteLength(body),
     'X-Content-Type-Options': 'nosniff',
   });
-  response.end(payload);
+  response.end(body);
 };
 
 const listen = (server, port) =>
@@ -222,6 +263,9 @@ const getAddress = (server) => {
     snapshotUrl: `http://${GATEWAY_HOST}:${
       typeof address === 'object' && address ? address.port : DEFAULT_GATEWAY_PORT
     }${SNAPSHOT_PATH}`,
+    viewerUrl: `http://${GATEWAY_HOST}:${
+      typeof address === 'object' && address ? address.port : DEFAULT_GATEWAY_PORT
+    }${VIEWER_PATH}`,
     eventsUrl: `ws://${GATEWAY_HOST}:${
       typeof address === 'object' && address ? address.port : DEFAULT_GATEWAY_PORT
     }${EVENTS_PATH}`,
@@ -243,5 +287,6 @@ module.exports = {
   EVENTS_PATH,
   GATEWAY_HOST,
   SNAPSHOT_PATH,
+  VIEWER_PATH,
   createHttpGateway,
 };

@@ -367,11 +367,22 @@ Realtime events are available over WebSocket at:
 ws://127.0.0.1:47831/api/v1/events
 ```
 
+The first browser-native Viewer Mode shell is served locally at:
+
+```text
+http://127.0.0.1:47831/viewer
+```
+
+The page consumes only the public gateway contract. It bootstraps from the
+snapshot endpoint, reconnects to the realtime WebSocket when needed, and renders
+new combined chat messages as a read-only feed with platform, source, author,
+badges, emotes, timestamp, and a bounded in-memory list.
+
 The gateway binds only to the local loopback address, accepts only `GET` on the
-versioned snapshot route, and serializes responses through a public allowlist.
-It does not expose chat sending, moderation actions, tokens, raw platform
-payloads, local config paths, or environment override details. Browser
-WebSocket connections are accepted only from loopback origins.
+versioned snapshot and Viewer Mode routes, and serializes realtime responses
+through a public allowlist. It does not expose chat sending, moderation actions,
+tokens, raw platform payloads, local config paths, or environment override
+details. Browser WebSocket connections are accepted only from loopback origins.
 
 ## Development Setup
 

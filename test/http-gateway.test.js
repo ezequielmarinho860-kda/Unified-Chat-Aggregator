@@ -22,16 +22,48 @@ test('serves the public snapshot on the versioned read-only endpoint', async () 
   }
 });
 
+test('serves the browser-native viewer mode shell and assets', async () => {
+  const gateway = createHttpGateway({ getSnapshot: () => ({}), port: 0 });
+
+  try {
+    const address = await gateway.start();
+    const viewerResponse = await fetch(address.viewerUrl);
+    const scriptResponse = await fetch(`http://${address.host}:${address.port}/viewer/viewer-mode.js`);
+    const styleResponse = await fetch(`http://${address.host}:${address.port}/viewer/viewer-mode.css`);
+    const html = await viewerResponse.text();
+    const script = await scriptResponse.text();
+
+    assert.equal(viewerResponse.status, 200);
+    assert.match(viewerResponse.headers.get('content-type'), /^text\/html/);
+    assert.match(html, /Viewer Mode/);
+    assert.match(html, /data-chat-list/);
+    assert.doesNotMatch(html, /window\.chatAggregator/);
+    assert.equal(scriptResponse.status, 200);
+    assert.match(scriptResponse.headers.get('content-type'), /^text\/javascript/);
+    assert.match(script, /new WebSocket/);
+    assert.match(script, /chat\.message/);
+    assert.match(script, /MAX_MESSAGES/);
+    assert.doesNotMatch(script, /window\.chatAggregator/);
+    assert.equal(styleResponse.status, 200);
+    assert.match(styleResponse.headers.get('content-type'), /^text\/css/);
+  } finally {
+    await gateway.stop();
+  }
+});
+
 test('rejects write methods and unknown routes', async () => {
   const gateway = createHttpGateway({ getSnapshot: () => ({}), port: 0 });
 
   try {
     const address = await gateway.start();
     const writeResponse = await fetch(address.snapshotUrl, { method: 'POST' });
+    const viewerWriteResponse = await fetch(address.viewerUrl, { method: 'POST' });
     const missingResponse = await fetch(`http://${address.host}:${address.port}/api/v1/missing`);
 
     assert.equal(writeResponse.status, 405);
     assert.equal(writeResponse.headers.get('allow'), 'GET');
+    assert.equal(viewerWriteResponse.status, 405);
+    assert.equal(viewerWriteResponse.headers.get('allow'), 'GET');
     assert.equal(missingResponse.status, 404);
   } finally {
     await gateway.stop();

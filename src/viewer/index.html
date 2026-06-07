@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; script-src 'self'; style-src 'self'; img-src 'self' https: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+    <title>Viewer Mode</title>
+    <link rel="stylesheet" href="/viewer/viewer-mode.css">
+    <script src="/viewer/viewer-mode.js" defer></script>
+  </head>
+  <body>
+    <main class="viewer-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Viewer Mode</p>
+          <h1 data-viewer-title>Unified Chat Aggregator</h1>
+          <p class="hero-copy">Browser-native shell consuming only the public local gateway.</p>
+        </div>
+        <div class="connection-card" data-connection-state="loading">
+          <span class="status-dot" aria-hidden="true"></span>
+          <div>
+            <strong data-connection-label>Loading snapshot</strong>
+            <span data-connection-detail>Preparing realtime connection.</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="layout-grid" aria-label="Viewer layout">
+        <article class="panel player-panel">
+          <p class="panel-kicker">Player</p>
+          <h2>Reserved player area</h2>
+          <p>Twitch embed and provider adapters start in the next Viewer Mode blocks.</p>
+        </article>
+
+        <aside class="panel stats-panel" aria-live="polite">
+          <p class="panel-kicker">Viewers</p>
+          <strong class="viewer-total" data-viewer-total>0</strong>
+          <span class="muted">combined available viewers</span>
+          <div class="source-list" data-source-list></div>
+        </aside>
+
+        <article class="panel chat-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">Combined Chat</p>
+              <h2>Live read-only feed</h2>
+            </div>
+            <span class="message-count"><span data-message-count>0</span> live messages seen</span>
+          </div>
+          <div class="chat-list" data-chat-list aria-live="polite" aria-label="Combined chat messages">
+            <div class="empty-state" data-chat-empty>
+              Waiting for new public chat messages from the realtime gateway.
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

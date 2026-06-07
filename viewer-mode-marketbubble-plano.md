@@ -377,6 +377,10 @@ heartbeat e publicacao de mensagens, status e viewers.
 
 **Objetivo:** provar que a UI roda em browser comum sem APIs do Electron.
 
+**Status:** concluido com shell estatico servido pelo gateway local em
+`/viewer`, bootstrap por `GET /api/v1/snapshot` e cliente WebSocket em
+`/api/v1/events`.
+
 **Mudancas previstas:**
 
 - pagina Viewer Mode simples servida pelo gateway local;
@@ -408,6 +412,9 @@ heartbeat e publicacao de mensagens, status e viewers.
 ## Bloco C2 - Renderizar chat combinado somente leitura
 
 **Objetivo:** entregar o principal valor para o espectador.
+
+**Status:** concluido com lista read-only em tempo real, labels de plataforma e
+origem, autor, timestamp, badges, emotes, limite em memoria e estado vazio.
 
 **Mudancas previstas:**
 
