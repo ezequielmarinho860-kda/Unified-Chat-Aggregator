@@ -85,8 +85,30 @@ const serializePublicSnapshot = (
 
 const serializePublicManifest = (manifest = {}, sources = {}) => ({
   title: optionalString(manifest.title) ?? 'Unified Chat Aggregator',
-  sources: Object.values(sources).map(serializePublicSource),
+  sources: Object.values(sources).map(serializePublicManifestSource),
 });
+
+const serializePublicManifestSource = (source) =>
+  compactObject({
+    ...serializePublicSource(source),
+    watchUrl: optionalString(source.watchUrl),
+    player: serializePublicPlayer(source.player),
+  });
+
+const serializePublicPlayer = (player) => {
+  if (!player || typeof player !== 'object') {
+    return undefined;
+  }
+
+  if (player.provider !== 'twitch') {
+    return undefined;
+  }
+
+  return {
+    provider: 'twitch',
+    channel: requireString(player.channel, 'player.channel'),
+  };
+};
 
 const serializePublicViewer = (viewer, sources) => {
   const state = requireString(viewer.state, 'viewer.state');

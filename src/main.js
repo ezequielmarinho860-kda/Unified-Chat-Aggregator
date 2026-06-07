@@ -16,7 +16,7 @@ const {
   serializePublicStatus,
   serializePublicViewers,
 } = require('./public-realtime');
-const { createConnectorSource } = require('./source-identity');
+const { createPublicViewerSources } = require('./public-viewer-sources');
 const { createViewerMonitor } = require('./viewer-monitor');
 const {
   createRefreshingKickViewerFetcher,
@@ -239,18 +239,7 @@ const getPublicRealtimeSnapshot = () => {
 };
 
 const createPublicSources = (config = {}) =>
-  Object.fromEntries(
-    PLATFORM_ORDER.flatMap((platform) => {
-      const connectorConfig = config.connectors?.[platform];
-
-      if (!connectorConfig?.enabled) {
-        return [];
-      }
-
-      const source = createConnectorSource({ platform, ...connectorConfig });
-      return source ? [[platform, source]] : [];
-    }),
-  );
+  createPublicViewerSources(config);
 
 const startHttpGateway = async () => {
   try {

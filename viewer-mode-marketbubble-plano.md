@@ -482,6 +482,10 @@ desabilitadas continuam omitidas quando o snapshot publico nao as publica.
 
 **Objetivo:** demonstrar live + chat combinado para espectadores.
 
+**Status:** concluido com config publica de player Twitch no manifesto, embed no
+Viewer Mode usando `parent` do host local e fallback para abrir o canal na
+Twitch.
+
 **Mudancas previstas:**
 
 - contrato publico de player/configuracao;

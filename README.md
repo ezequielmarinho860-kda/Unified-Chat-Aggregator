@@ -379,13 +379,20 @@ new combined chat messages as a read-only feed with platform, source, author,
 badges, emotes, timestamp, and a bounded in-memory list. It also shows combined
 and per-source viewer counts, viewer availability states, inferred zero-viewer
 offline state, connector state, and the latest viewer update timestamp available
-in the public snapshot.
+in the public snapshot. When a Twitch connector is enabled, the public manifest
+includes a Twitch player config and the Viewer Mode embeds the Twitch player
+with a fallback link to open the channel on Twitch.
 
 The gateway binds only to the local loopback address, accepts only `GET` on the
 versioned snapshot and Viewer Mode routes, and serializes realtime responses
 through a public allowlist. It does not expose chat sending, moderation actions,
 tokens, raw platform payloads, local config paths, or environment override
 details. Browser WebSocket connections are accepted only from loopback origins.
+
+Twitch embeds require a `parent` parameter matching the page host. The local
+Viewer Mode derives that from the current browser hostname. A future hosted
+Viewer Mode must serve over HTTPS and use the production MarketBubble domain as
+the Twitch embed parent.
 
 ## Development Setup
 

@@ -14,6 +14,8 @@ const sources = {
     sourceId: 'twitch:monstercat',
     platform: 'twitch',
     channelLabel: 'monstercat',
+    watchUrl: 'https://www.twitch.tv/monstercat',
+    player: { provider: 'twitch', channel: 'monstercat', clientSecret: 'player-secret' },
     accessToken: 'source-secret',
   },
 };
@@ -71,6 +73,26 @@ test('serializes chat messages by allowlist', () => {
     timestamp: '2026-06-06T20:00:00.000Z',
   });
   assert.doesNotMatch(JSON.stringify(message), /secret|raw|accessToken/);
+});
+
+test('serializes public manifest player config by allowlist', () => {
+  const snapshot = serializePublicSnapshot(
+    {
+      manifest: { title: 'MarketBubble Demo' },
+    },
+    { sources, generatedAt: '2026-06-06T20:00:00.000Z' },
+  );
+
+  assert.deepEqual(snapshot.manifest.sources, [
+    {
+      sourceId: 'twitch:monstercat',
+      platform: 'twitch',
+      channelLabel: 'monstercat',
+      watchUrl: 'https://www.twitch.tv/monstercat',
+      player: { provider: 'twitch', channel: 'monstercat' },
+    },
+  ]);
+  assert.doesNotMatch(JSON.stringify(snapshot), /secret|accessToken/);
 });
 
 test('rejects public chat messages without a source identity', () => {

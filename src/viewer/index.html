@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; script-src 'self'; style-src 'self'; img-src 'self' https: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; script-src 'self'; style-src 'self'; img-src 'self' https: data:; frame-src https://player.twitch.tv; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
     <title>Viewer Mode</title>
     <link rel="stylesheet" href="/viewer/viewer-mode.css">
     <script src="/viewer/viewer-mode.js" defer></script>
@@ -26,10 +26,9 @@
       </header>
 
       <section class="layout-grid" aria-label="Viewer layout">
-        <article class="panel player-panel">
+        <article class="panel player-panel" data-player-panel>
           <p class="panel-kicker">Player</p>
-          <h2>Reserved player area</h2>
-          <p>Twitch embed and provider adapters start in the next Viewer Mode blocks.</p>
+          <div class="empty-state">Waiting for a public Twitch player config.</div>
         </article>
 
         <aside class="panel stats-panel" aria-live="polite">

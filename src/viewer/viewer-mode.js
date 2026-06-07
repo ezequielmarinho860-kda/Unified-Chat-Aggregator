@@ -15,6 +15,7 @@
     connectionCard: document.querySelector('.connection-card'),
     connectionLabel: document.querySelector('[data-connection-label]'),
     connectionDetail: document.querySelector('[data-connection-detail]'),
+    playerPanel: document.querySelector('[data-player-panel]'),
     viewerTotal: document.querySelector('[data-viewer-total]'),
     viewerUpdated: document.querySelector('[data-viewer-updated]'),
     sourceList: document.querySelector('[data-source-list]'),
@@ -170,6 +171,7 @@
     elements.viewerTotal.textContent = formatNumber(snapshot.viewers?.total ?? 0);
     elements.viewerUpdated.textContent = formatViewerUpdated(snapshot.viewers);
     elements.messageCount.textContent = formatNumber(state.messageCount);
+    elements.playerPanel.replaceChildren(...createPlayerElements(snapshot.manifest));
     elements.sourceList.replaceChildren(...createSourceElements(snapshot));
     elements.chatList.replaceChildren(...createChatElements());
 
@@ -194,6 +196,64 @@
     }
 
     return rows.size > 0 ? [...rows.values()].map(createSourceElement) : [createEmptySourceElement()];
+  };
+
+  const createPlayerElements = (manifest = {}) => {
+    const source = (manifest.sources ?? []).find(
+      (candidate) => candidate.player?.provider === 'twitch' && candidate.player.channel,
+    );
+
+    if (!source) {
+      return [createPlayerFallback('No Twitch player is configured yet.')];
+    }
+
+    const title = document.createElement('h2');
+    const frameWrap = document.createElement('div');
+    const frame = document.createElement('iframe');
+    const fallback = document.createElement('p');
+    const link = document.createElement('a');
+
+    title.textContent = source.channelLabel ?? source.player.channel;
+    frameWrap.className = 'player-frame-wrap';
+    frame.className = 'player-frame';
+    frame.src = createTwitchPlayerUrl(source.player.channel);
+    frame.title = `Twitch player for ${source.channelLabel ?? source.player.channel}`;
+    frame.allow = 'autoplay; fullscreen; picture-in-picture';
+    frame.allowFullscreen = true;
+    link.href = source.watchUrl ?? `https://www.twitch.tv/${source.player.channel}`;
+    link.target = '_blank';
+    link.rel = 'noreferrer';
+    link.textContent = 'Open on Twitch';
+    fallback.className = 'player-fallback';
+    fallback.append('If the embedded player is unavailable, ', link, '.');
+    frameWrap.append(frame);
+
+    return [createPanelKicker('Player'), title, frameWrap, fallback];
+  };
+
+  const createPlayerFallback = (message) => {
+    const fallback = document.createElement('div');
+
+    fallback.className = 'empty-state';
+    fallback.textContent = message;
+    return fallback;
+  };
+
+  const createPanelKicker = (text) => {
+    const kicker = document.createElement('p');
+
+    kicker.className = 'panel-kicker';
+    kicker.textContent = text;
+    return kicker;
+  };
+
+  const createTwitchPlayerUrl = (channel) => {
+    const url = new URL('https://player.twitch.tv/');
+
+    url.searchParams.set('channel', channel);
+    url.searchParams.set('parent', window.location.hostname);
+    url.searchParams.set('muted', 'true');
+    return url.toString();
   };
 
   const mergeSourceRow = (rows, source, patch) => {
