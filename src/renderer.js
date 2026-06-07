@@ -53,6 +53,128 @@ const view = document.body.classList.contains('dashboard-view') ? 'dashboard' : 
 
 document.title = view === 'setup' ? 'Connector Setup' : title;
 
+const CHAT_SCROLL_DEBUG_LIMIT = 80;
+const CHAT_BOTTOM_TOLERANCE_PX = 120;
+
+const getFeedScrollMetrics = () => {
+  if (!messageFeed) {
+    return {};
+  }
+
+  const remaining = messageFeed.scrollHeight - messageFeed.clientHeight - messageFeed.scrollTop;
+
+  return {
+    clientHeight: Math.round(messageFeed.clientHeight),
+    remaining: Math.round(remaining),
+    scrollHeight: Math.round(messageFeed.scrollHeight),
+    scrollTop: Math.round(messageFeed.scrollTop),
+  };
+};
+
+const chatScrollDebug = (() => {
+  let enabled = new URLSearchParams(window.location.search).has('debugChat');
+  const entries = [];
+
+  try {
+    enabled = enabled || window.localStorage.getItem('chatScrollDebug') === '1';
+  } catch {
+    enabled = Boolean(enabled);
+  }
+
+  const api = {
+    clear() {
+      entries.length = 0;
+    },
+    disable() {
+      enabled = false;
+      try {
+        window.localStorage.removeItem('chatScrollDebug');
+      } catch {
+        // localStorage can be unavailable in restricted browser contexts.
+      }
+    },
+    dump() {
+      const snapshot = api.getLog();
+
+      console.table(snapshot);
+      return snapshot;
+    },
+    enable() {
+      enabled = true;
+      try {
+        window.localStorage.setItem('chatScrollDebug', '1');
+      } catch {
+        // localStorage can be unavailable in restricted browser contexts.
+      }
+
+      api.log('debug_enabled');
+    },
+    getLog() {
+      return entries.map((entry) => formatChatScrollDebugEntry(entry));
+    },
+    log(event, details = {}) {
+      if (!enabled) {
+        return;
+      }
+
+      const entry = {
+        at: new Date().toISOString(),
+        event,
+        feedPinnedToBottom,
+        metrics: getFeedScrollMetrics(),
+        unseenMessageCount,
+        view,
+        ...details,
+      };
+
+      entries.push(entry);
+
+      while (entries.length > CHAT_SCROLL_DEBUG_LIMIT) {
+        entries.shift();
+      }
+
+      console.debug('[chat-scroll]', entry);
+    },
+  };
+
+  window.__chatScrollDebug = api;
+  window.chatScrollDebug = api;
+  return api;
+})();
+
+const formatChatScrollDebugEntry = (entry) => ({
+  at: entry.at,
+  event: entry.event,
+  from: entry.from,
+  to: entry.to,
+  reason: entry.reason,
+  remaining: entry.metrics?.remaining,
+  scrollTop: entry.metrics?.scrollTop,
+  scrollHeight: entry.metrics?.scrollHeight,
+  clientHeight: entry.metrics?.clientHeight,
+  pinned: entry.feedPinnedToBottom,
+  unseen: entry.unseenMessageCount,
+  trusted: entry.isTrusted,
+  messageId: entry.messageId,
+  platform: entry.platform,
+  stick: entry.shouldStickToBottom ?? entry.stickToBottom,
+});
+
+const setFeedPinnedToBottom = (nextPinnedToBottom, reason, details = {}) => {
+  const normalizedPinnedToBottom = Boolean(nextPinnedToBottom);
+
+  if (feedPinnedToBottom !== normalizedPinnedToBottom) {
+    chatScrollDebug.log('pinned_change', {
+      from: feedPinnedToBottom,
+      reason,
+      to: normalizedPinnedToBottom,
+      ...details,
+    });
+  }
+
+  feedPinnedToBottom = normalizedPinnedToBottom;
+};
+
 const platformLabels = {
   twitch: 'Twitch',
   kick: 'Kick',
@@ -104,7 +226,7 @@ const isFeedScrolledToBottom = () => {
   const remainingScroll =
     messageFeed.scrollHeight - messageFeed.clientHeight - messageFeed.scrollTop;
 
-  return remainingScroll <= 2;
+  return remainingScroll <= CHAT_BOTTOM_TOLERANCE_PX;
 };
 
 const isAutoscrollEnabled = () => feedPinnedToBottom;
@@ -116,6 +238,27 @@ const updateResumeChatControl = () => {
 
   resumeChat.hidden = unseenMessageCount === 0 || feedPinnedToBottom;
   resumeChat.textContent = formatUnseenMessageCount(unseenMessageCount);
+};
+
+const scrollFeedToBottom = () => {
+  setFeedPinnedToBottom(true, 'scroll_to_bottom');
+  unseenMessageCount = 0;
+  messageFeed.scrollTop = messageFeed.scrollHeight;
+  updateResumeChatControl();
+};
+
+const maintainFeedBottomAfterMediaLoad = () => {
+  if (!feedPinnedToBottom) {
+    return;
+  }
+
+  window.requestAnimationFrame(() => {
+    if (!feedPinnedToBottom) {
+      return;
+    }
+
+    scrollFeedToBottom();
+  });
 };
 
 const formatUnseenMessageCount = (count) => {
@@ -326,6 +469,11 @@ const renderChatEmote = (fragment) => {
   const image = document.createElement('img');
 
   image.className = 'chat-emote';
+  image.addEventListener('load', maintainFeedBottomAfterMediaLoad, { once: true });
+  if (isExtensionEmote(fragment)) {
+    image.classList.add('chat-emote--extension');
+    image.addEventListener('load', () => markLargeExtensionEmote(image), { once: true });
+  }
   image.src = fragment.imageUrl;
   image.alt = fragment.text;
   image.title = fragment.text;
@@ -336,6 +484,26 @@ const renderChatEmote = (fragment) => {
   });
 
   return image;
+};
+
+const markLargeExtensionEmote = (image) => {
+  const { naturalHeight, naturalWidth } = image;
+
+  if (naturalHeight > 72 || naturalWidth > 144 || naturalHeight > naturalWidth * 1.25) {
+    image.classList.add('chat-emote--large');
+  }
+};
+
+const isExtensionEmote = (fragment) => {
+  const id = String(fragment.id ?? '');
+  const imageUrl = String(fragment.imageUrl ?? '');
+
+  return (
+    id.startsWith('bttv:') ||
+    id.startsWith('7tv:') ||
+    imageUrl.includes('cdn.betterttv.net') ||
+    imageUrl.includes('cdn.7tv.app')
+  );
 };
 
 const renderAuthorAvatar = (message) => {
@@ -420,9 +588,7 @@ const renderFeed = ({ stickToBottom = isAutoscrollEnabled() } = {}) => {
       : `No ${platformLabels[activeFilter] ?? activeFilter} messages.`;
 
   if (stickToBottom) {
-    messageFeed.scrollTop = messageFeed.scrollHeight;
-    feedPinnedToBottom = true;
-    unseenMessageCount = 0;
+    scrollFeedToBottom();
   } else {
     messageFeed.scrollTop = previousScrollTop;
   }
@@ -718,6 +884,12 @@ window.chatAggregator?.onChatMessage((message) => {
 
   if (!shouldStickToBottom && isMessageVisibleInActiveFilter(message)) {
     unseenMessageCount += 1;
+    chatScrollDebug.log('message_buffered', {
+      messageId: message.id,
+      platform: message.platform,
+      shouldStickToBottom,
+      unseenMessageCount,
+    });
   }
 
   renderFeed({ stickToBottom: shouldStickToBottom });
@@ -731,7 +903,7 @@ platformFilter?.addEventListener('click', (event) => {
   }
 
   activeFilter = button.dataset.filterPlatform;
-  feedPinnedToBottom = true;
+  setFeedPinnedToBottom(true, 'filter_click', { activeFilter });
   unseenMessageCount = 0;
 
   for (const filterButton of platformFilter.querySelectorAll('.filter-button')) {
@@ -742,14 +914,14 @@ platformFilter?.addEventListener('click', (event) => {
 });
 
 resumeChat?.addEventListener('click', () => {
-  feedPinnedToBottom = true;
-  unseenMessageCount = 0;
-  messageFeed.scrollTop = messageFeed.scrollHeight;
-  updateResumeChatControl();
+  chatScrollDebug.log('resume_click');
+  scrollFeedToBottom();
 });
 
-messageFeed?.addEventListener('scroll', () => {
-  feedPinnedToBottom = isFeedScrolledToBottom();
+messageFeed?.addEventListener('scroll', (event) => {
+  setFeedPinnedToBottom(isFeedScrolledToBottom(), 'scroll', {
+    isTrusted: event.isTrusted,
+  });
 
   if (feedPinnedToBottom) {
     unseenMessageCount = 0;
@@ -758,11 +930,20 @@ messageFeed?.addEventListener('scroll', () => {
   updateResumeChatControl();
 });
 
+messageFeed?.addEventListener('wheel', (event) => {
+  if (event.deltaY >= 0) {
+    return;
+  }
+
+  setFeedPinnedToBottom(false, 'wheel_up', { deltaY: event.deltaY });
+  updateResumeChatControl();
+});
+
 clearFeed?.addEventListener('click', () => {
   messages.length = 0;
   totalMessages = 0;
   unseenMessageCount = 0;
-  feedPinnedToBottom = true;
+  setFeedPinnedToBottom(true, 'clear_feed');
   platformCounts.clear();
   renderFeed({ stickToBottom: true });
 });

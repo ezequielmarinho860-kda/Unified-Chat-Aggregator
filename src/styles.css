@@ -873,11 +873,21 @@ h1 {
 
 .chat-emote {
   display: inline-block;
-  width: 28px;
   height: 28px;
+  max-width: 112px;
   margin: 0 2px;
   object-fit: contain;
   vertical-align: middle;
+  width: auto;
+}
+
+.chat-emote--extension {
+  max-width: 128px;
+}
+
+.chat-emote--large {
+  height: 38px;
+  max-width: 152px;
 }
 
 @media (max-width: 760px) {

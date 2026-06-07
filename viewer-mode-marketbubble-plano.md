@@ -24,9 +24,14 @@ Ja existe:
 
 - leitura unificada de Twitch, Kick e X;
 - envio de mensagens para Twitch, Kick e X;
+- emotes nativos Twitch, BetterTTV e 7TV no pipeline Twitch;
 - badge de plataforma em cada mensagem;
 - dashboard local com chat combinado;
 - contagens individuais e total combinado de viewers;
+- gateway local HTTP/WebSocket somente leitura;
+- Viewer Mode browser-native servido em `/viewer`;
+- player Twitch embutido no Viewer Mode com fallback externo para providers sem
+  embed aprovado;
 - configuracao persistida localmente;
 - janelas separadas de setup e dashboard;
 - modelo canonico de mensagem e camada `chat-hub`;
@@ -34,16 +39,17 @@ Ja existe:
 
 Ainda nao existe:
 
-- servidor HTTP ou WebSocket para consumidores externos;
-- pagina web publica ou Viewer Mode;
-- player de live no dashboard;
+- cliente de transporte substituivel para trocar gateway local por backend
+  MarketBubble;
+- guia de integracao MarketBubble;
+- overlay ou dock para OBS;
 - conceito consistente de stream, transmissao ou streamer de origem no modelo
   canonico;
 - suporte a mais de um canal por plataforma;
 - historico de chat persistente;
 - autenticacao para espectadores;
 - conector de chat nativo do MarketBubble;
-- overlay ou dock para OBS.
+- player de live no dashboard Electron.
 
 ## 2. Inconsistencias e limites que afetam o plano
 
@@ -414,7 +420,10 @@ heartbeat e publicacao de mensagens, status e viewers.
 **Objetivo:** entregar o principal valor para o espectador.
 
 **Status:** concluido com lista read-only em tempo real, labels de plataforma e
-origem, autor, timestamp, badges, emotes, limite em memoria e estado vazio.
+origem, autor, timestamp, badges, emotes, limite em memoria, estado vazio,
+visual alinhado ao chat do app, pausa automatica ao subir o scroll, botao de
+novas mensagens para voltar ao live edge e renderizacao em lote para reduzir
+lag quando a aba do browser volta do segundo plano.
 
 **Mudancas previstas:**
 
@@ -423,6 +432,9 @@ origem, autor, timestamp, badges, emotes, limite em memoria e estado vazio.
 - autor, texto, timestamp, badges e emotes suportados pelo contrato;
 - limite de mensagens em memoria;
 - autoscroll e estado vazio.
+- pausa por scroll e retorno ao live edge sem botao manual de pause;
+- renderizacao agendada por frame para evitar redesenhos repetidos em lotes de
+  eventos.
 
 **Nao inclui:**
 
@@ -448,16 +460,16 @@ origem, autor, timestamp, badges, emotes, limite em memoria e estado vazio.
 
 **Objetivo:** completar a parte quantitativa da visao do post.
 
-**Status:** concluido com total combinado, cards por origem publica, estados de
-viewers, inferencia visual de zero viewers/offline e ultima atualizacao. Fontes
-desabilitadas continuam omitidas quando o snapshot publico nao as publica.
+**Status:** concluido com total combinado e cards compactos no topo do Viewer
+Mode, alinhados ao visual do app. Os cards por plataforma somam sources publicas
+da mesma plataforma e exibem Twitch, Kick, X e Total.
 
 **Mudancas previstas:**
 
-- cards de viewers por origem disponivel;
+- cards de viewers por plataforma no topo do Viewer Mode;
 - total combinado;
 - estados indisponivel, offline e desabilitado;
-- indicador de ultima atualizacao.
+- soma de multiplas sources publicas da mesma plataforma.
 
 **Nao inclui:**
 
@@ -578,6 +590,43 @@ JSON para demo local e integracao futura MarketBubble.
 - build do frontend, se aplicavel.
 
 **Commit sugerido:** `feat: define public viewer mode manifest`
+
+## Bloco D1.5 - Estabilizar Viewer Mode para demo local
+
+**Objetivo:** tornar a demo web mais apresentavel e robusta antes de isolar o
+transporte.
+
+**Status:** concluido com topbar compacta de viewers no estilo do app, player
+com mais espaco visual, chat mais compacto, remocao de textos grandes
+temporarios do shell, pausa por scroll, botao de novas mensagens, renderizacao
+em lote por frame e fallback de assets do Viewer servido pelo gateway.
+
+**Mudancas realizadas:**
+
+- substituir o painel separado de viewers por cards compactos no topo;
+- remover titulo/subtitulo grandes do shell local;
+- remover subtitulo do estado de conexao;
+- remover o titulo "Live read-only feed";
+- aumentar a area util do player e do chat;
+- alinhar o visual de mensagens do browser ao chat do app;
+- manter o player fora do fluxo de scroll da pagina;
+- preservar o estado de leitura quando o usuario sobe o scroll;
+- reduzir lag ao voltar para uma aba de browser que ficou em segundo plano.
+
+**Nao inclui:**
+
+- transporte substituivel;
+- mock de backend MarketBubble;
+- overlay OBS;
+- multiplas sources reais por plataforma.
+
+**Validacao:**
+
+- `npm run lint`;
+- `node --test test/http-gateway.test.js`;
+- `npm test`.
+
+**Commit sugerido:** `feat(viewer): refine browser demo shell`
 
 ## Bloco D2 - Criar cliente de transporte substituivel
 
@@ -828,18 +877,19 @@ Ordem minima para uma demo convincente e migravel:
 8. C2 - chat combinado;
 9. C3 - viewers;
 10. C4 - player Twitch;
-11. D1 - manifesto publico;
-12. D2 - transporte substituivel;
-13. D3 - guia MarketBubble.
+11. C5 - adaptadores/fallbacks de player;
+12. D1 - manifesto publico;
+13. D1.5 - estabilizacao visual/performance do Viewer Mode;
+14. D2 - transporte substituivel;
+15. D3 - guia MarketBubble.
 
 Depois da demo principal:
 
-14. C5 - adaptadores/fallbacks de player;
-15. F1 - overlay OBS;
-16. F2 - dock OBS;
-17. E1 em diante - multiplos streamers reais;
-18. F3 - obs-websocket, somente com caso de uso claro;
-19. G1 em diante - producao e chat nativo.
+16. F1 - overlay OBS;
+17. F2 - dock OBS;
+18. E1 em diante - multiplos streamers reais;
+19. F3 - obs-websocket, somente com caso de uso claro;
+20. G1 em diante - producao e chat nativo.
 
 ---
 
@@ -887,6 +937,10 @@ apresentacao:
   aumentando custo e fragilidade.
 - Twitch deve ser o primeiro player da demo porque possui embed oficial. Kick e
   X precisam de fallback ate serem tecnicamente comprovados.
+- 7TV e BetterTTV entram no Viewer Mode via fragments normalizados do chat
+  Twitch. Emotes de canal do 7TV dependem de resolver o broadcaster ID da
+  Twitch; sem token, globais ainda podem carregar, mas emotes de canal podem
+  ficar ausentes.
 - OBS agrega valor como overlay e dock depois que a pagina web existe; ele nao
   simplifica a entrega de video ao espectador.
 - Qualquer backend hospedado muda o perfil de seguranca, privacidade e operacao

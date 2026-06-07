@@ -61,6 +61,15 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(script, /shouldAutoscrollChat/);
     assert.match(script, /scheduleRender/);
     assert.match(script, /pendingRenderFrame/);
+    assert.match(script, /forceChatRender/);
+    assert.match(script, /chatDomDirty/);
+    assert.match(script, /chat-emote--extension/);
+    assert.match(script, /markLargeExtensionEmote/);
+    assert.match(script, /maintainChatBottomAfterMediaLoad/);
+    assert.match(script, /__chatScrollDebug/);
+    assert.match(script, /chatScrollDebug/);
+    assert.match(script, /pinned_change/);
+    assert.match(script, /CHAT_BOTTOM_TOLERANCE_PX/);
     assert.match(script, /MAX_MESSAGES/);
     assert.match(script, /message__badge/);
     assert.match(script, /shouldRenderAuthorAvatar/);
@@ -72,6 +81,8 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(styleResponse.headers.get('content-type'), /^text\/css/);
     assert.match(style, /\.message__metadata/);
     assert.match(style, /\.message__badge--kick/);
+    assert.match(style, /\.chat-emote--extension/);
+    assert.match(style, /\.chat-emote--large/);
     assert.match(style, /\.chat-resume-button/);
     assert.match(style, /\.viewer-status-grid/);
     assert.equal(twitchIconResponse.status, 200);

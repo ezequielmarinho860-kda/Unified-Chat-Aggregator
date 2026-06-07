@@ -36,7 +36,8 @@ desktop chat aggregator, not a fully automated moderation bot.
 - Uses Kick's official authenticated livestream API, refreshes expired Kick
   tokens when possible, and caches the resolved broadcaster ID between polls.
 - Supports feed filtering by platform.
-- Supports pausing/resuming autoscroll.
+- Pauses chat autoscroll automatically when the user scrolls up and shows a
+  "new messages" affordance to jump back to the live edge.
 - Supports clearing the visible feed locally.
 
 ### Connector Configuration
@@ -65,13 +66,23 @@ Read support:
 - Parses Twitch IRC emote tags so global and subscriber emotes render inline.
 - Loads BetterTTV global emotes through the BetterTTV API and channel/shared
   emotes when the Twitch broadcaster ID can be resolved.
-- Applies BetterTTV emotes only to text not already recognized as a native
-  Twitch emote.
+- Loads 7TV global emotes through the 7TV API and channel emotes when the
+  Twitch broadcaster ID can be resolved.
+- Applies BetterTTV and 7TV emotes only to text not already recognized as a
+  native Twitch emote.
 - Resolves likely shared BetterTTV emote codes on first use and caches both
   successful and missing lookups.
-- Keeps the BetterTTV catalog cached across automatic IRC reconnects and reloads
-  it when the Twitch connector is restarted.
+- Keeps third-party emote catalogs cached across automatic IRC reconnects and
+  reloads them when the Twitch connector is restarted.
 - Handles Twitch `PING` messages with `PONG`.
+
+Known issue:
+
+- BetterTTV/7TV emotes can still fail silently and render as plain text in some
+  runs. The current implementation already tries the primary and legacy 7TV API
+  hosts and attempts to load channel emotes from Twitch IRC `room-id`, but this
+  needs to be investigated again before treating third-party emote support as
+  stable.
 
 Account connection:
 
@@ -376,13 +387,19 @@ http://127.0.0.1:47831/viewer
 The page consumes only the public gateway contract. It bootstraps from the
 snapshot endpoint, reconnects to the realtime WebSocket when needed, and renders
 new combined chat messages as a read-only feed with platform, source, author,
-badges, emotes, timestamp, and a bounded in-memory list. It also shows combined
-and per-source viewer counts, viewer availability states, inferred zero-viewer
-offline state, connector state, and the latest viewer update timestamp available
-in the public snapshot. When a Twitch connector is enabled, the public manifest
-includes a Twitch player config and the Viewer Mode embeds the Twitch player
-through a small player adapter boundary. Kick and X publish public watch links
-when available, but remain external fallbacks until an embed is technically
+badges, emotes, timestamp, and a bounded in-memory list. The chat uses the same
+compact message visual language as the app dashboard. It pauses autoscroll when
+the user scrolls up, keeps buffering incoming messages, shows a new-message
+button to return to the live edge, and batches realtime renders so a browser tab
+returning from the background does not re-render once per queued event.
+
+Viewer Mode shows per-platform viewer cards and a combined total in a compact
+top bar similar to the app dashboard. Platform cards are calculated from the
+public viewer source list, so multiple public sources from the same platform are
+summed into one platform card. When a Twitch connector is enabled, the public
+manifest includes a Twitch player config and the Viewer Mode embeds the Twitch
+player through a small player adapter boundary. Kick and X publish public watch
+links when available, but remain external fallbacks until an embed is technically
 approved for those providers.
 
 The public manifest is normalized separately from the internal connector config,
@@ -473,8 +490,11 @@ Important test areas:
 
 ## Current Known Gaps
 
-- BetterTTV integration currently applies only to Twitch because BetterTTV's
-  documented provider list does not include Kick.
+- BetterTTV and 7TV integration currently applies only to Twitch in the app
+  pipeline. Kick emotes still come from Kick payload metadata/markup.
+- 7TV channel emotes are currently unstable. The connector tries both the
+  Twitch broadcaster ID and IRC `room-id` paths, but channel emotes can still
+  fail silently and render as plain text until this is investigated again.
 - X write support is best-effort browser composer injection, not an official
   API integration.
 - X viewer counts are best-effort DOM capture and may become unavailable when X

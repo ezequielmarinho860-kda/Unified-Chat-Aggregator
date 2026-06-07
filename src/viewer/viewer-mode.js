@@ -1,5 +1,6 @@
 (() => {
   const MAX_MESSAGES = 200;
+  const CHAT_BOTTOM_TOLERANCE_PX = 120;
   const reconnectBaseMs = 1_000;
   const reconnectMaxMs = 10_000;
   const state = {
@@ -15,6 +16,8 @@
     unseenMessageCount: 0,
     pendingRenderFrame: undefined,
     pendingStickToBottom: undefined,
+    chatDomDirty: false,
+    hasRenderedChat: false,
   };
   const platformLabels = {
     twitch: 'Twitch',
@@ -54,6 +57,127 @@
       element,
     ]),
   );
+  const CHAT_SCROLL_DEBUG_LIMIT = 80;
+
+  const getChatScrollMetrics = () => {
+    if (!elements.chatList) {
+      return {};
+    }
+
+    const remaining =
+      elements.chatList.scrollHeight - elements.chatList.scrollTop - elements.chatList.clientHeight;
+
+    return {
+      clientHeight: Math.round(elements.chatList.clientHeight),
+      remaining: Math.round(remaining),
+      scrollHeight: Math.round(elements.chatList.scrollHeight),
+      scrollTop: Math.round(elements.chatList.scrollTop),
+    };
+  };
+
+  const chatScrollDebug = (() => {
+    let enabled = new URLSearchParams(window.location.search).has('debugChat');
+    const entries = [];
+
+    try {
+      enabled = enabled || window.localStorage.getItem('chatScrollDebug') === '1';
+    } catch {
+      enabled = Boolean(enabled);
+    }
+
+    const api = {
+      clear() {
+        entries.length = 0;
+      },
+      disable() {
+        enabled = false;
+        try {
+          window.localStorage.removeItem('chatScrollDebug');
+        } catch {
+          // localStorage can be unavailable in restricted browser contexts.
+        }
+      },
+      dump() {
+        const snapshot = api.getLog();
+
+        console.table(snapshot);
+        return snapshot;
+      },
+      enable() {
+        enabled = true;
+        try {
+          window.localStorage.setItem('chatScrollDebug', '1');
+        } catch {
+          // localStorage can be unavailable in restricted browser contexts.
+        }
+
+        api.log('debug_enabled');
+      },
+      getLog() {
+        return entries.map((entry) => formatChatScrollDebugEntry(entry));
+      },
+      log(event, details = {}) {
+        if (!enabled) {
+          return;
+        }
+
+        const entry = {
+          at: new Date().toISOString(),
+          chatPinnedToBottom: state.chatPinnedToBottom,
+          event,
+          metrics: getChatScrollMetrics(),
+          unseenMessageCount: state.unseenMessageCount,
+          ...details,
+        };
+
+        entries.push(entry);
+
+        while (entries.length > CHAT_SCROLL_DEBUG_LIMIT) {
+          entries.shift();
+        }
+
+        console.debug('[viewer-chat-scroll]', entry);
+      },
+    };
+
+    window.__chatScrollDebug = api;
+    window.chatScrollDebug = api;
+    return api;
+  })();
+
+  const formatChatScrollDebugEntry = (entry) => ({
+    at: entry.at,
+    event: entry.event,
+    from: entry.from,
+    to: entry.to,
+    reason: entry.reason,
+    remaining: entry.metrics?.remaining,
+    scrollTop: entry.metrics?.scrollTop,
+    scrollHeight: entry.metrics?.scrollHeight,
+    clientHeight: entry.metrics?.clientHeight,
+    pinned: entry.chatPinnedToBottom,
+    unseen: entry.unseenMessageCount,
+    trusted: entry.isTrusted,
+    messageKey: entry.messageKey,
+    platform: entry.platform,
+    sourceId: entry.sourceId,
+    stick: entry.shouldStickToBottom ?? entry.stickToBottom,
+  });
+
+  const setChatPinnedToBottom = (nextPinnedToBottom, reason, details = {}) => {
+    const normalizedPinnedToBottom = Boolean(nextPinnedToBottom);
+
+    if (state.chatPinnedToBottom !== normalizedPinnedToBottom) {
+      chatScrollDebug.log('pinned_change', {
+        from: state.chatPinnedToBottom,
+        reason,
+        to: normalizedPinnedToBottom,
+        ...details,
+      });
+    }
+
+    state.chatPinnedToBottom = normalizedPinnedToBottom;
+  };
 
   const setConnection = (connectionState, label, detail) => {
     elements.connectionCard.dataset.connectionState = connectionState;
@@ -132,7 +256,7 @@
       state.messageCount = 0;
       state.messages = [];
       state.messageKeys = new Set();
-      state.chatPinnedToBottom = true;
+      setChatPinnedToBottom(true, 'snapshot_replace');
       state.unseenMessageCount = 0;
       cancelScheduledRender();
       applySnapshot(event.data);
@@ -161,6 +285,7 @@
     state.messageKeys.add(messageKey);
     state.messages.push(message);
     state.messageCount += 1;
+    state.chatDomDirty = true;
 
     while (state.messages.length > MAX_MESSAGES) {
       const removedMessage = state.messages.shift();
@@ -168,8 +293,14 @@
     }
 
     if (!shouldStickToBottom) {
-      state.chatPinnedToBottom = false;
+      setChatPinnedToBottom(false, 'chat_message_not_at_bottom', { messageKey });
       state.unseenMessageCount += 1;
+      chatScrollDebug.log('message_buffered', {
+        messageKey,
+        platform: message.platform,
+        shouldStickToBottom,
+        sourceId: message.source?.sourceId,
+      });
     }
 
     scheduleRender({ stickToBottom: shouldStickToBottom });
@@ -186,7 +317,7 @@
       statuses: Array.isArray(snapshot?.statuses) ? snapshot.statuses : [],
       viewers: snapshot?.viewers ?? { sources: [], total: 0 },
     };
-    render();
+    render({ stickToBottom: true, forceChatRender: true });
   };
 
   const upsertStatus = (status) => {
@@ -208,10 +339,11 @@
     state.snapshot = { ...state.snapshot, statuses };
   };
 
-  const render = ({ stickToBottom = state.chatPinnedToBottom } = {}) => {
+  const render = ({ stickToBottom = state.chatPinnedToBottom, forceChatRender = false } = {}) => {
     const snapshot = state.snapshot ?? {};
     const previousChatScrollTop = elements.chatList.scrollTop;
     const shouldStickToBottom = stickToBottom && shouldAutoscrollChat();
+    const shouldRenderChat = forceChatRender || shouldStickToBottom || !state.hasRenderedChat;
 
     if (elements.title) {
       elements.title.textContent = snapshot.manifest?.title ?? 'Unified Chat Aggregator';
@@ -233,12 +365,18 @@
       elements.sourceList.replaceChildren(...createSourceElements(snapshot));
     }
 
-    elements.chatList.replaceChildren(...createChatElements());
+    if (shouldRenderChat) {
+      elements.chatList.replaceChildren(...createChatElements());
+      state.chatDomDirty = false;
+      state.hasRenderedChat = true;
+    }
 
     if (shouldStickToBottom) {
       scrollChatToBottom();
+    } else if (forceChatRender) {
+      scrollChatToBottom();
     } else {
-      state.chatPinnedToBottom = false;
+      setChatPinnedToBottom(false, 'render_preserve_scroll');
       elements.chatList.scrollTop = previousChatScrollTop;
     }
 
@@ -266,10 +404,13 @@
     });
   };
 
-  const flushScheduledRender = ({ stickToBottom = state.chatPinnedToBottom } = {}) => {
+  const flushScheduledRender = ({
+    stickToBottom = state.chatPinnedToBottom,
+    forceChatRender = false,
+  } = {}) => {
     cancelScheduledRender();
 
-    render({ stickToBottom });
+    render({ stickToBottom, forceChatRender });
   };
 
   const cancelScheduledRender = () => {
@@ -709,6 +850,11 @@
         const image = document.createElement('img');
 
         image.className = 'chat-emote';
+        image.addEventListener('load', maintainChatBottomAfterMediaLoad, { once: true });
+        if (isExtensionEmote(fragment)) {
+          image.classList.add('chat-emote--extension');
+          image.addEventListener('load', () => markLargeExtensionEmote(image), { once: true });
+        }
         image.src = fragment.imageUrl;
         image.alt = fragment.text;
         image.title = fragment.text;
@@ -721,6 +867,40 @@
     });
   };
 
+  const maintainChatBottomAfterMediaLoad = () => {
+    if (!state.chatPinnedToBottom) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      if (!state.chatPinnedToBottom) {
+        return;
+      }
+
+      scrollChatToBottom();
+    });
+  };
+
+  const markLargeExtensionEmote = (image) => {
+    const { naturalHeight, naturalWidth } = image;
+
+    if (naturalHeight > 72 || naturalWidth > 144 || naturalHeight > naturalWidth * 1.25) {
+      image.classList.add('chat-emote--large');
+    }
+  };
+
+  const isExtensionEmote = (fragment) => {
+    const id = String(fragment.id ?? '');
+    const imageUrl = String(fragment.imageUrl ?? '');
+
+    return (
+      id.startsWith('bttv:') ||
+      id.startsWith('7tv:') ||
+      imageUrl.includes('cdn.betterttv.net') ||
+      imageUrl.includes('cdn.7tv.app')
+    );
+  };
+
   const createEmptyChatElement = () => {
     const empty = document.createElement('div');
 
@@ -731,12 +911,13 @@
   };
 
   const isChatNearBottom = () =>
-    elements.chatList.scrollHeight - elements.chatList.scrollTop - elements.chatList.clientHeight < 48;
+    elements.chatList.scrollHeight - elements.chatList.scrollTop - elements.chatList.clientHeight <=
+    CHAT_BOTTOM_TOLERANCE_PX;
 
   const shouldAutoscrollChat = () => state.chatPinnedToBottom && isChatNearBottom();
 
   const scrollChatToBottom = () => {
-    state.chatPinnedToBottom = true;
+    setChatPinnedToBottom(true, 'scroll_to_bottom');
     state.unseenMessageCount = 0;
     elements.chatList.scrollTop = elements.chatList.scrollHeight;
 
@@ -822,14 +1003,17 @@
     new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(date);
 
   elements.resumeChat?.addEventListener('click', () => {
-    state.chatPinnedToBottom = true;
+    chatScrollDebug.log('resume_click');
+    setChatPinnedToBottom(true, 'resume_click');
     state.unseenMessageCount = 0;
-    flushScheduledRender({ stickToBottom: true });
+    flushScheduledRender({ stickToBottom: true, forceChatRender: true });
     updateResumeChatControl();
   });
 
-  elements.chatList?.addEventListener('scroll', () => {
-    state.chatPinnedToBottom = isChatNearBottom();
+  elements.chatList?.addEventListener('scroll', (event) => {
+    setChatPinnedToBottom(isChatNearBottom(), 'scroll', {
+      isTrusted: event.isTrusted,
+    });
 
     if (state.chatPinnedToBottom) {
       state.unseenMessageCount = 0;
@@ -843,7 +1027,7 @@
       return;
     }
 
-    state.chatPinnedToBottom = false;
+    setChatPinnedToBottom(false, 'wheel_up', { deltaY: event.deltaY });
     updateResumeChatControl();
   });
 
