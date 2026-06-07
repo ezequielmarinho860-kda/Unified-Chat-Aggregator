@@ -403,7 +403,8 @@ O contrato descreve o alvo publico. Nem todos os campos existem hoje:
 - serializadores por allowlist para source, mensagens, status, viewers e
   snapshot ja existem;
 - snapshot HTTP local esta disponivel em `GET /api/v1/snapshot`;
-- envelopes e eventos WebSocket entram no Bloco B3;
+- envelopes e eventos WebSocket locais estao disponiveis em
+  `ws://127.0.0.1:47831/api/v1/events`;
 - manifesto e player serao implementados durante as Fases C e D.
 
 O snapshot interno atual de `src/main.js` nao atende este contrato e nao deve ser

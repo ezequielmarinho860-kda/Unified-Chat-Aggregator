@@ -361,10 +361,17 @@ The app exposes a read-only public snapshot for future Viewer Mode clients at:
 http://127.0.0.1:47831/api/v1/snapshot
 ```
 
+Realtime events are available over WebSocket at:
+
+```text
+ws://127.0.0.1:47831/api/v1/events
+```
+
 The gateway binds only to the local loopback address, accepts only `GET` on the
 versioned snapshot route, and serializes responses through a public allowlist.
 It does not expose chat sending, moderation actions, tokens, raw platform
-payloads, local config paths, or environment override details.
+payloads, local config paths, or environment override details. Browser
+WebSocket connections are accepted only from loopback origins.
 
 ## Development Setup
 

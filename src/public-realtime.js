@@ -1,4 +1,18 @@
+const { randomUUID } = require('node:crypto');
+
 const PROTOCOL_VERSION = '1';
+
+const createPublicEvent = (
+  type,
+  data,
+  { eventId = randomUUID(), emittedAt = nowIso() } = {},
+) => ({
+  protocolVersion: PROTOCOL_VERSION,
+  type: requireString(type, 'event.type'),
+  eventId: requireString(eventId, 'event.eventId'),
+  emittedAt: requireString(emittedAt, 'event.emittedAt'),
+  data,
+});
 
 const serializePublicSource = (source) => {
   if (!source || typeof source !== 'object') {
@@ -146,6 +160,7 @@ const nowIso = () => new Date().toISOString();
 
 module.exports = {
   PROTOCOL_VERSION,
+  createPublicEvent,
   serializePublicChatMessage,
   serializePublicSnapshot,
   serializePublicSource,

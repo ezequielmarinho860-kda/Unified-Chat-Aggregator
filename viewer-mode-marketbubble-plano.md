@@ -339,6 +339,9 @@ versionada de snapshot somente leitura.
 
 **Objetivo:** entregar mensagens e atualizacoes sem polling constante.
 
+**Status:** concluido com WebSocket local, snapshot inicial, envelopes v1,
+heartbeat e publicacao de mensagens, status e viewers.
+
 **Mudancas previstas:**
 
 - canal WebSocket local versionado;

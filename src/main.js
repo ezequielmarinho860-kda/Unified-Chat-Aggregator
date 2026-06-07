@@ -10,7 +10,12 @@ const {
 const { createAppConfigStore } = require('./app-config-store');
 const { createChatHub } = require('./chat-hub');
 const { createHttpGateway } = require('./gateway/http-gateway');
-const { serializePublicSnapshot } = require('./public-realtime');
+const {
+  serializePublicChatMessage,
+  serializePublicSnapshot,
+  serializePublicStatus,
+  serializePublicViewers,
+} = require('./public-realtime');
 const { createConnectorSource } = require('./source-identity');
 const { createViewerMonitor } = require('./viewer-monitor');
 const {
@@ -125,6 +130,7 @@ const wireChatHub = (nextChatHub) => {
 
   unsubscribeHubMessage = nextChatHub.onMessage((message) => {
     broadcastToWindows('chat:message', message);
+    publishPublicRealtime('chat.message', () => serializePublicChatMessage(message));
   });
   unsubscribeHubStatus = nextChatHub.onStatus((status) => {
     if (status.platform === 'x' && Object.hasOwn(status.details ?? {}, 'viewerCount')) {
@@ -132,6 +138,7 @@ const wireChatHub = (nextChatHub) => {
     }
 
     broadcastToWindows('chat:status', status);
+    publishPublicStatus(status);
   });
 };
 
@@ -198,6 +205,7 @@ const broadcastRuntimeSnapshot = () => {
 
   broadcastToWindows('chat:config', snapshot);
   broadcastToWindows('chat:statuses', snapshot.statuses);
+  publishPublicRealtime('snapshot.replace', getPublicRealtimeSnapshot);
 };
 
 const broadcastToWindows = (channel, payload) => {
@@ -256,6 +264,32 @@ const startHttpGateway = async () => {
   } catch (error) {
     httpGateway = undefined;
     console.error(`Viewer gateway unavailable: ${error.message}`);
+  }
+};
+
+const publishPublicStatus = (status) => {
+  const sources = createPublicSources(runtimeConfig);
+
+  if (!sources[status.platform]) {
+    return;
+  }
+
+  publishPublicRealtime('source.status', () => serializePublicStatus(status, { sources }));
+};
+
+const publishPublicViewers = (snapshot) =>
+  publishPublicRealtime('viewers.update', () =>
+    serializePublicViewers(snapshot, { sources: createPublicSources(runtimeConfig) }));
+
+const publishPublicRealtime = (type, createData) => {
+  if (!httpGateway) {
+    return;
+  }
+
+  try {
+    httpGateway.publish(type, createData());
+  } catch (error) {
+    console.error(`Viewer gateway event unavailable: ${error.message}`);
   }
 };
 
@@ -550,7 +584,10 @@ if (!hasSingleInstanceLock) {
     savedConfig = configStore.load();
     viewerMonitor = createViewerMonitor({
       getConfig: () => runtimeConfig,
-      onUpdate: (snapshot) => broadcastToWindows('viewers:update', snapshot),
+      onUpdate: (snapshot) => {
+        broadcastToWindows('viewers:update', snapshot);
+        publishPublicViewers(snapshot);
+      },
       fetchKick: createRefreshingKickViewerFetcher({
         fetchViewerCount: fetchKickViewerCount,
         refreshAccessToken: (config) => refreshKickAccessToken(config),

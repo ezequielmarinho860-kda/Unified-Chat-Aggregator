@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   PROTOCOL_VERSION,
+  createPublicEvent,
   serializePublicChatMessage,
   serializePublicSnapshot,
   serializePublicStatus,
@@ -16,6 +17,26 @@ const sources = {
     accessToken: 'source-secret',
   },
 };
+
+test('creates versioned public event envelopes', () => {
+  assert.deepEqual(
+    createPublicEvent(
+      'viewers.update',
+      { total: 42 },
+      {
+        eventId: 'event-1',
+        emittedAt: '2026-06-06T20:00:00.000Z',
+      },
+    ),
+    {
+      protocolVersion: PROTOCOL_VERSION,
+      type: 'viewers.update',
+      eventId: 'event-1',
+      emittedAt: '2026-06-06T20:00:00.000Z',
+      data: { total: 42 },
+    },
+  );
+});
 
 test('serializes chat messages by allowlist', () => {
   const message = serializePublicChatMessage({
