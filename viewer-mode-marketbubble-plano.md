@@ -272,6 +272,9 @@ automatico pelo `chat-hub`.
 
 **Objetivo:** impedir que objetos internos e dados sensiveis vazem pelo gateway.
 
+**Status:** concluido com serializadores por allowlist para source, mensagens,
+status, viewers e snapshot.
+
 **Mudancas previstas:**
 
 - criar funcoes puras para serializar mensagem, status, viewers e snapshot;
