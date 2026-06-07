@@ -85,8 +85,18 @@ const serializePublicSnapshot = (
 
 const serializePublicManifest = (manifest = {}, sources = {}) => ({
   title: optionalString(manifest.title) ?? 'Unified Chat Aggregator',
-  sources: Object.values(sources).map(serializePublicManifestSource),
+  sources: resolveManifestSources(manifest, sources).map(serializePublicManifestSource),
 });
+
+const resolveManifestSources = (manifest, sources) => {
+  const sourceValues = Object.values(sources);
+
+  return sourceValues.length > 0
+    ? sourceValues
+    : Array.isArray(manifest.sources)
+      ? manifest.sources
+      : [];
+};
 
 const serializePublicManifestSource = (source) =>
   compactObject({

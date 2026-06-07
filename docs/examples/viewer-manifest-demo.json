@@ -1,0 +1,27 @@
+{
+  "title": "Unified Chat Aggregator Demo",
+  "sources": [
+    {
+      "sourceId": "twitch:loltyler1",
+      "platform": "twitch",
+      "channelLabel": "loltyler1",
+      "watchUrl": "https://www.twitch.tv/loltyler1",
+      "player": {
+        "provider": "twitch",
+        "channel": "loltyler1"
+      }
+    },
+    {
+      "sourceId": "kick:jonvlogs",
+      "platform": "kick",
+      "channelLabel": "jonvlogs",
+      "watchUrl": "https://kick.com/jonvlogs"
+    },
+    {
+      "sourceId": "x:chooserich",
+      "platform": "x",
+      "channelLabel": "@chooserich",
+      "watchUrl": "https://x.com/chooserich/live"
+    }
+  ]
+}

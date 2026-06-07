@@ -556,6 +556,10 @@ uma source publica com player ou watch URL.
 **Objetivo:** permitir que outra aplicacao hospede o Viewer Mode sem conhecer o
 formato interno do Electron.
 
+**Status:** concluido com normalizacao/validacao de manifesto publico separada
+da config interna, geracao do manifesto a partir do runtime local e exemplos
+JSON para demo local e integracao futura MarketBubble.
+
 **Mudancas previstas:**
 
 - manifesto publico com titulo, streams e providers;

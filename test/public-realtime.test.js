@@ -95,6 +95,38 @@ test('serializes public manifest player config by allowlist', () => {
   assert.doesNotMatch(JSON.stringify(snapshot), /secret|accessToken/);
 });
 
+test('serializes sources from a standalone public manifest', () => {
+  const snapshot = serializePublicSnapshot(
+    {
+      manifest: {
+        title: 'Standalone Manifest',
+        sources: [
+          {
+            sourceId: 'twitch:demo',
+            platform: 'twitch',
+            channelLabel: 'demo',
+            accessToken: 'secret',
+            watchUrl: 'https://www.twitch.tv/demo',
+            player: { provider: 'twitch', channel: 'demo', secret: 'player-secret' },
+          },
+        ],
+      },
+    },
+    { generatedAt: '2026-06-06T20:00:00.000Z' },
+  );
+
+  assert.deepEqual(snapshot.manifest.sources, [
+    {
+      sourceId: 'twitch:demo',
+      platform: 'twitch',
+      channelLabel: 'demo',
+      watchUrl: 'https://www.twitch.tv/demo',
+      player: { provider: 'twitch', channel: 'demo' },
+    },
+  ]);
+  assert.doesNotMatch(JSON.stringify(snapshot), /secret|accessToken/);
+});
+
 test('rejects public chat messages without a source identity', () => {
   assert.throws(
     () =>

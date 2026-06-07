@@ -1,0 +1,22 @@
+{
+  "title": "MarketBubble Live Demo",
+  "sources": [
+    {
+      "sourceId": "marketbubble:main-stage",
+      "platform": "marketbubble",
+      "broadcasterName": "MarketBubble",
+      "channelLabel": "Main Stage",
+      "watchUrl": "https://marketbubble.example/live/main-stage"
+    },
+    {
+      "sourceId": "twitch:marketbubble",
+      "platform": "twitch",
+      "channelLabel": "marketbubble",
+      "watchUrl": "https://www.twitch.tv/marketbubble",
+      "player": {
+        "provider": "twitch",
+        "channel": "marketbubble"
+      }
+    }
+  ]
+}

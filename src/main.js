@@ -16,7 +16,7 @@ const {
   serializePublicStatus,
   serializePublicViewers,
 } = require('./public-realtime');
-const { createPublicViewerSources } = require('./public-viewer-sources');
+const { createPublicViewerManifestContext } = require('./public-viewer-manifest');
 const { createViewerMonitor } = require('./viewer-monitor');
 const {
   createRefreshingKickViewerFetcher,
@@ -226,11 +226,11 @@ const getRuntimeSnapshot = () => ({
 });
 
 const getPublicRealtimeSnapshot = () => {
-  const sources = createPublicSources(runtimeConfig);
+  const { manifest, sources } = createPublicManifestContext(runtimeConfig);
 
   return serializePublicSnapshot(
     {
-      manifest: { title: 'Unified Chat Aggregator' },
+      manifest,
       statuses: getDisplayStatuses(),
       viewers: viewerMonitor?.getSnapshot(),
     },
@@ -238,8 +238,14 @@ const getPublicRealtimeSnapshot = () => {
   );
 };
 
+const createPublicManifestContext = (config = {}) =>
+  createPublicViewerManifestContext({
+    title: 'Unified Chat Aggregator',
+    config,
+  });
+
 const createPublicSources = (config = {}) =>
-  createPublicViewerSources(config);
+  createPublicManifestContext(config).sources;
 
 const startHttpGateway = async () => {
   try {

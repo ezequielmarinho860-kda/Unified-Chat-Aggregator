@@ -139,6 +139,9 @@ publico anterior. Ele deve ser usado apos reconexao ou mudanca estrutural.
 O manifesto descreve o que o Viewer Mode pode exibir. Ele nao e a configuracao
 interna do Collector.
 
+Exemplos versionados ficam em `docs/examples/viewer-manifest-demo.json` e
+`docs/examples/viewer-manifest-marketbubble.json`.
+
 ```json
 {
   "title": "MarketBubble Live",
@@ -407,8 +410,8 @@ O contrato descreve o alvo publico. Nem todos os campos existem hoje:
   `ws://127.0.0.1:47831/api/v1/events`;
 - manifesto, player Twitch e watch links externos ja sao publicados para o
   Viewer Mode local;
-- manifesto publico mais amplo e transporte substituivel continuam planejados
-  para a Fase D.
+- manifesto publico ja possui normalizacao/validacao separada da config interna;
+- transporte substituivel continua planejado para a Fase D.
 
 O snapshot interno atual de `src/main.js` nao atende este contrato e nao deve ser
 publicado diretamente.

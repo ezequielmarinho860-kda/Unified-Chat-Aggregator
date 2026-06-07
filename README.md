@@ -385,6 +385,11 @@ through a small player adapter boundary. Kick and X publish public watch links
 when available, but remain external fallbacks until an embed is technically
 approved for those providers.
 
+The public manifest is normalized separately from the internal connector config,
+so credentials and local runtime details are not part of the Viewer Mode
+contract. Example manifests live in `docs/examples/viewer-manifest-demo.json`
+and `docs/examples/viewer-manifest-marketbubble.json`.
+
 Viewer Mode is a fixed-viewport app shell on desktop. New visual blocks should
 be added inside existing grid regions or panels with their own internal scroll,
 not as loose content below the grid. Letting the page itself grow can push the
