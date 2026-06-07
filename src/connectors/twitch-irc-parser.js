@@ -52,7 +52,10 @@ const parseTwitchIrcLine = (line) => {
   };
 };
 
-const parseTwitchPrivmsg = (line, { badgeCatalog = {}, bttvEmoteCatalog = {} } = {}) => {
+const parseTwitchPrivmsg = (
+  line,
+  { badgeCatalog = {}, bttvEmoteCatalog = {}, thirdPartyEmoteCatalog = bttvEmoteCatalog } = {},
+) => {
   const parsed = parseTwitchIrcLine(line);
 
   if (parsed.command !== 'PRIVMSG') {
@@ -76,16 +79,16 @@ const parseTwitchPrivmsg = (line, { badgeCatalog = {}, bttvEmoteCatalog = {} } =
       badges: parseTwitchBadges(parsed.tags.badges, badgeCatalog),
     },
     text,
-    fragments: applyBttvEmotesToFragments(
+    fragments: applyThirdPartyEmotesToFragments(
       parseTwitchEmoteFragments(text, parsed.tags.emotes),
-      bttvEmoteCatalog,
+      thirdPartyEmoteCatalog,
     ),
     timestamp,
     raw: parsed,
   });
 };
 
-const applyBttvEmotesToFragments = (fragments, catalog = {}) =>
+const applyThirdPartyEmotesToFragments = (fragments, catalog = {}) =>
   fragments.flatMap((fragment) => {
     if (fragment.type !== 'text') {
       return [fragment];
@@ -103,12 +106,14 @@ const applyBttvEmotesToFragments = (fragments, catalog = {}) =>
 
         return {
           type: 'emote',
-          id: `bttv:${emote.id}`,
+          id: `${emote.provider ?? 'bttv'}:${emote.id}`,
           text: token,
           imageUrl: emote.imageUrl,
         };
       });
   });
+
+const applyBttvEmotesToFragments = applyThirdPartyEmotesToFragments;
 
 const parseTwitchEmoteFragments = (text, rawEmotes = '') => {
   if (!rawEmotes) {
@@ -230,6 +235,7 @@ const getUsernameFromPrefix = (prefix) => {
 
 module.exports = {
   applyBttvEmotesToFragments,
+  applyThirdPartyEmotesToFragments,
   parseTwitchIrcLine,
   parseTwitchBadges,
   parseTwitchEmoteFragments,

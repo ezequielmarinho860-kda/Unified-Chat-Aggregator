@@ -4,6 +4,7 @@ const {
   fetchBttvSharedEmote,
   findBttvSharedEmoteCandidates,
 } = require('./bttv-api');
+const { fetchSevenTvEmoteCatalog } = require('./seventv-api');
 const {
   fetchTwitchChatBadgeCatalog,
   resolveTwitchUserByLogin,
@@ -29,7 +30,9 @@ const createTwitchConnector = ({
   let shouldReconnect = false;
   let badgeCatalog = {};
   let bttvEmoteCatalog = {};
+  let sevenTvEmoteCatalog = {};
   let hasLoadedBttvEmoteCatalog = false;
+  let hasLoadedSevenTvEmoteCatalog = false;
   const missingBttvEmoteCodes = new Set();
   let messageQueue = Promise.resolve();
 
@@ -87,7 +90,10 @@ const createTwitchConnector = ({
     }
 
     await loadSharedBttvEmotesForLine(line);
-    const message = parseTwitchPrivmsg(line, { badgeCatalog, bttvEmoteCatalog });
+    const message = parseTwitchPrivmsg(line, {
+      badgeCatalog,
+      thirdPartyEmoteCatalog: createThirdPartyEmoteCatalog(),
+    });
 
     if (message) {
       events.emit('message', message);
@@ -124,14 +130,22 @@ const createTwitchConnector = ({
   };
 
   const loadCatalogs = async () => {
-    const [nextBadgeCatalog, nextBttvEmoteCatalog] = await Promise.all([
+    const providerId = await resolveTwitchProviderId();
+    const [nextBadgeCatalog, nextBttvEmoteCatalog, nextSevenTvEmoteCatalog] = await Promise.all([
       loadBadgeCatalog(),
-      loadBttvEmoteCatalog(),
+      loadBttvEmoteCatalog(providerId),
+      loadSevenTvEmoteCatalog(providerId),
     ]);
 
     badgeCatalog = nextBadgeCatalog;
     bttvEmoteCatalog = nextBttvEmoteCatalog;
+    sevenTvEmoteCatalog = nextSevenTvEmoteCatalog;
   };
+
+  const createThirdPartyEmoteCatalog = () => ({
+    ...bttvEmoteCatalog,
+    ...sevenTvEmoteCatalog,
+  });
 
   const loadBadgeCatalog = async () => {
     if (!accessToken) {
@@ -149,27 +163,29 @@ const createTwitchConnector = ({
     }
   };
 
-  const loadBttvEmoteCatalog = async () => {
-    if (hasLoadedBttvEmoteCatalog) {
-      return bttvEmoteCatalog;
+  const resolveTwitchProviderId = async () => {
+    if (!accessToken) {
+      return undefined;
     }
 
-    let providerId;
+    try {
+      const tokenInfo = await validateTwitchAccessToken({ accessToken, fetchImpl });
+      const broadcaster = await resolveTwitchUserByLogin({
+        login: normalizedChannel,
+        accessToken,
+        clientId: tokenInfo.clientId,
+        fetchImpl,
+      });
 
-    if (accessToken) {
-      try {
-        const tokenInfo = await validateTwitchAccessToken({ accessToken, fetchImpl });
-        const broadcaster = await resolveTwitchUserByLogin({
-          login: normalizedChannel,
-          accessToken,
-          clientId: tokenInfo.clientId,
-          fetchImpl,
-        });
+      return broadcaster.id;
+    } catch {
+      return undefined;
+    }
+  };
 
-        providerId = broadcaster.id;
-      } catch {
-        providerId = undefined;
-      }
+  const loadBttvEmoteCatalog = async (providerId) => {
+    if (hasLoadedBttvEmoteCatalog) {
+      return bttvEmoteCatalog;
     }
 
     try {
@@ -180,6 +196,25 @@ const createTwitchConnector = ({
       });
 
       hasLoadedBttvEmoteCatalog = true;
+      return catalog;
+    } catch {
+      return {};
+    }
+  };
+
+  const loadSevenTvEmoteCatalog = async (providerId) => {
+    if (hasLoadedSevenTvEmoteCatalog) {
+      return sevenTvEmoteCatalog;
+    }
+
+    try {
+      const catalog = await fetchSevenTvEmoteCatalog({
+        provider: 'twitch',
+        providerId,
+        fetchImpl,
+      });
+
+      hasLoadedSevenTvEmoteCatalog = true;
       return catalog;
     } catch {
       return {};

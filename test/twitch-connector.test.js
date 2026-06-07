@@ -218,6 +218,46 @@ test('renders BetterTTV global emotes from Twitch chat text', async () => {
   await connector.disconnect();
 });
 
+test('renders 7TV global emotes from Twitch chat text', async () => {
+  const socket = new FakeWebSocket(TWITCH_IRC_URL);
+  const connector = createTwitchConnector({
+    channel: 'monstercat',
+    webSocketFactory: () => socket,
+    fetchImpl: async (url) => {
+      if (String(url).includes('7tv.io/v3/emote-sets/global')) {
+        return createJsonResponse({
+          emotes: [{ name: 'catJAM', data: { id: 'seventv-1' } }],
+        });
+      }
+
+      return createJsonResponse([]);
+    },
+  });
+  const received = [];
+  const unsubscribe = connector.onMessage((message) => received.push(message));
+
+  await connector.connect();
+  socket.open();
+  socket.receive(
+    '@display-name=Ana;id=message-1;tmi-sent-ts=1780603200000;user-id=user-1 :ana!ana@ana.tmi.twitch.tv PRIVMSG #monstercat :catJAM chat',
+  );
+  await flushAsyncMessages();
+
+  assert.deepEqual(received[0].fragments, [
+    {
+      type: 'emote',
+      id: '7tv:seventv-1',
+      text: 'catJAM',
+      imageUrl: 'https://cdn.7tv.app/emote/seventv-1/2x.webp',
+    },
+    { type: 'text', text: ' ' },
+    { type: 'text', text: 'chat' },
+  ]);
+
+  unsubscribe();
+  await connector.disconnect();
+});
+
 test('resolves unknown shared BetterTTV emotes on first use', async () => {
   const socket = new FakeWebSocket(TWITCH_IRC_URL);
   const connector = createTwitchConnector({

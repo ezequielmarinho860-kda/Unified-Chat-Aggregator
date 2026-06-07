@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   applyBttvEmotesToFragments,
+  applyThirdPartyEmotesToFragments,
   parseTwitchIrcLine,
   parseTwitchBadges,
   parseTwitchEmoteFragments,
@@ -126,6 +127,49 @@ test('parses BetterTTV emotes only from remaining text fragments', () => {
         id: 'bttv:bttv-1',
         text: 'OMEGALUL',
         imageUrl: 'https://cdn.betterttv.net/emote/bttv-1/2x',
+      },
+      { type: 'text', text: ' ' },
+      {
+        type: 'emote',
+        id: '25',
+        text: 'Kappa',
+        imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0',
+      },
+    ],
+  );
+});
+
+test('parses 7TV emotes only from remaining text fragments', () => {
+  assert.deepEqual(
+    applyThirdPartyEmotesToFragments(
+      [
+        { type: 'text', text: 'catJAM ' },
+        {
+          type: 'emote',
+          id: '25',
+          text: 'Kappa',
+          imageUrl: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0',
+        },
+      ],
+      {
+        catJAM: {
+          provider: '7tv',
+          id: 'seventv-1',
+          imageUrl: 'https://cdn.7tv.app/emote/seventv-1/2x.webp',
+        },
+        Kappa: {
+          provider: '7tv',
+          id: 'seventv-2',
+          imageUrl: 'https://cdn.7tv.app/emote/seventv-2/2x.webp',
+        },
+      },
+    ),
+    [
+      {
+        type: 'emote',
+        id: '7tv:seventv-1',
+        text: 'catJAM',
+        imageUrl: 'https://cdn.7tv.app/emote/seventv-1/2x.webp',
       },
       { type: 'text', text: ' ' },
       {
