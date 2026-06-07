@@ -448,6 +448,10 @@ origem, autor, timestamp, badges, emotes, limite em memoria e estado vazio.
 
 **Objetivo:** completar a parte quantitativa da visao do post.
 
+**Status:** concluido com total combinado, cards por origem publica, estados de
+viewers, inferencia visual de zero viewers/offline e ultima atualizacao. Fontes
+desabilitadas continuam omitidas quando o snapshot publico nao as publica.
+
 **Mudancas previstas:**
 
 - cards de viewers por origem disponivel;

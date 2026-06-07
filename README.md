@@ -376,7 +376,10 @@ http://127.0.0.1:47831/viewer
 The page consumes only the public gateway contract. It bootstraps from the
 snapshot endpoint, reconnects to the realtime WebSocket when needed, and renders
 new combined chat messages as a read-only feed with platform, source, author,
-badges, emotes, timestamp, and a bounded in-memory list.
+badges, emotes, timestamp, and a bounded in-memory list. It also shows combined
+and per-source viewer counts, viewer availability states, inferred zero-viewer
+offline state, connector state, and the latest viewer update timestamp available
+in the public snapshot.
 
 The gateway binds only to the local loopback address, accepts only `GET` on the
 versioned snapshot and Viewer Mode routes, and serializes realtime responses

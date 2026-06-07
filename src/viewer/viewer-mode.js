@@ -16,6 +16,7 @@
     connectionLabel: document.querySelector('[data-connection-label]'),
     connectionDetail: document.querySelector('[data-connection-detail]'),
     viewerTotal: document.querySelector('[data-viewer-total]'),
+    viewerUpdated: document.querySelector('[data-viewer-updated]'),
     sourceList: document.querySelector('[data-source-list]'),
     messageCount: document.querySelector('[data-message-count]'),
     chatList: document.querySelector('[data-chat-list]'),
@@ -167,6 +168,7 @@
 
     elements.title.textContent = snapshot.manifest?.title ?? 'Unified Chat Aggregator';
     elements.viewerTotal.textContent = formatNumber(snapshot.viewers?.total ?? 0);
+    elements.viewerUpdated.textContent = formatViewerUpdated(snapshot.viewers);
     elements.messageCount.textContent = formatNumber(state.messageCount);
     elements.sourceList.replaceChildren(...createSourceElements(snapshot));
     elements.chatList.replaceChildren(...createChatElements());
@@ -203,13 +205,27 @@
   const createSourceElement = ({ source, status, viewer }) => {
     const row = document.createElement('div');
     const label = source.channelLabel ?? source.broadcasterName ?? source.sourceId;
-    const count = viewer?.state === 'available' ? formatNumber(viewer.count ?? 0) : viewer?.state;
+    const viewerDisplay = getViewerDisplay(viewer);
 
-    row.className = 'source-row';
-    row.innerHTML = '<div><div class="source-name"></div><div class="source-meta"></div></div><span class="source-state"></span>';
+    row.className = `source-row source-row-${viewerDisplay.state}`;
+    row.innerHTML = [
+      '<div class="source-main">',
+      '<div class="source-name"></div>',
+      '<div class="source-meta"></div>',
+      '<div class="source-updated"></div>',
+      '</div>',
+      '<div class="source-viewers">',
+      '<strong class="source-viewer-count"></strong>',
+      '<span class="source-viewer-state"></span>',
+      '<span class="source-state"></span>',
+      '</div>',
+    ].join('');
     row.querySelector('.source-name').textContent = source.platform;
-    row.querySelector('.source-meta').textContent = `${label} - ${count ?? 'viewers unavailable'}`;
-    row.querySelector('.source-state').textContent = status?.state ?? 'idle';
+    row.querySelector('.source-meta').textContent = label;
+    row.querySelector('.source-updated').textContent = formatViewerSourceUpdated(viewer);
+    row.querySelector('.source-viewer-count').textContent = viewerDisplay.count;
+    row.querySelector('.source-viewer-state').textContent = viewerDisplay.label;
+    row.querySelector('.source-state').textContent = `connector: ${status?.state ?? 'idle'}`;
     return row;
   };
 
@@ -338,13 +354,56 @@
   const formatNumber = (value) =>
     new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
 
+  const getViewerDisplay = (viewer) => {
+    if (!viewer) {
+      return { state: 'unavailable', count: '-', label: 'viewers unavailable' };
+    }
+
+    if (viewer.state === 'available') {
+      const count = viewer.count ?? 0;
+
+      return {
+        state: count === 0 ? 'offline' : 'available',
+        count: formatNumber(count),
+        label: count === 0 ? 'offline or zero viewers' : 'watching now',
+      };
+    }
+
+    if (viewer.state === 'disabled') {
+      return { state: 'disabled', count: '-', label: 'viewers disabled' };
+    }
+
+    return { state: 'unavailable', count: '-', label: 'viewers unavailable' };
+  };
+
+  const formatViewerUpdated = (viewers) => {
+    const latest = (viewers?.sources ?? [])
+      .map((viewer) => new Date(viewer.updatedAt).valueOf())
+      .filter((timestamp) => Number.isFinite(timestamp))
+      .sort((left, right) => right - left)[0];
+
+    return latest ? `Last viewer update: ${formatDateTime(new Date(latest).toISOString())}` : 'No viewer update yet.';
+  };
+
+  const formatViewerSourceUpdated = (viewer) =>
+    viewer?.updatedAt ? `Updated ${formatDateTime(viewer.updatedAt)}` : 'No viewer update yet.';
+
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
 
     return Number.isNaN(date.valueOf())
       ? ''
-      : new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(date);
+      : formatClock(date);
   };
+
+  const formatDateTime = (timestamp) => {
+    const date = new Date(timestamp);
+
+    return Number.isNaN(date.valueOf()) ? 'unknown time' : formatClock(date);
+  };
+
+  const formatClock = (date) =>
+    new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(date);
 
   void start();
 })();

@@ -36,12 +36,15 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.equal(viewerResponse.status, 200);
     assert.match(viewerResponse.headers.get('content-type'), /^text\/html/);
     assert.match(html, /Viewer Mode/);
+    assert.match(html, /data-viewer-updated/);
     assert.match(html, /data-chat-list/);
     assert.doesNotMatch(html, /window\.chatAggregator/);
     assert.equal(scriptResponse.status, 200);
     assert.match(scriptResponse.headers.get('content-type'), /^text\/javascript/);
     assert.match(script, /new WebSocket/);
     assert.match(script, /chat\.message/);
+    assert.match(script, /viewers\.update/);
+    assert.match(script, /source-viewer-state/);
     assert.match(script, /MAX_MESSAGES/);
     assert.doesNotMatch(script, /window\.chatAggregator/);
     assert.equal(styleResponse.status, 200);
