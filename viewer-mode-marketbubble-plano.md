@@ -517,6 +517,10 @@ Twitch.
 
 **Objetivo:** evitar acoplamento da pagina a Twitch.
 
+**Status:** concluido com fronteira pequena de adaptador no Viewer Mode,
+adaptador Twitch, fallback externo generico e seletor de live quando ha mais de
+uma source publica com player ou watch URL.
+
 **Mudancas previstas:**
 
 - interface pequena de adaptador de player;

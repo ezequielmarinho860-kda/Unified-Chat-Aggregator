@@ -46,6 +46,9 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(script, /new WebSocket/);
     assert.match(script, /chat\.message/);
     assert.match(script, /createTwitchPlayerUrl/);
+    assert.match(script, /renderedPlayerKey/);
+    assert.match(script, /PLAYER_ADAPTERS/);
+    assert.match(script, /player-source-button/);
     assert.match(script, /viewers\.update/);
     assert.match(script, /source-viewer-state/);
     assert.match(script, /MAX_MESSAGES/);

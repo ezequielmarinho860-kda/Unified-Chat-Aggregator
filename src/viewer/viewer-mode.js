@@ -9,6 +9,8 @@
     messageCount: 0,
     messages: [],
     messageKeys: new Set(),
+    selectedPlayerSourceId: undefined,
+    renderedPlayerKey: undefined,
   };
   const elements = {
     title: document.querySelector('[data-viewer-title]'),
@@ -171,7 +173,7 @@
     elements.viewerTotal.textContent = formatNumber(snapshot.viewers?.total ?? 0);
     elements.viewerUpdated.textContent = formatViewerUpdated(snapshot.viewers);
     elements.messageCount.textContent = formatNumber(state.messageCount);
-    elements.playerPanel.replaceChildren(...createPlayerElements(snapshot.manifest));
+    renderPlayer(snapshot.manifest);
     elements.sourceList.replaceChildren(...createSourceElements(snapshot));
     elements.chatList.replaceChildren(...createChatElements());
 
@@ -198,37 +200,59 @@
     return rows.size > 0 ? [...rows.values()].map(createSourceElement) : [createEmptySourceElement()];
   };
 
-  const createPlayerElements = (manifest = {}) => {
-    const source = (manifest.sources ?? []).find(
-      (candidate) => candidate.player?.provider === 'twitch' && candidate.player.channel,
-    );
+  const renderPlayer = (manifest = {}) => {
+    const playerSources = getPlayerSources(manifest);
+    const playerSource = getSelectedPlayerSource(playerSources);
+    const playerAdapter = getPlayerAdapter(playerSource);
+    const playerKey = playerSource
+      ? `${playerSource.sourceId}:${playerAdapter?.provider ?? 'external'}:${playerSource.watchUrl ?? ''}:${playerSource.player?.channel ?? ''}`
+      : 'fallback';
 
-    if (!source) {
-      return [createPlayerFallback('No Twitch player is configured yet.')];
+    if (state.renderedPlayerKey === playerKey) {
+      return;
     }
 
-    const title = document.createElement('h2');
-    const frameWrap = document.createElement('div');
-    const frame = document.createElement('iframe');
-    const fallback = document.createElement('p');
-    const link = document.createElement('a');
+    state.renderedPlayerKey = playerKey;
+    elements.playerPanel.replaceChildren(
+      ...createPlayerElements({
+        playerAdapter,
+        playerSource,
+        playerSources,
+      }),
+    );
+  };
 
-    title.textContent = source.channelLabel ?? source.player.channel;
-    frameWrap.className = 'player-frame-wrap';
-    frame.className = 'player-frame';
-    frame.src = createTwitchPlayerUrl(source.player.channel);
-    frame.title = `Twitch player for ${source.channelLabel ?? source.player.channel}`;
-    frame.allow = 'autoplay; fullscreen; picture-in-picture';
-    frame.allowFullscreen = true;
-    link.href = source.watchUrl ?? `https://www.twitch.tv/${source.player.channel}`;
-    link.target = '_blank';
-    link.rel = 'noreferrer';
-    link.textContent = 'Open on Twitch';
-    fallback.className = 'player-fallback';
-    fallback.append('If the embedded player is unavailable, ', link, '.');
-    frameWrap.append(frame);
+  const getPlayerSources = (manifest = {}) =>
+    (manifest.sources ?? []).filter((source) => getPlayerAdapter(source) || source.watchUrl);
 
-    return [createPanelKicker('Player'), title, frameWrap, fallback];
+  const getSelectedPlayerSource = (playerSources) => {
+    const selectedSource = playerSources.find(
+      (source) => source.sourceId === state.selectedPlayerSourceId,
+    );
+
+    if (selectedSource) {
+      return selectedSource;
+    }
+
+    const embeddedSource = playerSources.find((source) => getPlayerAdapter(source));
+    const fallbackSource = embeddedSource ?? playerSources[0];
+
+    state.selectedPlayerSourceId = fallbackSource?.sourceId;
+    return fallbackSource;
+  };
+
+  const createPlayerElements = ({ playerAdapter, playerSource, playerSources }) => {
+    if (!playerSource) {
+      return [createPlayerFallback('No public player or watch link is configured yet.')];
+    }
+
+    return [
+      createPanelKicker('Player'),
+      createPlayerSourceSelector(playerSources),
+      ...(playerAdapter
+        ? playerAdapter.createElements(playerSource)
+        : createExternalPlayerFallbackElements(playerSource)),
+    ];
   };
 
   const createPlayerFallback = (message) => {
@@ -237,6 +261,75 @@
     fallback.className = 'empty-state';
     fallback.textContent = message;
     return fallback;
+  };
+
+  const createPlayerSourceSelector = (playerSources) => {
+    const selector = document.createElement('div');
+
+    selector.className = 'player-source-selector';
+
+    if (playerSources.length <= 1) {
+      return selector;
+    }
+
+    for (const source of playerSources) {
+      const button = document.createElement('button');
+
+      button.type = 'button';
+      button.className = 'player-source-button';
+      button.textContent = formatSourceLabel(source);
+      button.setAttribute('aria-pressed', String(source.sourceId === state.selectedPlayerSourceId));
+      button.addEventListener('click', () => {
+        state.selectedPlayerSourceId = source.sourceId;
+        state.renderedPlayerKey = undefined;
+        renderPlayer(state.snapshot?.manifest);
+      });
+      selector.append(button);
+    }
+
+    return selector;
+  };
+
+  const createTwitchPlayerElements = (source) => {
+    const title = document.createElement('h2');
+    const frameWrap = document.createElement('div');
+    const frame = document.createElement('iframe');
+    const fallback = document.createElement('p');
+    const link = createExternalPlayerLink(source, 'Open on Twitch');
+
+    title.textContent = formatSourceLabel(source);
+    frameWrap.className = 'player-frame-wrap';
+    frame.className = 'player-frame';
+    frame.src = createTwitchPlayerUrl(source.player.channel);
+    frame.title = `Twitch player for ${formatSourceLabel(source)}`;
+    frame.allow = 'autoplay; fullscreen; picture-in-picture';
+    frame.allowFullscreen = true;
+    fallback.className = 'player-fallback';
+    fallback.append('If the embedded player is unavailable, ', link, '.');
+    frameWrap.append(frame);
+
+    return [title, frameWrap, fallback];
+  };
+
+  const createExternalPlayerFallbackElements = (source) => {
+    const title = document.createElement('h2');
+    const fallback = document.createElement('div');
+    const link = createExternalPlayerLink(source, `Open on ${formatPlatform(source.platform)}`);
+
+    title.textContent = formatSourceLabel(source);
+    fallback.className = 'empty-state player-external-fallback';
+    fallback.append('No approved embed is available for this platform yet. ', link);
+    return [title, fallback];
+  };
+
+  const createExternalPlayerLink = (source, label) => {
+    const link = document.createElement('a');
+
+    link.href = source.watchUrl;
+    link.target = '_blank';
+    link.rel = 'noreferrer';
+    link.textContent = label;
+    return link;
   };
 
   const createPanelKicker = (text) => {
@@ -255,6 +348,23 @@
     url.searchParams.set('muted', 'true');
     return url.toString();
   };
+
+  const PLAYER_ADAPTERS = [
+    {
+      provider: 'twitch',
+      supports: (source) => source?.player?.provider === 'twitch' && source.player.channel,
+      createElements: createTwitchPlayerElements,
+    },
+  ];
+
+  const getPlayerAdapter = (source) =>
+    PLAYER_ADAPTERS.find((adapter) => adapter.supports(source));
+
+  const formatSourceLabel = (source = {}) =>
+    source.channelLabel ?? source.broadcasterName ?? source.sourceId ?? formatPlatform(source.platform);
+
+  const formatPlatform = (platform = 'platform') =>
+    platform === 'x' ? 'X' : `${platform.slice(0, 1).toUpperCase()}${platform.slice(1)}`;
 
   const mergeSourceRow = (rows, source, patch) => {
     if (source?.sourceId) {

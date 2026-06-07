@@ -163,7 +163,7 @@ Campos de uma source no manifesto:
 | Campo | Obrigatorio | Descricao |
 | --- | --- | --- |
 | campos de identidade de origem | sim | Conforme secao anterior. |
-| `watchUrl` | nao | URL publica para abrir a live na plataforma. |
+| `watchUrl` | nao | URL publica para abrir a live na plataforma. Pode existir mesmo quando nao ha embed aprovado. |
 | `player` | nao | Configuracao publica para um adaptador de player suportado. |
 
 `player` e uma estrutura discriminada por `provider`. No v1, somente o formato
@@ -405,7 +405,8 @@ O contrato descreve o alvo publico. Nem todos os campos existem hoje:
 - snapshot HTTP local esta disponivel em `GET /api/v1/snapshot`;
 - envelopes e eventos WebSocket locais estao disponiveis em
   `ws://127.0.0.1:47831/api/v1/events`;
-- manifesto e player Twitch ja sao publicados para o Viewer Mode local;
+- manifesto, player Twitch e watch links externos ja sao publicados para o
+  Viewer Mode local;
 - manifesto publico mais amplo e transporte substituivel continuam planejados
   para a Fase D.
 

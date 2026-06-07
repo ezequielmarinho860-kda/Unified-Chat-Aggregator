@@ -381,7 +381,15 @@ and per-source viewer counts, viewer availability states, inferred zero-viewer
 offline state, connector state, and the latest viewer update timestamp available
 in the public snapshot. When a Twitch connector is enabled, the public manifest
 includes a Twitch player config and the Viewer Mode embeds the Twitch player
-with a fallback link to open the channel on Twitch.
+through a small player adapter boundary. Kick and X publish public watch links
+when available, but remain external fallbacks until an embed is technically
+approved for those providers.
+
+Viewer Mode is a fixed-viewport app shell on desktop. New visual blocks should
+be added inside existing grid regions or panels with their own internal scroll,
+not as loose content below the grid. Letting the page itself grow can push the
+player out of view or cause the embedded Twitch player to pause/reload while the
+user scrolls.
 
 The gateway binds only to the local loopback address, accepts only `GET` on the
 versioned snapshot and Viewer Mode routes, and serializes realtime responses

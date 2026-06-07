@@ -5,6 +5,11 @@
   color: #f3f7fb;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -109,17 +114,34 @@ h1 {
 
 .layout-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.8fr);
+  grid-template-areas:
+    "player chat"
+    "stats chat";
+  grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.95fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 16px;
+  min-height: 0;
 }
 
 .panel {
+  min-width: 0;
+  min-height: 0;
   padding: 22px;
 }
 
-.player-panel,
-.stats-panel {
+.player-panel {
   min-height: 340px;
+  overflow: hidden;
+}
+
+.player-panel {
+  grid-area: player;
+}
+
+.stats-panel {
+  grid-area: stats;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .player-frame-wrap {
@@ -141,9 +163,39 @@ h1 {
   color: #c7d2e2;
 }
 
-.player-fallback a {
+.player-fallback a,
+.player-external-fallback a {
   color: #bfdbfe;
   font-weight: 800;
+}
+
+.player-source-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 0;
+  margin-bottom: 14px;
+}
+
+.player-source-selector:empty {
+  display: none;
+}
+
+.player-source-button {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  padding: 7px 11px;
+  background: rgba(15, 23, 42, 0.82);
+  color: #dbe7f5;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86rem;
+}
+
+.player-source-button[aria-pressed="true"] {
+  border-color: rgba(96, 165, 250, 0.78);
+  background: rgba(59, 130, 246, 0.22);
+  color: #eff6ff;
 }
 
 .viewer-total {
@@ -220,7 +272,8 @@ h1 {
 .chat-list {
   display: grid;
   gap: 12px;
-  max-height: 520px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding-right: 4px;
   scroll-behavior: smooth;
@@ -331,7 +384,10 @@ h1 {
 }
 
 .chat-panel {
-  grid-column: 1 / -1;
+  grid-area: chat;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .panel-heading {
@@ -345,11 +401,44 @@ h1 {
   padding: 28px;
 }
 
+@media (min-width: 821px) {
+  body {
+    overflow: hidden;
+  }
+
+  .viewer-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .hero {
+    flex: 0 0 auto;
+  }
+
+  .layout-grid {
+    flex: 1;
+    overflow: hidden;
+  }
+}
+
 @media (max-width: 820px) {
+  body {
+    overflow: auto;
+  }
+
   .hero,
   .layout-grid {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .layout-grid {
+    grid-template-areas:
+      "player"
+      "stats"
+      "chat";
   }
 
   .connection-card {
