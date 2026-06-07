@@ -14,9 +14,15 @@ const VIEWER_ASSETS = new Map([
   [`${VIEWER_PATH}/`, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
   [`${VIEWER_PATH}/viewer-mode.css`, { file: 'viewer-mode.css', contentType: 'text/css; charset=utf-8' }],
   [`${VIEWER_PATH}/viewer-mode.js`, { file: 'viewer-mode.js', contentType: 'text/javascript; charset=utf-8' }],
+  [`${VIEWER_PATH}/assets/twitch-glitch.svg`, {
+    file: 'twitch-glitch.svg',
+    contentType: 'image/svg+xml; charset=utf-8',
+    directory: 'assets',
+  }],
 ]);
 const DEFAULT_HEARTBEAT_MS = 30_000;
 const VIEWER_ASSET_DIR = path.join(__dirname, '..', 'viewer');
+const SHARED_ASSET_DIR = path.join(__dirname, '..', 'assets');
 
 const createHttpGateway = ({
   getSnapshot,
@@ -208,9 +214,10 @@ const handleViewerAssetRequest = async (request, response, pathname) => {
   }
 
   const asset = VIEWER_ASSETS.get(pathname);
+  const assetDirectory = asset.directory === 'assets' ? SHARED_ASSET_DIR : VIEWER_ASSET_DIR;
 
   try {
-    const body = await fs.readFile(path.join(VIEWER_ASSET_DIR, asset.file));
+    const body = await fs.readFile(path.join(assetDirectory, asset.file));
 
     sendResponse(response, 200, body, asset.contentType);
   } catch {

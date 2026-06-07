@@ -10,17 +10,31 @@
   </head>
   <body>
     <main class="viewer-shell">
-      <header class="hero">
-        <div>
-          <p class="eyebrow">Viewer Mode</p>
-          <h1 data-viewer-title>Unified Chat Aggregator</h1>
-          <p class="hero-copy">Browser-native shell consuming only the public local gateway.</p>
+      <header class="topbar">
+        <div class="viewer-status-grid" aria-label="Viewer counts">
+          <article class="status-card status-card--twitch" data-viewer-card="twitch" data-viewer-state="unavailable">
+            <span class="status-card__label">
+              <span class="platform-mark"><img src="/viewer/assets/twitch-glitch.svg" alt=""></span>Twitch
+            </span>
+            <strong class="status-card__viewer-count" data-viewer-platform-count="twitch">--</strong>
+          </article>
+          <article class="status-card status-card--kick" data-viewer-card="kick" data-viewer-state="unavailable">
+            <span class="status-card__label"><span class="platform-mark platform-mark--kick">K</span>Kick</span>
+            <strong class="status-card__viewer-count" data-viewer-platform-count="kick">--</strong>
+          </article>
+          <article class="status-card status-card--x" data-viewer-card="x" data-viewer-state="unavailable">
+            <span class="status-card__label"><span class="platform-mark">X</span>X</span>
+            <strong class="status-card__viewer-count" data-viewer-platform-count="x">--</strong>
+          </article>
+          <article class="status-card status-card--total" data-viewer-card="total" data-viewer-state="available">
+            <span class="status-card__label"><span class="platform-mark">+</span>Total</span>
+            <strong class="status-card__viewer-count" data-viewer-platform-count="total">0</strong>
+          </article>
         </div>
         <div class="connection-card" data-connection-state="loading">
           <span class="status-dot" aria-hidden="true"></span>
           <div>
             <strong data-connection-label>Loading snapshot</strong>
-            <span data-connection-detail>Preparing realtime connection.</span>
           </div>
         </div>
       </header>
@@ -31,20 +45,9 @@
           <div class="empty-state">Waiting for a public Twitch player config.</div>
         </article>
 
-        <aside class="panel stats-panel" aria-live="polite">
-          <p class="panel-kicker">Viewers</p>
-          <strong class="viewer-total" data-viewer-total>0</strong>
-          <span class="muted">combined available viewers</span>
-          <span class="viewer-updated" data-viewer-updated>No viewer update yet.</span>
-          <div class="source-list" data-source-list></div>
-        </aside>
-
         <article class="panel chat-panel">
           <div class="panel-heading">
-            <div>
-              <p class="panel-kicker">Combined Chat</p>
-              <h2>Live read-only feed</h2>
-            </div>
+            <p class="panel-kicker">Combined Chat</p>
             <span class="message-count"><span data-message-count>0</span> live messages seen</span>
           </div>
           <div class="chat-list" data-chat-list aria-live="polite" aria-label="Combined chat messages">
@@ -52,6 +55,9 @@
               Waiting for new public chat messages from the realtime gateway.
             </div>
           </div>
+          <button class="chat-resume-button" type="button" data-resume-chat hidden>
+            New messages
+          </button>
         </article>
       </section>
     </main>

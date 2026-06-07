@@ -30,16 +30,23 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     const viewerResponse = await fetch(address.viewerUrl);
     const scriptResponse = await fetch(`http://${address.host}:${address.port}/viewer/viewer-mode.js`);
     const styleResponse = await fetch(`http://${address.host}:${address.port}/viewer/viewer-mode.css`);
+    const twitchIconResponse = await fetch(
+      `http://${address.host}:${address.port}/viewer/assets/twitch-glitch.svg`,
+    );
     const html = await viewerResponse.text();
     const script = await scriptResponse.text();
+    const style = await styleResponse.text();
+    const twitchIcon = await twitchIconResponse.text();
 
     assert.equal(viewerResponse.status, 200);
     assert.match(viewerResponse.headers.get('content-type'), /^text\/html/);
     assert.match(html, /Viewer Mode/);
     assert.match(html, /player\.twitch\.tv/);
     assert.match(html, /data-player-panel/);
-    assert.match(html, /data-viewer-updated/);
+    assert.match(html, /data-viewer-card="twitch"/);
+    assert.match(html, /data-viewer-platform-count="total"/);
     assert.match(html, /data-chat-list/);
+    assert.match(html, /data-resume-chat/);
     assert.doesNotMatch(html, /window\.chatAggregator/);
     assert.equal(scriptResponse.status, 200);
     assert.match(scriptResponse.headers.get('content-type'), /^text\/javascript/);
@@ -50,11 +57,26 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(script, /PLAYER_ADAPTERS/);
     assert.match(script, /player-source-button/);
     assert.match(script, /viewers\.update/);
-    assert.match(script, /source-viewer-state/);
+    assert.match(script, /renderViewerCards/);
+    assert.match(script, /shouldAutoscrollChat/);
+    assert.match(script, /scheduleRender/);
+    assert.match(script, /pendingRenderFrame/);
     assert.match(script, /MAX_MESSAGES/);
+    assert.match(script, /message__badge/);
+    assert.match(script, /shouldRenderAuthorAvatar/);
+    assert.match(script, /\/viewer\/assets\/twitch-glitch\.svg/);
+    assert.match(script, /unseenMessageCount/);
+    assert.match(script, /updateResumeChatControl/);
     assert.doesNotMatch(script, /window\.chatAggregator/);
     assert.equal(styleResponse.status, 200);
     assert.match(styleResponse.headers.get('content-type'), /^text\/css/);
+    assert.match(style, /\.message__metadata/);
+    assert.match(style, /\.message__badge--kick/);
+    assert.match(style, /\.chat-resume-button/);
+    assert.match(style, /\.viewer-status-grid/);
+    assert.equal(twitchIconResponse.status, 200);
+    assert.match(twitchIconResponse.headers.get('content-type'), /^image\/svg\+xml/);
+    assert.match(twitchIcon, /aria-label="Twitch"/);
   } finally {
     await gateway.stop();
   }

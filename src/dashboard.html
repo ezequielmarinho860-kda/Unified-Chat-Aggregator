@@ -55,7 +55,6 @@
             <button class="filter-button filter-button--compact" type="button" data-filter-platform="x">X</button>
           </div>
           <div class="feed-actions">
-            <button class="tool-button tool-button--compact" type="button" id="toggle-autoscroll">Pause</button>
             <button class="tool-button tool-button--compact" type="button" id="clear-feed">Clear</button>
           </div>
         </div>
@@ -63,6 +62,9 @@
         <ol class="message-feed" id="message-feed" aria-live="polite">
           <li class="empty-state" id="empty-state">Waiting for messages...</li>
         </ol>
+        <button class="new-message-button" type="button" id="resume-chat" hidden>
+          Novas mensagens
+        </button>
 
         <form class="composer-panel" id="message-composer" aria-label="Send message">
           <label class="composer-panel__target">

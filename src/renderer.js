@@ -5,7 +5,7 @@ const messageFeed = document.querySelector('#message-feed');
 const messageCount = document.querySelector('#message-count');
 const visibleMessageCount = document.querySelector('#visible-message-count');
 const platformFilter = document.querySelector('#platform-filter');
-const toggleAutoscroll = document.querySelector('#toggle-autoscroll');
+const resumeChat = document.querySelector('#resume-chat');
 const clearFeed = document.querySelector('#clear-feed');
 const configForm = document.querySelector('#connector-config-form');
 const configMeta = document.querySelector('#config-meta');
@@ -44,8 +44,8 @@ const pendingOutgoingMessages = new Map();
 const maxRenderedMessages = 250;
 const outgoingMessageMatchWindowMs = 30_000;
 let activeFilter = 'all';
-let autoscrollManuallyPaused = false;
 let feedPinnedToBottom = true;
+let unseenMessageCount = 0;
 let totalMessages = 0;
 let xAuthState = { connected: false };
 let xAuthPollingTimer;
@@ -107,15 +107,27 @@ const isFeedScrolledToBottom = () => {
   return remainingScroll <= 2;
 };
 
-const isAutoscrollEnabled = () => !autoscrollManuallyPaused && feedPinnedToBottom;
+const isAutoscrollEnabled = () => feedPinnedToBottom;
 
-const updateAutoscrollControl = () => {
-  if (!toggleAutoscroll) {
+const updateResumeChatControl = () => {
+  if (!resumeChat) {
     return;
   }
 
-  toggleAutoscroll.textContent = isAutoscrollEnabled() ? 'Pause' : 'Resume';
+  resumeChat.hidden = unseenMessageCount === 0 || feedPinnedToBottom;
+  resumeChat.textContent = formatUnseenMessageCount(unseenMessageCount);
 };
+
+const formatUnseenMessageCount = (count) => {
+  if (count > 20) {
+    return '20+ novas mensagens';
+  }
+
+  return count === 1 ? '1 nova mensagem' : `${count} novas mensagens`;
+};
+
+const isMessageVisibleInActiveFilter = (message) =>
+  activeFilter === 'all' || message.platform === activeFilter;
 
 const renderMessage = (message) => {
   const item = document.createElement('li');
@@ -385,11 +397,12 @@ const updateMessageMetrics = () => {
   );
 };
 
-const renderFeed = () => {
+const renderFeed = ({ stickToBottom = isAutoscrollEnabled() } = {}) => {
   if (!messageFeed || !emptyState) {
     return;
   }
 
+  const previousScrollTop = messageFeed.scrollTop;
   const filteredMessages =
     activeFilter === 'all'
       ? messages
@@ -406,11 +419,16 @@ const renderFeed = () => {
       ? 'Waiting for messages...'
       : `No ${platformLabels[activeFilter] ?? activeFilter} messages.`;
 
-  if (isAutoscrollEnabled()) {
+  if (stickToBottom) {
     messageFeed.scrollTop = messageFeed.scrollHeight;
+    feedPinnedToBottom = true;
+    unseenMessageCount = 0;
+  } else {
+    messageFeed.scrollTop = previousScrollTop;
   }
 
   updateMessageMetrics();
+  updateResumeChatControl();
 };
 
 const renderConnectorStatus = (status) => {
@@ -687,6 +705,8 @@ window.chatAggregator?.onConnectorStatus((status) => {
 });
 
 window.chatAggregator?.onChatMessage((message) => {
+  const shouldStickToBottom = isAutoscrollEnabled();
+
   totalMessages += 1;
   identifyOwnIncomingMessage(message);
   messages.push(message);
@@ -696,7 +716,11 @@ window.chatAggregator?.onChatMessage((message) => {
     messages.splice(0, messages.length - 1_000);
   }
 
-  renderFeed();
+  if (!shouldStickToBottom && isMessageVisibleInActiveFilter(message)) {
+    unseenMessageCount += 1;
+  }
+
+  renderFeed({ stickToBottom: shouldStickToBottom });
 });
 
 platformFilter?.addEventListener('click', (event) => {
@@ -707,36 +731,40 @@ platformFilter?.addEventListener('click', (event) => {
   }
 
   activeFilter = button.dataset.filterPlatform;
+  feedPinnedToBottom = true;
+  unseenMessageCount = 0;
 
   for (const filterButton of platformFilter.querySelectorAll('.filter-button')) {
     filterButton.classList.toggle('is-active', filterButton === button);
   }
 
-  renderFeed();
+  renderFeed({ stickToBottom: true });
 });
 
-toggleAutoscroll?.addEventListener('click', () => {
-  if (isAutoscrollEnabled()) {
-    autoscrollManuallyPaused = true;
-  } else {
-    autoscrollManuallyPaused = false;
-    feedPinnedToBottom = true;
-    messageFeed.scrollTop = messageFeed.scrollHeight;
-  }
-
-  updateAutoscrollControl();
+resumeChat?.addEventListener('click', () => {
+  feedPinnedToBottom = true;
+  unseenMessageCount = 0;
+  messageFeed.scrollTop = messageFeed.scrollHeight;
+  updateResumeChatControl();
 });
 
 messageFeed?.addEventListener('scroll', () => {
   feedPinnedToBottom = isFeedScrolledToBottom();
-  updateAutoscrollControl();
+
+  if (feedPinnedToBottom) {
+    unseenMessageCount = 0;
+  }
+
+  updateResumeChatControl();
 });
 
 clearFeed?.addEventListener('click', () => {
   messages.length = 0;
   totalMessages = 0;
+  unseenMessageCount = 0;
+  feedPinnedToBottom = true;
   platformCounts.clear();
-  renderFeed();
+  renderFeed({ stickToBottom: true });
 });
 
 configForm?.addEventListener('submit', async (event) => {
