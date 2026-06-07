@@ -9,6 +9,9 @@ const {
 } = require('./app-config');
 const { createAppConfigStore } = require('./app-config-store');
 const { createChatHub } = require('./chat-hub');
+const { createHttpGateway } = require('./gateway/http-gateway');
+const { serializePublicSnapshot } = require('./public-realtime');
+const { createConnectorSource } = require('./source-identity');
 const { createViewerMonitor } = require('./viewer-monitor');
 const {
   createRefreshingKickViewerFetcher,
@@ -47,6 +50,7 @@ let chatHub = createChatHub();
 let unsubscribeHubMessage;
 let unsubscribeHubStatus;
 let viewerMonitor;
+let httpGateway;
 
 const focusWindow = (window) => {
   if (!window || window.isDestroyed()) {
@@ -212,6 +216,48 @@ const getRuntimeSnapshot = () => ({
   statuses: getDisplayStatuses(),
   viewers: viewerMonitor?.getSnapshot(),
 });
+
+const getPublicRealtimeSnapshot = () => {
+  const sources = createPublicSources(runtimeConfig);
+
+  return serializePublicSnapshot(
+    {
+      manifest: { title: 'Unified Chat Aggregator' },
+      statuses: getDisplayStatuses(),
+      viewers: viewerMonitor?.getSnapshot(),
+    },
+    { sources },
+  );
+};
+
+const createPublicSources = (config = {}) =>
+  Object.fromEntries(
+    PLATFORM_ORDER.flatMap((platform) => {
+      const connectorConfig = config.connectors?.[platform];
+
+      if (!connectorConfig?.enabled) {
+        return [];
+      }
+
+      const source = createConnectorSource({ platform, ...connectorConfig });
+      return source ? [[platform, source]] : [];
+    }),
+  );
+
+const startHttpGateway = async () => {
+  try {
+    httpGateway = createHttpGateway({
+      getSnapshot: getPublicRealtimeSnapshot,
+      port: process.env.VIEWER_GATEWAY_PORT,
+    });
+    const gatewayAddress = await httpGateway.start();
+
+    console.log(`Viewer gateway listening at ${gatewayAddress.snapshotUrl}`);
+  } catch (error) {
+    httpGateway = undefined;
+    console.error(`Viewer gateway unavailable: ${error.message}`);
+  }
+};
 
 const getDisplayStatuses = () => {
   const statuses = new Map(
@@ -512,6 +558,7 @@ if (!hasSingleInstanceLock) {
       }),
     });
     await restartRuntime(savedConfig);
+    await startHttpGateway();
     viewerMonitor.start();
     createSetupWindow();
 
@@ -530,6 +577,7 @@ if (!hasSingleInstanceLock) {
 
   app.on('before-quit', async () => {
     viewerMonitor?.stop();
+    await httpGateway?.stop();
     await chatHub.stop();
   });
 }

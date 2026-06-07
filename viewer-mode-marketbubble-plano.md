@@ -303,6 +303,9 @@ status, viewers e snapshot.
 
 **Objetivo:** expor um snapshot inicial para uma pagina web local.
 
+**Status:** concluido com gateway HTTP nativo vinculado a `127.0.0.1` e rota
+versionada de snapshot somente leitura.
+
 **Mudancas previstas:**
 
 - servidor HTTP local vinculado somente a `127.0.0.1`;

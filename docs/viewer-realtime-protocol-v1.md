@@ -402,7 +402,7 @@ O contrato descreve o alvo publico. Nem todos os campos existem hoje:
 - labels visuais de origem ja aparecem no dashboard Electron;
 - serializadores por allowlist para source, mensagens, status, viewers e
   snapshot ja existem;
-- snapshot HTTP entra no Bloco B2;
+- snapshot HTTP local esta disponivel em `GET /api/v1/snapshot`;
 - envelopes e eventos WebSocket entram no Bloco B3;
 - manifesto e player serao implementados durante as Fases C e D.
 

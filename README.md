@@ -348,9 +348,23 @@ Supported variables:
 | `KICK_CHATROOM_ID` | Provides a Kick chatroom ID manually. |
 | `X_LIVE_URL` | Sets the X live URL, live chat URL, or handle and enables X before saved config exists. |
 | `X_SHOW_BROWSER` | Shows the X capture window when set to `true`. |
+| `VIEWER_GATEWAY_PORT` | Overrides the local read-only viewer gateway port. Defaults to `47831`. |
 
 After a saved config file exists, the app prioritizes saved configuration on
 startup so old shell variables do not unexpectedly switch the stream.
+
+## Local Viewer Gateway
+
+The app exposes a read-only public snapshot for future Viewer Mode clients at:
+
+```text
+http://127.0.0.1:47831/api/v1/snapshot
+```
+
+The gateway binds only to the local loopback address, accepts only `GET` on the
+versioned snapshot route, and serializes responses through a public allowlist.
+It does not expose chat sending, moderation actions, tokens, raw platform
+payloads, local config paths, or environment override details.
 
 ## Development Setup
 
