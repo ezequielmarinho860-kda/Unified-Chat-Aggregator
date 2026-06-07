@@ -399,7 +399,7 @@ O contrato descreve o alvo publico. Nem todos os campos existem hoje:
 
 - `source` ja existe como campo opcional no modelo canonico e o `chat-hub`
   preenche sua identidade a partir do connector atual;
-- labels visuais de origem entram no Bloco A3;
+- labels visuais de origem ja aparecem no dashboard Electron;
 - serializadores por allowlist entram no Bloco B1;
 - snapshot HTTP entra no Bloco B2;
 - envelopes e eventos WebSocket entram no Bloco B3;

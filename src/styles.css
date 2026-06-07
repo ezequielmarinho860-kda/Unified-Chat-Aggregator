@@ -82,6 +82,12 @@ body {
   color: #c4ccd6;
 }
 
+:root[data-theme='dark'] .message__source {
+  border-color: #505965;
+  background: #252c34;
+  color: #d5dbe3;
+}
+
 :root[data-theme='dark'] .message[data-platform='twitch'] .message__author {
   color: #b794f6;
 }
@@ -699,6 +705,21 @@ h1 {
 
 .message__badge--x {
   background: #24292f;
+}
+
+.message__source {
+  flex: 0 1 auto;
+  max-width: 180px;
+  padding: 2px 7px;
+  overflow: hidden;
+  border: 1px solid #d8d2c7;
+  border-radius: 999px;
+  background: #f4efe6;
+  color: #625d55;
+  font-size: 0.7rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .message__author {

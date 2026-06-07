@@ -128,6 +128,7 @@ const renderMessage = (message) => {
   const avatar = shouldRenderAuthorAvatar(message) ? renderAuthorAvatar(message) : undefined;
 
   const badge = renderPlatformBadge(message.platform);
+  const source = renderMessageSource(message.source);
 
   const author = document.createElement('strong');
   author.className = 'message__author';
@@ -146,7 +147,7 @@ const renderMessage = (message) => {
 
   const metadata = document.createElement('div');
   metadata.className = 'message__metadata';
-  metadata.append(badge, author, ...badges, time);
+  metadata.append(...[badge, source, author, ...badges, time].filter(Boolean));
 
   const content = document.createElement('div');
   content.className = 'message__content';
@@ -229,6 +230,21 @@ const identifyOwnIncomingMessage = (message) => {
 };
 
 const shouldRenderAuthorAvatar = (message) => !['kick', 'twitch'].includes(message.platform);
+
+const renderMessageSource = (source) => {
+  const label = source?.broadcasterName || source?.channelLabel;
+
+  if (!label) {
+    return undefined;
+  }
+
+  const element = document.createElement('span');
+
+  element.className = 'message__source';
+  element.textContent = label;
+  element.title = `Stream source: ${label}`;
+  return element;
+};
 
 const renderPlatformBadge = (platform) => {
   const badge = document.createElement('span');

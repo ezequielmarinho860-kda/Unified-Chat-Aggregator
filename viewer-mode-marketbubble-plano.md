@@ -238,6 +238,8 @@ automatico pelo `chat-hub`.
 
 **Objetivo:** provar visualmente a diferenca entre plataforma e canal.
 
+**Status:** concluido com label de origem no metadata de cada mensagem.
+
 **Mudancas previstas:**
 
 - renderizar um label curto de canal/streamer junto ao badge da plataforma;
