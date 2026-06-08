@@ -53,6 +53,7 @@
             <button class="filter-button filter-button--compact is-active" type="button" data-filter-platform="twitch" aria-pressed="true">Twitch</button>
             <button class="filter-button filter-button--compact is-active" type="button" data-filter-platform="kick" aria-pressed="true">Kick</button>
             <button class="filter-button filter-button--compact is-active" type="button" data-filter-platform="x" aria-pressed="true">X</button>
+            <button class="filter-button filter-button--compact is-active" type="button" data-filter-platform="local" aria-pressed="true">Local</button>
           </div>
           <div class="feed-actions">
             <button class="tool-button tool-button--compact" type="button" id="clear-feed">Clear</button>
@@ -65,6 +66,35 @@
         <button class="new-message-button" type="button" id="resume-chat" hidden>
           Novas mensagens
         </button>
+
+        <section class="local-chat-panel" aria-label="Local chat controls">
+          <form class="local-chat-panel__auth" id="local-chat-auth-form">
+            <label>
+              <span>Email</span>
+              <input name="email" type="email" autocomplete="email" placeholder="host@example.com" required />
+            </label>
+            <label>
+              <span>Nick</span>
+              <input name="nick" type="text" autocomplete="nickname" maxlength="24" placeholder="host_nick" />
+            </label>
+            <button class="tool-button tool-button--primary" type="submit" data-local-auth-action="register">Join</button>
+            <button class="tool-button" type="submit" data-local-auth-action="login">Login</button>
+            <button class="tool-button" type="button" id="local-chat-google-login">Google</button>
+          </form>
+          <div class="local-chat-panel__session" id="local-chat-session-panel" hidden>
+            <strong id="local-chat-session-label">Not logged in</strong>
+            <button class="tool-button tool-button--compact" type="button" id="local-chat-logout">Logout</button>
+          </div>
+          <form class="local-chat-panel__message" id="local-chat-message-form">
+            <label>
+              <span class="visually-hidden">Local chat message</span>
+              <textarea name="text" rows="1" maxlength="500" placeholder="Send local chat message or /ban command" required></textarea>
+            </label>
+            <button class="tool-button tool-button--primary" type="submit">Send Local</button>
+          </form>
+          <div class="local-chat-suggestions" id="local-chat-suggestions" hidden></div>
+          <p class="local-chat-panel__meta" id="local-chat-meta" aria-live="polite"></p>
+        </section>
 
         <form class="composer-panel" id="message-composer" aria-label="Send message" hidden>
           <label class="composer-panel__target">

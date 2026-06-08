@@ -1,5 +1,5 @@
 const path = require('node:path');
-const { app, BrowserWindow, ipcMain, session } = require('electron');
+const { app, BrowserWindow, ipcMain, session, shell } = require('electron');
 const {
   PLATFORM_ORDER,
   clearEnvironmentOverrides,
@@ -9,7 +9,14 @@ const {
 } = require('./app-config');
 const { createAppConfigStore } = require('./app-config-store');
 const { createChatHub } = require('./chat-hub');
-const { createHttpGateway } = require('./gateway/http-gateway');
+const { createHttpGateway, DEFAULT_GATEWAY_PORT } = require('./gateway/http-gateway');
+const { createGoogleOAuthService } = require('./google-oauth');
+const {
+  LOCAL_MODERATION_COMMANDS,
+  applyModerationCommand,
+  requireModerator,
+} = require('./local-chat-moderation');
+const { createLocalChatStore } = require('./local-chat-store');
 const {
   serializePublicChatMessage,
   serializePublicSnapshot,
@@ -56,6 +63,8 @@ let runtimeConfig;
 let envOverrides = [];
 let allowEnvironmentOverrides = false;
 let chatHub = createChatHub();
+let googleOAuthService;
+let localChatStore;
 let unsubscribeHubMessage;
 let unsubscribeHubStatus;
 let viewerMonitor;
@@ -256,6 +265,9 @@ const startHttpGateway = async () => {
   try {
     httpGateway = createHttpGateway({
       getSnapshot: getPublicRealtimeSnapshot,
+      googleOAuthService,
+      localChatStore,
+      onLocalChatMessage: (message) => publishLocalChatMessage(message),
       port: process.env.VIEWER_GATEWAY_PORT,
     });
     const gatewayAddress = await httpGateway.start();
@@ -291,6 +303,14 @@ const publishPublicRealtime = (type, createData) => {
     httpGateway.publish(type, createData());
   } catch (error) {
     console.error(`Viewer gateway event unavailable: ${error.message}`);
+  }
+};
+
+const publishLocalChatMessage = (message, { publishPublic = false } = {}) => {
+  broadcastToWindows('chat:message', message);
+
+  if (publishPublic) {
+    publishPublicRealtime('chat.message', () => serializePublicChatMessage(message));
   }
 };
 
@@ -578,6 +598,155 @@ const sendChatMessage = async (payload) => {
   }
 };
 
+const registerLocalChatUser = ({ email, nick } = {}) => {
+  const existingUser = localChatStore.getUserByEmail(email);
+  const registeredUser = localChatStore.registerUser({ email, nick });
+
+  if (!existingUser) {
+    localChatStore.addModerator({ email: registeredUser.email });
+  }
+
+  return createLocalSessionResponse(
+    localChatStore.createSession({ email: registeredUser.email }),
+  );
+};
+
+const loginLocalChatUser = ({ email } = {}) => {
+  const { session } = localChatStore.createSession({ email });
+
+  return createLocalSessionResponse({
+    session,
+    user: localChatStore.getSessionUser(session.token),
+  });
+};
+
+const getLocalChatSession = ({ token } = {}) => {
+  const user = requireLocalChatUser(token);
+
+  return { user: serializeLocalUser(user) };
+};
+
+const sendLocalChatMessage = ({ token, text } = {}) => {
+  const message = localChatStore.createMessage({ token, text });
+
+  publishLocalChatMessage(message, { publishPublic: true });
+  return { message };
+};
+
+const runLocalChatModeration = ({ token, command } = {}) => {
+  const user = requireLocalChatUser(token);
+
+  requireModerator(user);
+  return { moderation: applyModerationCommand(localChatStore, command, user) };
+};
+
+const getLocalChatModerationCommands = () => ({
+  commands: LOCAL_MODERATION_COMMANDS,
+});
+
+const getLocalGoogleOAuthStatus = () => ({
+  enabled: Boolean(googleOAuthService?.isConfigured()),
+});
+
+const startLocalGoogleOAuth = async ({ nick } = {}) => {
+  if (!googleOAuthService?.isConfigured()) {
+    throw new Error('Google OAuth is not configured.');
+  }
+
+  const resultKey = cryptoRandomId();
+  const authUrl = googleOAuthService.createAuthorizationUrl({
+    resultKey,
+    returnTo: 'app',
+  });
+
+  await shell.openExternal(authUrl.toString());
+  const result = await waitForGoogleOAuthResult(resultKey);
+
+  return completeAppGoogleOAuthResult(result, { nick });
+};
+
+const completeLocalGoogleOAuth = ({ nick, ticket } = {}) =>
+  completeAppGoogleOAuthResult({ ticket }, { nick });
+
+const waitForGoogleOAuthResult = async (resultKey) => {
+  const expiresAt = Date.now() + 120_000;
+
+  while (Date.now() < expiresAt) {
+    const result = googleOAuthService.consumeResult(resultKey);
+
+    if (result) {
+      return result;
+    }
+
+    await delay(500);
+  }
+
+  throw new Error('Google OAuth login timed out.');
+};
+
+const completeAppGoogleOAuthResult = ({ profile, ticket }, { nick } = {}) => {
+  const oauthProfile = profile ?? googleOAuthService.consumeTicket(ticket);
+  const existingUser = localChatStore.getUserByEmail(oauthProfile.email);
+
+  if (!existingUser && (!nick || typeof nick !== 'string' || nick.trim().length === 0)) {
+    if (!profile) {
+      throw new Error('Local chat nick is required after Google OAuth.');
+    }
+
+    return {
+      pendingGoogleOAuth: {
+        email: oauthProfile.email,
+        name: oauthProfile.name,
+        ticket,
+      },
+    };
+  }
+
+  if (profile) {
+    googleOAuthService.consumeTicket(ticket);
+  }
+
+  const user = existingUser ?? localChatStore.registerUser({ email: oauthProfile.email, nick });
+
+  if (!existingUser) {
+    localChatStore.addModerator({ email: user.email });
+  }
+
+  return createLocalSessionResponse(
+    localChatStore.createSession({ email: user.email }),
+  );
+};
+
+const delay = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const cryptoRandomId = () =>
+  `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+
+const requireLocalChatUser = (token) => {
+  const user = localChatStore.getSessionUser(token);
+
+  if (!user) {
+    throw new Error('Local chat session is invalid.');
+  }
+
+  return user;
+};
+
+const createLocalSessionResponse = ({ session, user }) => ({
+  session: { token: session.token },
+  user: serializeLocalUser(user),
+});
+
+const serializeLocalUser = (user) => ({
+  id: user.id,
+  email: user.email,
+  nick: user.nick,
+  role: user.role,
+});
+
 const createRendererWindow = ({ view, windowOptions }) => {
   const rendererWindow = new BrowserWindow({
     backgroundColor: savedConfig?.ui?.theme === 'dark' ? '#111418' : '#f6f4ef',
@@ -667,6 +836,16 @@ if (!hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     try {
       configStore = createAppConfigStore(path.join(app.getPath('userData'), 'config.json'));
+      localChatStore = createLocalChatStore({
+        filePath: path.join(app.getPath('userData'), 'local-chat.json'),
+      });
+      googleOAuthService = createGoogleOAuthService({
+        clientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+        redirectUri:
+          process.env.GOOGLE_OAUTH_REDIRECT_URI ||
+          `http://127.0.0.1:${process.env.VIEWER_GATEWAY_PORT || DEFAULT_GATEWAY_PORT}/api/v1/auth/google/callback`,
+      });
       allowEnvironmentOverrides = !configStore.exists();
       savedConfig = configStore.load();
       applyRuntimeConfig(savedConfig);
@@ -744,6 +923,15 @@ ipcMain.handle('dashboard:open', () => {
 });
 
 ipcMain.handle('chat:send', async (_event, payload) => sendChatMessage(payload));
+ipcMain.handle('local-chat:register', (_event, payload) => registerLocalChatUser(payload));
+ipcMain.handle('local-chat:login', (_event, payload) => loginLocalChatUser(payload));
+ipcMain.handle('local-chat:me', (_event, payload) => getLocalChatSession(payload));
+ipcMain.handle('local-chat:send-message', (_event, payload) => sendLocalChatMessage(payload));
+ipcMain.handle('local-chat:moderation', (_event, payload) => runLocalChatModeration(payload));
+ipcMain.handle('local-chat:moderation-commands', () => getLocalChatModerationCommands());
+ipcMain.handle('local-chat:google-status', () => getLocalGoogleOAuthStatus());
+ipcMain.handle('local-chat:google-start', (_event, payload) => startLocalGoogleOAuth(payload));
+ipcMain.handle('local-chat:google-complete', (_event, payload) => completeLocalGoogleOAuth(payload));
 
 ipcMain.handle('twitch:connect', async () => {
   const clientId =

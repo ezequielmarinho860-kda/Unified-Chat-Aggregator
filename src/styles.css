@@ -30,8 +30,11 @@ body {
 :root[data-theme='dark'] .eyebrow,
 :root[data-theme='dark'] .summary,
 :root[data-theme='dark'] .config-panel__meta,
+:root[data-theme='dark'] .local-chat-panel__meta,
+:root[data-theme='dark'] .local-chat-suggestion span,
 :root[data-theme='dark'] .connector-settings__note,
 :root[data-theme='dark'] .auth-actions__status,
+:root[data-theme='dark'] .local-chat-panel label,
 :root[data-theme='dark'] .toggle-row,
 :root[data-theme='dark'] .field-row,
 :root[data-theme='dark'] .message__time {
@@ -41,6 +44,7 @@ body {
 :root[data-theme='dark'] .config-panel,
 :root[data-theme='dark'] .connector-settings,
 :root[data-theme='dark'] .feed-panel,
+:root[data-theme='dark'] .local-chat-panel,
 :root[data-theme='dark'] .status-card,
 :root[data-theme='dark'] .message {
   border-color: #343b44;
@@ -55,9 +59,16 @@ body {
   color: #f2f4f7;
 }
 
-:root[data-theme='dark'] .composer-panel {
+:root[data-theme='dark'] .composer-panel,
+:root[data-theme='dark'] .local-chat-panel {
   border-color: #343b44;
   background: #15191e;
+}
+
+:root[data-theme='dark'] .local-chat-suggestion {
+  border-color: #343b44;
+  background: #111418;
+  color: #f2f4f7;
 }
 
 :root[data-theme='dark'] .tool-button,
@@ -517,6 +528,107 @@ h1 {
   background: #fffdfa;
 }
 
+.local-chat-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid #ece6dc;
+  background: #fffdfa;
+}
+
+.local-chat-panel__auth,
+.local-chat-panel__message,
+.local-chat-panel__session {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(110px, 0.7fr) auto auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.local-chat-panel__message {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.local-chat-panel__session {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.local-chat-panel__auth[hidden],
+.local-chat-panel__session[hidden] {
+  display: none;
+}
+
+.local-chat-panel label {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  color: #4e5660;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.local-chat-panel input,
+.local-chat-panel textarea {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid #d7d0c5;
+  border-radius: 8px;
+  background: #fffdfa;
+  color: #1f2428;
+  font: inherit;
+}
+
+.local-chat-panel textarea {
+  height: 34px;
+  resize: none;
+}
+
+.local-chat-panel__meta {
+  min-height: 18px;
+  margin: 0;
+  color: #625d55;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.local-chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.local-chat-suggestions[hidden] {
+  display: none;
+}
+
+.local-chat-suggestion {
+  display: grid;
+  min-height: 34px;
+  min-width: min(210px, 100%);
+  padding: 5px 8px;
+  border: 1px solid #d7d0c5;
+  border-radius: 8px;
+  background: #fffdfa;
+  color: #30363d;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.local-chat-suggestion strong {
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.local-chat-suggestion span {
+  color: #625d55;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .composer-panel[hidden] {
   display: none;
 }
@@ -597,7 +709,9 @@ h1 {
 .toggle-row input:disabled,
 .auth-actions button:disabled,
 .composer-panel select:disabled,
-.composer-panel textarea:disabled {
+.composer-panel textarea:disabled,
+.local-chat-panel input:disabled,
+.local-chat-panel textarea:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -685,6 +799,12 @@ h1 {
 .message[data-platform='x'] {
   --mention-border: #9aa0a6;
   --mention-color: #24292f;
+  grid-template-columns: 36px minmax(0, 1fr);
+}
+
+.message[data-platform='local'] {
+  --mention-border: #94a3b8;
+  --mention-color: #0f766e;
   grid-template-columns: 36px minmax(0, 1fr);
 }
 
@@ -788,6 +908,10 @@ h1 {
 
 .message__badge--x {
   background: #24292f;
+}
+
+.message__badge--local {
+  background: #0f766e;
 }
 
 .message__source {
@@ -967,6 +1091,12 @@ h1 {
 
   .feed-actions {
     justify-content: flex-end;
+  }
+
+  .local-chat-panel__auth,
+  .local-chat-panel__message,
+  .local-chat-panel__session {
+    grid-template-columns: 1fr;
   }
 
   .tool-button {

@@ -23,6 +23,14 @@ const disconnectX = document.querySelector('#disconnect-x');
 const xAuthStatus = document.querySelector('#x-auth-status');
 const messageComposer = document.querySelector('#message-composer');
 const composerMeta = document.querySelector('#composer-meta');
+const localChatAuthForm = document.querySelector('#local-chat-auth-form');
+const localChatMessageForm = document.querySelector('#local-chat-message-form');
+const localChatSessionPanel = document.querySelector('#local-chat-session-panel');
+const localChatSessionLabel = document.querySelector('#local-chat-session-label');
+const localChatLogout = document.querySelector('#local-chat-logout');
+const localChatGoogleLogin = document.querySelector('#local-chat-google-login');
+const localChatMeta = document.querySelector('#local-chat-meta');
+const localChatSuggestions = document.querySelector('#local-chat-suggestions');
 const totalViewerCount = document.querySelector('#total-viewer-count');
 const statusCards = new Map(
   [...document.querySelectorAll('[data-platform]')].map((card) => [
@@ -43,13 +51,17 @@ const loggedIdentities = new Map();
 const pendingOutgoingMessages = new Map();
 const maxRenderedMessages = 250;
 const outgoingMessageMatchWindowMs = 30_000;
-const filterPlatforms = ['twitch', 'kick', 'x'];
+const filterPlatforms = ['twitch', 'kick', 'x', 'local'];
 const activeFilterPlatforms = new Set(filterPlatforms);
+const LOCAL_CHAT_SESSION_STORAGE_KEY = 'uca.dashboardLocalChatSession';
 let feedPinnedToBottom = true;
 let unseenMessageCount = 0;
 let totalMessages = 0;
 let xAuthState = { connected: false };
 let xAuthPollingTimer;
+let localChatSession;
+let pendingGoogleOAuth;
+let localModerationCommands = [];
 const view = document.body.classList.contains('dashboard-view') ? 'dashboard' : 'setup';
 
 document.title = view === 'setup' ? 'Connector Setup' : title;
@@ -179,12 +191,14 @@ const setFeedPinnedToBottom = (nextPinnedToBottom, reason, details = {}) => {
 const platformLabels = {
   twitch: 'Twitch',
   kick: 'Kick',
+  local: 'Local',
   x: 'X',
   youtube: 'YouTube',
 };
 
 const platformSymbols = {
   kick: 'K',
+  local: 'L',
   x: 'X',
 };
 
@@ -365,6 +379,301 @@ const updateLoggedIdentities = (config = {}) => {
       loggedIdentities.delete(platform);
     }
   }
+
+  updateLocalLoggedIdentity();
+};
+
+const updateLocalLoggedIdentity = () => {
+  const user = localChatSession?.user;
+
+  if (!user) {
+    loggedIdentities.delete('local');
+    return;
+  }
+
+  loggedIdentities.set('local', {
+    id: user.id,
+    login: user.nick,
+    displayName: user.nick,
+  });
+};
+
+const restoreLocalChatSession = () => {
+  try {
+    const rawSession = window.localStorage.getItem(LOCAL_CHAT_SESSION_STORAGE_KEY);
+
+    localChatSession = rawSession ? JSON.parse(rawSession) : undefined;
+  } catch {
+    localChatSession = undefined;
+  }
+
+  updateLocalLoggedIdentity();
+  renderLocalChatSession();
+};
+
+const verifyLocalChatSession = async () => {
+  if (!localChatSession?.token || typeof window.chatAggregator?.localChatMe !== 'function') {
+    renderLocalChatSession();
+    return;
+  }
+
+  try {
+    const { user } = await window.chatAggregator.localChatMe({ token: localChatSession.token });
+
+    setLocalChatSession({ token: localChatSession.token, user });
+  } catch {
+    clearLocalChatSession();
+  }
+};
+
+const setLocalChatSession = (session) => {
+  localChatSession = session;
+
+  try {
+    window.localStorage.setItem(LOCAL_CHAT_SESSION_STORAGE_KEY, JSON.stringify(session));
+  } catch {
+    // localStorage can be unavailable in restricted browser contexts.
+  }
+
+  updateLocalLoggedIdentity();
+  renderLocalChatSession();
+};
+
+const clearLocalChatSession = () => {
+  localChatSession = undefined;
+
+  try {
+    window.localStorage.removeItem(LOCAL_CHAT_SESSION_STORAGE_KEY);
+  } catch {
+    // localStorage can be unavailable in restricted browser contexts.
+  }
+
+  updateLocalLoggedIdentity();
+  renderLocalChatSession();
+};
+
+const renderLocalChatSession = () => {
+  const isLoggedIn = Boolean(localChatSession?.token && localChatSession.user);
+
+  if (!isLoggedIn) {
+    clearLocalChatSuggestions();
+  }
+
+  if (localChatAuthForm) {
+    localChatAuthForm.hidden = isLoggedIn;
+    const emailField = localChatAuthForm.elements.namedItem('email');
+
+    if (emailField) {
+      emailField.disabled = Boolean(pendingGoogleOAuth);
+      emailField.value = pendingGoogleOAuth?.email ?? emailField.value;
+    }
+  }
+
+  if (localChatSessionPanel) {
+    localChatSessionPanel.hidden = !isLoggedIn;
+  }
+
+  if (localChatSessionLabel) {
+    localChatSessionLabel.textContent = isLoggedIn
+      ? `${localChatSession.user.nick} (${localChatSession.user.role})`
+      : 'Not logged in';
+  }
+
+  if (localChatMessageForm) {
+    for (const field of [...localChatMessageForm.elements]) {
+      field.disabled = !isLoggedIn;
+    }
+  }
+};
+
+const setLocalChatBusy = (isBusy) => {
+  for (const form of [localChatAuthForm, localChatMessageForm].filter(Boolean)) {
+    for (const field of [...form.elements]) {
+      field.disabled = isBusy;
+    }
+  }
+
+  if (localChatGoogleLogin) {
+    localChatGoogleLogin.disabled = isBusy;
+  }
+};
+
+const getLocalAuthAction = (event) =>
+  event.submitter?.dataset.localAuthAction === 'login' ? 'login' : 'register';
+
+const refreshLocalGoogleOAuthStatus = async () => {
+  if (!localChatGoogleLogin || typeof window.chatAggregator?.localChatGoogleStatus !== 'function') {
+    return;
+  }
+
+  try {
+    const status = await window.chatAggregator.localChatGoogleStatus();
+
+    localChatGoogleLogin.hidden = !status.enabled;
+  } catch {
+    localChatGoogleLogin.hidden = true;
+  }
+};
+
+const refreshLocalModerationCommands = async () => {
+  if (typeof window.chatAggregator?.localChatModerationCommands !== 'function') {
+    return;
+  }
+
+  try {
+    const { commands } = await window.chatAggregator.localChatModerationCommands();
+
+    localModerationCommands = Array.isArray(commands) ? commands : [];
+  } catch {
+    localModerationCommands = [];
+  }
+};
+
+const isLocalChatModerator = () =>
+  ['host', 'moderator'].includes(localChatSession?.user?.role);
+
+const updateLocalChatSuggestions = () => {
+  if (!localChatSuggestions || !localChatMessageForm || !localChatSession?.token) {
+    clearLocalChatSuggestions();
+    return;
+  }
+
+  const input = localChatMessageForm.elements.namedItem('text');
+  const token = getActiveTextToken(input);
+
+  if (!token) {
+    clearLocalChatSuggestions();
+    return;
+  }
+
+  if (token.value.startsWith('/')) {
+    renderLocalCommandSuggestions(input, token);
+    return;
+  }
+
+  if (token.value.startsWith('@')) {
+    renderLocalMentionSuggestions(input, token);
+    return;
+  }
+
+  clearLocalChatSuggestions();
+};
+
+const renderLocalCommandSuggestions = (input, token) => {
+  if (!isLocalChatModerator()) {
+    clearLocalChatSuggestions();
+    return;
+  }
+
+  const query = token.value.toLowerCase();
+  const commands = localModerationCommands
+    .filter((command) => command.name.toLowerCase().startsWith(query))
+    .slice(0, 8);
+
+  renderSuggestionButtons(
+    commands.map((command) => ({
+      description: command.description,
+      label: command.usage,
+      value: `${command.name} `,
+    })),
+    (suggestion) => replaceActiveTextToken(input, token, suggestion.value),
+  );
+};
+
+const renderLocalMentionSuggestions = (input, token) => {
+  const query = token.value.slice(1).toLowerCase();
+  const authors = getMentionCandidates()
+    .filter((name) => name.toLowerCase().startsWith(query))
+    .slice(0, 8);
+
+  renderSuggestionButtons(
+    authors.map((name) => ({
+      description: 'Mention this user.',
+      label: `@${name}`,
+      value: `@${name} `,
+    })),
+    (suggestion) => replaceActiveTextToken(input, token, suggestion.value),
+  );
+};
+
+const renderSuggestionButtons = (suggestions, onPick) => {
+  if (!localChatSuggestions || suggestions.length === 0) {
+    clearLocalChatSuggestions();
+    return;
+  }
+
+  localChatSuggestions.replaceChildren(
+    ...suggestions.map((suggestion) => {
+      const button = document.createElement('button');
+      const label = document.createElement('strong');
+      const description = document.createElement('span');
+
+      button.className = 'local-chat-suggestion';
+      button.type = 'button';
+      label.textContent = suggestion.label;
+      description.textContent = suggestion.description;
+      button.append(label, description);
+      button.addEventListener('click', () => onPick(suggestion));
+      return button;
+    }),
+  );
+  localChatSuggestions.hidden = false;
+};
+
+const clearLocalChatSuggestions = () => {
+  if (!localChatSuggestions) {
+    return;
+  }
+
+  localChatSuggestions.hidden = true;
+  localChatSuggestions.replaceChildren();
+};
+
+const getMentionCandidates = () => {
+  const names = new Map();
+
+  if (localChatSession?.user?.nick) {
+    names.set(localChatSession.user.nick.toLowerCase(), localChatSession.user.nick);
+  }
+
+  for (const message of messages.slice(-250)) {
+    const name = message.author?.name;
+
+    if (typeof name === 'string' && /^[A-Za-z0-9_]{2,24}$/.test(name)) {
+      names.set(name.toLowerCase(), name);
+    }
+  }
+
+  return [...names.values()].sort((left, right) => left.localeCompare(right));
+};
+
+const getActiveTextToken = (input) => {
+  if (!input) {
+    return undefined;
+  }
+
+  const cursor = input.selectionStart ?? input.value.length;
+  const beforeCursor = input.value.slice(0, cursor);
+  const match = beforeCursor.match(/(?:^|\s)([\/@][^\s]*)$/);
+
+  if (!match) {
+    return undefined;
+  }
+
+  return {
+    end: cursor,
+    start: cursor - match[1].length,
+    value: match[1],
+  };
+};
+
+const replaceActiveTextToken = (input, token, replacement) => {
+  input.value = `${input.value.slice(0, token.start)}${replacement}${input.value.slice(token.end)}`;
+  const cursor = token.start + replacement.length;
+
+  input.focus();
+  input.setSelectionRange(cursor, cursor);
+  clearLocalChatSuggestions();
 };
 
 const rememberPendingOutgoingMessage = (platform, text) => {
@@ -474,6 +783,10 @@ const renderMessageTextFragments = (message) => {
       : [{ type: 'text', text: message.text }];
 
   return fragments.map((fragment) => {
+    if (fragment.type === 'mention') {
+      return [renderMentionElement(fragment.text)];
+    }
+
     if (fragment.type !== 'emote' || !fragment.imageUrl) {
       return renderMentionedText(fragment.text);
     }
@@ -483,19 +796,49 @@ const renderMessageTextFragments = (message) => {
 };
 
 const renderMentionedText = (text) =>
-  messageHighlightUtils
-    .splitTextByMention(text, [...loggedIdentities.values()])
-    .map((part) => {
-      if (part.type !== 'mention') {
-        return document.createTextNode(part.text);
-      }
+  splitTextByVisibleMention(text)
+    .flatMap((part) =>
+      part.type === 'mention'
+        ? [renderMentionElement(part.text)]
+        : messageHighlightUtils
+          .splitTextByMention(part.text, [...loggedIdentities.values()])
+          .map((identityPart) =>
+            identityPart.type === 'mention'
+              ? renderMentionElement(identityPart.text)
+              : document.createTextNode(identityPart.text)),
+    );
 
-      const mention = document.createElement('span');
+const splitTextByVisibleMention = (text = '') => {
+  const parts = [];
+  const mentionPattern = /(^|[^\w])(@[A-Za-z0-9_]{2,24})\b/g;
+  let cursor = 0;
+  let match;
 
-      mention.className = 'message__mention';
-      mention.textContent = part.text;
-      return mention;
-    });
+  while ((match = mentionPattern.exec(text)) !== null) {
+    const mentionStart = match.index + match[1].length;
+
+    if (mentionStart > cursor) {
+      parts.push({ type: 'text', text: text.slice(cursor, mentionStart) });
+    }
+
+    parts.push({ type: 'mention', text: match[2] });
+    cursor = mentionStart + match[2].length;
+  }
+
+  if (cursor < text.length) {
+    parts.push({ type: 'text', text: text.slice(cursor) });
+  }
+
+  return parts.length > 0 ? parts : [{ type: 'text', text }];
+};
+
+const renderMentionElement = (text) => {
+  const mention = document.createElement('span');
+
+  mention.className = 'message__mention';
+  mention.textContent = text;
+  return mention;
+};
 
 const renderChatEmote = (fragment) => {
   const image = document.createElement('img');
@@ -1079,7 +1422,170 @@ clearFeed?.addEventListener('click', () => {
   unseenMessageCount = 0;
   setFeedPinnedToBottom(true, 'clear_feed');
   platformCounts.clear();
+  clearLocalChatSuggestions();
   renderFeed({ stickToBottom: true });
+});
+
+localChatAuthForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const action = getLocalAuthAction(event);
+  const email = getNamedFormValue(localChatAuthForm, 'email');
+  const nick = getNamedFormValue(localChatAuthForm, 'nick');
+
+  if (pendingGoogleOAuth) {
+    if (!nick) {
+      localChatMeta.textContent = 'Choose a nick to finish Google login.';
+      return;
+    }
+
+    setLocalChatBusy(true);
+    localChatMeta.textContent = 'Finishing Google login...';
+
+    try {
+      const result = await window.chatAggregator.localChatGoogleComplete({
+        nick,
+        ticket: pendingGoogleOAuth.ticket,
+      });
+
+      pendingGoogleOAuth = undefined;
+      setLocalChatSession({ token: result.session.token, user: result.user });
+      localChatMeta.textContent = `Logged in with Google as ${result.user.nick}.`;
+    } catch (error) {
+      localChatMeta.textContent = `Google login failed: ${error.message}`;
+    } finally {
+      setLocalChatBusy(false);
+      renderLocalChatSession();
+    }
+    return;
+  }
+
+  if (!email || (action === 'register' && !nick)) {
+    localChatMeta.textContent = action === 'register'
+      ? 'Email and nick are required.'
+      : 'Email is required.';
+    return;
+  }
+
+  setLocalChatBusy(true);
+  localChatMeta.textContent = action === 'register'
+    ? 'Creating local chat identity...'
+    : 'Logging into local chat...';
+
+  try {
+    const result = action === 'register'
+      ? await window.chatAggregator.localChatRegister({ email, nick })
+      : await window.chatAggregator.localChatLogin({ email });
+
+    setLocalChatSession({ token: result.session.token, user: result.user });
+    localChatMeta.textContent = `Logged in as ${result.user.nick}.`;
+  } catch (error) {
+    localChatMeta.textContent = `Local chat login failed: ${error.message}`;
+  } finally {
+    setLocalChatBusy(false);
+    renderLocalChatSession();
+  }
+});
+
+localChatLogout?.addEventListener('click', () => {
+  pendingGoogleOAuth = undefined;
+  clearLocalChatSession();
+  localChatMeta.textContent = 'Logged out from local chat.';
+});
+
+localChatGoogleLogin?.addEventListener('click', async () => {
+  const nick = getNamedFormValue(localChatAuthForm, 'nick');
+
+  setLocalChatBusy(true);
+  localChatMeta.textContent = 'Opening Google login...';
+
+  try {
+    const result = await window.chatAggregator.localChatGoogleStart({ nick });
+
+    if (result.pendingGoogleOAuth) {
+      pendingGoogleOAuth = result.pendingGoogleOAuth;
+      localChatMeta.textContent = `Google verified ${pendingGoogleOAuth.email}. Choose a nick and click Join.`;
+      renderLocalChatSession();
+      return;
+    }
+
+    pendingGoogleOAuth = undefined;
+    setLocalChatSession({ token: result.session.token, user: result.user });
+    localChatMeta.textContent = `Logged in with Google as ${result.user.nick}.`;
+  } catch (error) {
+    localChatMeta.textContent = `Google login failed: ${error.message}`;
+  } finally {
+    setLocalChatBusy(false);
+    renderLocalChatSession();
+  }
+});
+
+localChatMessageForm?.elements.namedItem('text')?.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    clearLocalChatSuggestions();
+    return;
+  }
+
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
+    return;
+  }
+
+  event.preventDefault();
+  localChatMessageForm.requestSubmit();
+});
+
+localChatMessageForm?.elements.namedItem('text')?.addEventListener('input', updateLocalChatSuggestions);
+
+localChatMessageForm?.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const text = getNamedFormValue(localChatMessageForm, 'text');
+
+  if (!localChatSession?.token) {
+    localChatMeta.textContent = 'Login is required to send local chat messages.';
+    return;
+  }
+
+  if (!text) {
+    localChatMeta.textContent = 'Message text is required.';
+    return;
+  }
+
+  setLocalChatBusy(true);
+  localChatMeta.textContent = text.startsWith('/') ? 'Running moderation command...' : 'Sending local message...';
+
+  try {
+    if (text.startsWith('/')) {
+      const result = await window.chatAggregator.localChatModeration({
+        command: text,
+        token: localChatSession.token,
+      });
+
+      localChatMeta.textContent = `Moderation command ran: ${result.moderation.action}.`;
+    } else {
+      const pendingId = rememberPendingOutgoingMessage('local', text);
+
+      try {
+        await window.chatAggregator.localChatSendMessage({
+          text,
+          token: localChatSession.token,
+        });
+      } catch (error) {
+        forgetPendingOutgoingMessage('local', pendingId);
+        throw error;
+      }
+
+      localChatMeta.textContent = 'Sent to Local Chat.';
+    }
+
+    localChatMessageForm.elements.namedItem('text').value = '';
+    clearLocalChatSuggestions();
+  } catch (error) {
+    localChatMeta.textContent = `Local chat failed: ${error.message}`;
+  } finally {
+    setLocalChatBusy(false);
+    renderLocalChatSession();
+  }
 });
 
 configForm?.addEventListener('submit', async (event) => {
@@ -1284,6 +1790,10 @@ messageComposer?.addEventListener('submit', async (event) => {
   }
 });
 
+restoreLocalChatSession();
+void verifyLocalChatSession();
+void refreshLocalGoogleOAuthStatus();
+void refreshLocalModerationCommands();
 window.chatAggregator?.getConfig().then(renderConfigSnapshot);
 
 renderFeed();
