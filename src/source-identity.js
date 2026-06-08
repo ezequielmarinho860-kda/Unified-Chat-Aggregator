@@ -3,10 +3,12 @@ const createConnectorSource = (connector = {}) => {
   const channel = normalizeOptionalValue(connector.channel);
 
   if (channel) {
+    const channelIdentity = resolveChannelIdentity(platform, channel);
+
     return {
-      sourceId: `${platform}:${normalizeSourceKey(channel)}`,
+      sourceId: `${platform}:${channelIdentity.key}`,
       platform,
-      channelLabel: channel,
+      channelLabel: channelIdentity.channelLabel,
     };
   }
 
@@ -22,6 +24,35 @@ const createConnectorSource = (connector = {}) => {
     sourceId: `${platform}:${liveIdentity.key}`,
     platform,
     ...(liveIdentity.channelLabel ? { channelLabel: liveIdentity.channelLabel } : {}),
+  };
+};
+
+const resolveChannelIdentity = (platform, channel) => {
+  if (platform === 'kick') {
+    const normalizedChannel = channel
+      .replace(/^https?:\/\/(?:www\.)?kick\.com\//i, '')
+      .replace(/^[@#]+/, '');
+
+    return {
+      key: normalizeSourceKey(normalizedChannel),
+      channelLabel: normalizedChannel,
+    };
+  }
+
+  if (platform === 'twitch') {
+    const normalizedChannel = channel
+      .replace(/^https?:\/\/(?:www\.)?twitch\.tv\//i, '')
+      .replace(/^[@#]+/, '');
+
+    return {
+      key: normalizeSourceKey(normalizedChannel),
+      channelLabel: normalizedChannel,
+    };
+  }
+
+  return {
+    key: normalizeSourceKey(channel),
+    channelLabel: channel,
   };
 };
 
@@ -54,6 +85,69 @@ const resolveLiveUrlIdentity = (liveUrl) => {
       channelLabel: liveUrl,
     };
   }
+};
+
+const createConfiguredConnectorSources = (platform, connectorConfig = {}) => {
+  if (!connectorConfig?.enabled) {
+    return [];
+  }
+
+  return getConnectorSourceInputs(platform, connectorConfig)
+    .map((sourceConfig, index) => {
+      const connectorInput = {
+        ...sourceConfig,
+        platform,
+      };
+      const source = createConnectorSource(connectorInput);
+
+      return source
+        ? {
+            index,
+            platform,
+            source,
+            connectorConfig: sourceConfig,
+          }
+        : undefined;
+    })
+    .filter(Boolean);
+};
+
+const getConnectorSourceInputs = (platform, connectorConfig = {}) => {
+  const sources = Array.isArray(connectorConfig.sources)
+    ? connectorConfig.sources
+    : createLegacySourceInputs(platform, connectorConfig);
+
+  return sources
+    .map((source) => normalizeSourceInput(platform, source))
+    .filter((source) => source.enabled);
+};
+
+const createLegacySourceInputs = (platform, connectorConfig) => {
+  if (platform === 'x') {
+    return [
+      { enabled: true, liveUrl: connectorConfig.liveUrl },
+      { enabled: Boolean(connectorConfig.liveUrl2), liveUrl: connectorConfig.liveUrl2 },
+    ];
+  }
+
+  return [
+    { enabled: true, channel: connectorConfig.channel },
+    { enabled: Boolean(connectorConfig.channel2), channel: connectorConfig.channel2 },
+  ];
+};
+
+const normalizeSourceInput = (platform, source = {}) => {
+  if (platform === 'x') {
+    return {
+      enabled: Boolean(source.enabled),
+      liveUrl: normalizeOptionalValue(source.liveUrl),
+    };
+  }
+
+  return {
+    enabled: Boolean(source.enabled),
+    channel: normalizeOptionalValue(source.channel),
+  };
 };
 
 const resolveXHandle = (pathParts) => {
@@ -105,4 +199,5 @@ const normalizeOptionalValue = (value) => {
 
 module.exports = {
   createConnectorSource,
+  createConfiguredConnectorSources,
 };

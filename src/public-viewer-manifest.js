@@ -11,7 +11,7 @@ const createPublicViewerManifestContext = ({ title, config } = {}) => {
 
   return {
     manifest,
-    sources: Object.fromEntries(manifest.sources.map((source) => [source.platform, source])),
+    sources: Object.fromEntries(manifest.sources.map((source) => [source.sourceId, source])),
   };
 };
 

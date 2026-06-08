@@ -116,11 +116,28 @@ test('tracks connector errors without throwing', () => {
   assert.equal(hub.getStatuses()[0].error, 'resolver blocked');
 });
 
-test('rejects duplicate connector platforms', () => {
-  const connector = createTestConnector();
+test('allows duplicate connector platforms with different sources', async () => {
+  const first = createTestConnector({ channel: 'streamer-a' });
+  const second = createTestConnector({ channel: 'streamer-b' });
+  const hub = createChatHub({ connectors: [first, second] });
 
+  assert.deepEqual(
+    hub.getStatuses().map(({ source }) => source.sourceId),
+    ['twitch:streamer-a', 'twitch:streamer-b'],
+  );
+
+  await hub.stop();
+});
+
+test('rejects duplicate connector sources', () => {
   assert.throws(
-    () => createChatHub({ connectors: [connector, createTestConnector()] }),
+    () =>
+      createChatHub({
+        connectors: [
+          createTestConnector({ channel: 'streamer-a' }),
+          createTestConnector({ channel: 'streamer-a' }),
+        ],
+      }),
     /already registered/,
   );
 });
@@ -196,4 +213,40 @@ test('replaces one connector without disconnecting other platforms', async () =>
   assert.deepEqual(sent, ['new token send']);
 
   await hub.stop();
+});
+
+test('adds platform sources without blocking or disconnecting existing sources', async () => {
+  let slowStarted = false;
+  let oldDisconnected = false;
+  const received = [];
+  const existing = createTestConnector({
+    channel: 'streamer-a',
+    onDisconnect: async () => {
+      oldDisconnected = true;
+    },
+  });
+  const slow = createTestConnector({
+    channel: 'streamer-b',
+    onConnect: async () => {
+      slowStarted = true;
+      await new Promise(() => {});
+    },
+  });
+  const hub = createChatHub({ connectors: [existing] });
+
+  hub.onMessage((message) => received.push(message));
+  await hub.start();
+  await hub.replacePlatformConnectors('twitch', [existing, slow]);
+  existing.emitMessage({
+    id: 'hub-2',
+    platform: 'twitch',
+    author: { id: 'author-1', name: 'Ana' },
+    text: 'still live',
+    timestamp: '2026-06-04T20:00:00.000Z',
+  });
+
+  assert.equal(slowStarted, true);
+  assert.equal(oldDisconnected, false);
+  assert.equal(received[0].text, 'still live');
+  assert.equal(received[0].source.sourceId, 'twitch:streamer-a');
 });

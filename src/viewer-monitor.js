@@ -1,4 +1,5 @@
 const { PLATFORM_ORDER } = require('./app-config');
+const { createConfiguredConnectorSources } = require('./source-identity');
 const {
   fetchKickViewerCount,
   fetchTwitchViewerCount,
@@ -21,10 +22,10 @@ const createViewerMonitor = ({
   let running = false;
   let refreshPromise;
   let nextTwitchPollAt = 0;
-  let platforms = createPlatformSnapshots();
+  let sourceSnapshots = new Map();
 
   const publish = () => {
-    const snapshot = createSnapshot(platforms);
+    const snapshot = createSnapshot(sourceSnapshots);
 
     onUpdate(snapshot);
     return snapshot;
@@ -50,6 +51,7 @@ const createViewerMonitor = ({
   const refreshConfiguredPlatforms = async ({ force }) => {
     const config = getConfig?.();
     const connectors = config?.connectors ?? {};
+    const configuredSources = createViewerSourceEntries(connectors);
     const shouldRefreshTwitch =
       connectors.twitch?.enabled && (force || Date.now() >= nextTwitchPollAt);
 
@@ -57,46 +59,43 @@ const createViewerMonitor = ({
       nextTwitchPollAt = 0;
     }
 
-    platforms = {
-      ...platforms,
-      twitch: shouldRefreshTwitch
-        ? createRefreshSnapshot(platforms.twitch, 'twitch', connectors.twitch)
-        : platforms.twitch,
-      kick: createRefreshSnapshot(platforms.kick, 'kick', connectors.kick),
-      x: createExternalSnapshot(platforms.x, connectors.x),
-    };
+    removeStaleSourceSnapshots(sourceSnapshots, configuredSources);
+    markConfiguredSourcesPending(sourceSnapshots, configuredSources, { shouldRefreshTwitch });
     publish();
 
-    const refreshes = [refreshPlatform('kick', connectors.kick, fetchKick)];
+    const refreshes = configuredSources
+      .filter(({ platform }) => platform === 'kick')
+      .map((entry) => refreshSource(entry, connectors.kick, fetchKick));
 
     if (shouldRefreshTwitch) {
-      refreshes.push(refreshPlatform('twitch', connectors.twitch, fetchTwitch));
+      refreshes.push(
+        ...configuredSources
+          .filter(({ platform }) => platform === 'twitch')
+          .map((entry) => refreshSource(entry, connectors.twitch, fetchTwitch)),
+      );
     }
 
     await Promise.all(refreshes);
-    return createSnapshot(platforms);
+    return createSnapshot(sourceSnapshots);
   };
 
-  const refreshPlatform = async (platform, config, fetchViewerCount) => {
-    if (!config?.enabled) {
-      return;
-    }
-
+  const refreshSource = async (entry, platformConfig, fetchViewerCount) => {
     const startedAt = Date.now();
+    const fetchConfig = createViewerFetchConfig(entry, platformConfig);
 
     try {
-      const result = await withTimeout(fetchViewerCount(config), timeoutMs);
+      const result = await withTimeout(fetchViewerCount(fetchConfig), timeoutMs);
       const count = typeof result === 'object' ? result.count : result;
 
-      platforms[platform] = createAvailableSnapshot(platform, count);
+      sourceSnapshots.set(entry.source.sourceId, createAvailableSnapshot(entry, count));
 
-      if (platform === 'twitch') {
+      if (entry.platform === 'twitch') {
         nextTwitchPollAt = startedAt + calculateAdaptivePollMs(result?.rateLimit, intervalMs);
       }
     } catch (error) {
-      platforms[platform] = createErrorSnapshot(platform, error);
+      sourceSnapshots.set(entry.source.sourceId, createErrorSnapshot(entry, error));
 
-      if (platform === 'twitch') {
+      if (entry.platform === 'twitch') {
         nextTwitchPollAt = startedAt + calculateAdaptivePollMs(error?.rateLimit, intervalMs);
       }
     }
@@ -104,24 +103,40 @@ const createViewerMonitor = ({
     publish();
   };
 
-  const updateExternalCount = (platform, count) => {
-    const config = getConfig?.()?.connectors?.[platform];
+  const updateExternalCount = (target, count) => {
+    const entries = resolveExternalSourceEntries(target);
+    const normalizedCount = normalizeViewerCount(count);
 
-    if (!config?.enabled) {
-      platforms[platform] = createDisabledSnapshot(platform);
-    } else {
-      const normalizedCount = normalizeViewerCount(count);
-
-      platforms[platform] = normalizedCount === undefined
-        ? createPendingSnapshot(platform, config)
-        : createAvailableSnapshot(platform, normalizedCount);
+    for (const entry of entries) {
+      sourceSnapshots.set(
+        entry.source.sourceId,
+        normalizedCount === undefined
+          ? createPendingSnapshot(entry)
+          : createAvailableSnapshot(entry, normalizedCount),
+      );
     }
 
     return publish();
   };
 
+  const resolveExternalSourceEntries = (target) => {
+    const connectors = getConfig?.()?.connectors ?? {};
+    const configuredSources = createViewerSourceEntries(connectors);
+
+    if (typeof target === 'string') {
+      return configuredSources.filter((entry) => entry.platform === target);
+    }
+
+    const sourceId = target?.sourceId;
+    const matchingEntry = configuredSources.find((entry) => entry.source.sourceId === sourceId);
+
+    return matchingEntry
+      ? [matchingEntry]
+      : [{ platform: target?.platform, source: target, connectorConfig: {}, index: 0 }];
+  };
+
   return {
-    getSnapshot: () => createSnapshot(platforms),
+    getSnapshot: () => createSnapshot(sourceSnapshots),
     refresh,
     start: () => {
       running = true;
@@ -147,68 +162,117 @@ const createViewerMonitor = ({
   }
 };
 
-const createPlatformSnapshots = () =>
-  Object.fromEntries(PLATFORM_ORDER.map((platform) => [platform, createDisabledSnapshot(platform)]));
+const createSnapshot = (sourceSnapshots) => {
+  const sources = [...sourceSnapshots.values()];
+  const platforms = PLATFORM_ORDER.map((platform) =>
+    createPlatformSnapshot(platform, sources.filter((source) => source.platform === platform)));
 
-const createSnapshot = (platforms) => ({
-  platforms: PLATFORM_ORDER.map((platform) => platforms[platform]),
-  total: PLATFORM_ORDER.reduce((sum, platform) => sum + (platforms[platform]?.count ?? 0), 0),
-});
+  return {
+    platforms,
+    sources,
+    total: sources.reduce((sum, source) => sum + (source.count ?? 0), 0),
+  };
+};
 
-const createDisabledSnapshot = (platform) => ({
+const createPlatformSnapshot = (platform, sources) => {
+  if (sources.length === 0) {
+    return createDisabledPlatformSnapshot(platform);
+  }
+
+  const count = sources.reduce((sum, source) => sum + (source.count ?? 0), 0);
+  const hasAvailableSource = sources.some((source) => source.state === 'available');
+  const hasUnavailableSource = sources.some((source) => source.state === 'unavailable');
+
+  return {
+    platform,
+    state: hasAvailableSource ? 'available' : hasUnavailableSource ? 'unavailable' : 'disabled',
+    count: hasAvailableSource ? count : undefined,
+    error: sources.find((source) => source.error)?.error,
+    updatedAt: sources
+      .map((source) => source.updatedAt)
+      .filter(Boolean)
+      .sort()
+      .at(-1),
+    sources,
+  };
+};
+
+const createDisabledPlatformSnapshot = (platform) => ({
   platform,
   state: 'disabled',
   count: undefined,
   error: undefined,
   updatedAt: new Date().toISOString(),
+  sources: [],
 });
 
-const createPendingSnapshot = (platform, config) =>
-  config?.enabled
-    ? {
-        platform,
-        state: 'unavailable',
-        count: undefined,
-        error: undefined,
-        updatedAt: new Date().toISOString(),
-      }
-    : createDisabledSnapshot(platform);
+const createPendingSnapshot = (entry) => ({
+  platform: entry.platform,
+  source: entry.source,
+  state: 'unavailable',
+  count: undefined,
+  error: undefined,
+  updatedAt: new Date().toISOString(),
+});
 
-const createExternalSnapshot = (previousSnapshot, config) => {
-  if (!config?.enabled) {
-    return createDisabledSnapshot('x');
-  }
-
-  return previousSnapshot?.state === 'available'
-    ? previousSnapshot
-    : createPendingSnapshot('x', config);
-};
-
-const createRefreshSnapshot = (previousSnapshot, platform, config) => {
-  if (!config?.enabled) {
-    return createDisabledSnapshot(platform);
-  }
-
-  return previousSnapshot?.state === 'available'
-    ? previousSnapshot
-    : createPendingSnapshot(platform, config);
-};
-
-const createAvailableSnapshot = (platform, count) => ({
-  platform,
+const createAvailableSnapshot = (entry, count) => ({
+  platform: entry.platform,
+  source: entry.source,
   state: 'available',
   count: normalizeViewerCount(count) ?? 0,
   error: undefined,
   updatedAt: new Date().toISOString(),
 });
 
-const createErrorSnapshot = (platform, error) => ({
-  platform,
+const createErrorSnapshot = (entry, error) => ({
+  platform: entry.platform,
+  source: entry.source,
   state: 'unavailable',
   count: undefined,
   error: error instanceof Error ? error.message : String(error),
   updatedAt: new Date().toISOString(),
 });
+
+const createViewerSourceEntries = (connectors = {}) =>
+  PLATFORM_ORDER.flatMap((platform) =>
+    createConfiguredConnectorSources(platform, connectors[platform]).map((entry) => ({
+      ...entry,
+      platformConfig: connectors[platform],
+    })));
+
+const createViewerFetchConfig = (entry, platformConfig = {}) => ({
+  ...platformConfig,
+  ...entry.connectorConfig,
+  chatroomId: entry.platform === 'kick' && entry.index > 0 ? '' : platformConfig.chatroomId,
+});
+
+const removeStaleSourceSnapshots = (sourceSnapshots, configuredSources) => {
+  const configuredSourceIds = new Set(configuredSources.map((entry) => entry.source.sourceId));
+
+  for (const sourceId of sourceSnapshots.keys()) {
+    if (!configuredSourceIds.has(sourceId)) {
+      sourceSnapshots.delete(sourceId);
+    }
+  }
+};
+
+const markConfiguredSourcesPending = (
+  sourceSnapshots,
+  configuredSources,
+  { shouldRefreshTwitch },
+) => {
+  for (const entry of configuredSources) {
+    const previousSnapshot = sourceSnapshots.get(entry.source.sourceId);
+
+    if (entry.platform === 'twitch' && !shouldRefreshTwitch) {
+      continue;
+    }
+
+    if (previousSnapshot?.state !== 'available') {
+      sourceSnapshots.set(entry.source.sourceId, createPendingSnapshot(entry));
+    }
+  }
+};
 
 const withTimeout = async (promise, timeoutMs) => {
   let timer;

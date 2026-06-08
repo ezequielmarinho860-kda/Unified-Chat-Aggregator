@@ -14,6 +14,10 @@ test('normalizes missing app config with defaults', () => {
   const config = normalizeAppConfig();
 
   assert.equal(config.connectors.twitch.channel, 'monstercat');
+  assert.deepEqual(config.connectors.twitch.sources, [
+    { enabled: true, channel: 'monstercat' },
+    { enabled: false, channel: '' },
+  ]);
   assert.equal(config.connectors.twitch.clientId, '');
   assert.equal(config.connectors.twitch.accessToken, '');
   assert.equal(config.connectors.kick.channel, 'xqc');
@@ -21,6 +25,10 @@ test('normalizes missing app config with defaults', () => {
   assert.equal(config.connectors.kick.accessToken, '');
   assert.equal(config.connectors.kick.oauthBrokerUrl, DEFAULT_KICK_OAUTH_BROKER_URL);
   assert.equal(config.connectors.x.enabled, false);
+  assert.deepEqual(config.connectors.x.sources, [
+    { enabled: false, liveUrl: '' },
+    { enabled: false, liveUrl: '' },
+  ]);
   assert.equal(config.ui.theme, 'light');
 });
 
@@ -30,7 +38,10 @@ test('normalizes user connector settings', () => {
     connectors: {
       twitch: {
         enabled: true,
-        channel: '  openai  ',
+        sources: [
+          { enabled: true, channel: '  openai  ' },
+          { enabled: true, channel: '  backup  ' },
+        ],
         clientId: '  client-1  ',
         accessToken: '  token  ',
         userId: '  user-1  ',
@@ -51,11 +62,19 @@ test('normalizes user connector settings', () => {
         login: '  kick-login  ',
         displayName: '  Kick Sender  ',
       },
-      x: { enabled: true, liveUrl: '  https://x.com/live  ', showBrowser: true },
+      x: {
+        enabled: true,
+        sources: [
+          { enabled: true, liveUrl: '  https://x.com/live  ' },
+          { enabled: true, liveUrl: '  @second  ' },
+        ],
+        showBrowser: true,
+      },
     },
   });
 
   assert.equal(config.connectors.twitch.channel, 'openai');
+  assert.equal(config.connectors.twitch.sources[1].channel, 'backup');
   assert.equal(config.connectors.twitch.clientId, 'client-1');
   assert.equal(config.connectors.twitch.accessToken, 'token');
   assert.equal(config.connectors.twitch.userId, 'user-1');
@@ -72,6 +91,7 @@ test('normalizes user connector settings', () => {
   assert.equal(config.connectors.kick.login, 'kick-login');
   assert.equal(config.connectors.kick.displayName, 'Kick Sender');
   assert.equal(config.connectors.x.liveUrl, 'https://x.com/live');
+  assert.equal(config.connectors.x.sources[1].liveUrl, '@second');
   assert.equal(config.connectors.x.showBrowser, true);
   assert.equal(config.ui.theme, 'dark');
 });
@@ -93,10 +113,12 @@ test('applies environment connector overrides', () => {
   assert.equal(runtimeConfig.connectors.kick.enabled, false);
   assert.equal(runtimeConfig.connectors.twitch.enabled, true);
   assert.equal(runtimeConfig.connectors.twitch.channel, 'xqc');
+  assert.equal(runtimeConfig.connectors.twitch.sources[0].channel, 'xqc');
   assert.equal(runtimeConfig.connectors.twitch.clientId, 'client-1');
   assert.equal(runtimeConfig.connectors.twitch.accessToken, 'token');
   assert.equal(runtimeConfig.connectors.x.enabled, true);
   assert.equal(runtimeConfig.connectors.x.liveUrl, 'https://x.com/live');
+  assert.equal(runtimeConfig.connectors.x.sources[0].liveUrl, 'https://x.com/live');
   assert.equal(runtimeConfig.connectors.x.showBrowser, true);
   assert.deepEqual(overrides, [
     'CONNECTORS',
@@ -141,6 +163,7 @@ test('can build runtime config without environment overrides', () => {
   );
 
   assert.equal(runtimeConfig.connectors.twitch.channel, 'saved-twitch');
+  assert.equal(runtimeConfig.connectors.twitch.sources[0].channel, 'saved-twitch');
   assert.equal(runtimeConfig.connectors.kick.channel, 'saved-kick');
   assert.equal(runtimeConfig.connectors.x.liveUrl, 'https://x.com/i/broadcasts/saved');
   assert.deepEqual(overrides, []);
@@ -194,6 +217,10 @@ test('creates a public app config without exposing access tokens', () => {
   });
 
   assert.equal(publicConfig.connectors.twitch.accessToken, undefined);
+  assert.deepEqual(publicConfig.connectors.twitch.sources, [
+    { enabled: true, channel: 'monstercat' },
+    { enabled: false, channel: '' },
+  ]);
   assert.equal(publicConfig.connectors.twitch.clientId, undefined);
   assert.equal(publicConfig.connectors.kick.clientSecret, undefined);
   assert.equal(publicConfig.connectors.kick.accessToken, undefined);

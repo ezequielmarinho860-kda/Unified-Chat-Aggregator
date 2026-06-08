@@ -1,17 +1,17 @@
 const { PLATFORM_ORDER } = require('./app-config');
-const { createConnectorSource } = require('./source-identity');
+const { createConfiguredConnectorSources } = require('./source-identity');
 
 const createPublicViewerSources = (config = {}) =>
   Object.fromEntries(
     PLATFORM_ORDER.flatMap((platform) => {
       const connectorConfig = config.connectors?.[platform];
 
-      if (!connectorConfig?.enabled) {
-        return [];
-      }
-
-      const source = createConnectorSource({ platform, ...connectorConfig });
-      return source ? [[platform, addPublicViewerFields(source, connectorConfig)]] : [];
+      return createConfiguredConnectorSources(platform, connectorConfig).map(
+        ({ source, connectorConfig: sourceConfig }) => [
+          source.sourceId,
+          addPublicViewerFields(source, { ...connectorConfig, ...sourceConfig }),
+        ],
+      );
     }),
   );
 

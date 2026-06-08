@@ -36,9 +36,32 @@ test('creates a validated public viewer manifest context from runtime config', (
     provider: 'twitch',
     channel: 'monstercat',
   });
-  assert.equal(sources.twitch.sourceId, 'twitch:monstercat');
-  assert.equal(sources.kick.watchUrl, 'https://kick.com/xqc');
+  assert.equal(sources['twitch:monstercat'].sourceId, 'twitch:monstercat');
+  assert.equal(sources['kick:xqc'].watchUrl, 'https://kick.com/xqc');
   assert.doesNotMatch(JSON.stringify(manifest), /secret|accessToken|clientSecret/);
+});
+
+test('keeps duplicate platform sources separated by source id', () => {
+  const { manifest, sources } = createPublicViewerManifestContext({
+    config: {
+      connectors: {
+        x: {
+          enabled: true,
+          sources: [
+            { enabled: true, liveUrl: '@streamerA' },
+            { enabled: true, liveUrl: '@streamerB' },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(
+    manifest.sources.map((source) => source.sourceId),
+    ['x:streamera', 'x:streamerb'],
+  );
+  assert.equal(sources['x:streamera'].channelLabel, '@streamerA');
+  assert.equal(sources['x:streamerb'].channelLabel, '@streamerB');
 });
 
 test('normalizes manifest by allowlist', () => {

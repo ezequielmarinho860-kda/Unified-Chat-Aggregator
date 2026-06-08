@@ -17,6 +17,7 @@ const {
   serializePublicViewers,
 } = require('./public-realtime');
 const { createPublicViewerManifestContext } = require('./public-viewer-manifest');
+const { createConfiguredConnectorSources } = require('./source-identity');
 const { createViewerMonitor } = require('./viewer-monitor');
 const {
   createRefreshingKickViewerFetcher,
@@ -44,6 +45,9 @@ const { clearXSessionAuth, getXSessionAuthStatus } = require('./connectors/x-aut
 
 const rendererWindows = new Set();
 const CONNECTOR_PLATFORMS = ['kick', 'twitch', 'x'];
+
+app.commandLine.appendSwitch('log-level', '3');
+
 let setupWindow;
 let dashboardWindow;
 let configStore;
@@ -74,23 +78,21 @@ const buildConnectors = (config) => {
   const connectors = [];
 
   for (const platform of CONNECTOR_PLATFORMS) {
-    const connector = buildConnectorForPlatform(config, platform);
-
-    if (connector) {
-      connectors.push(connector);
-    }
+    connectors.push(...buildConnectorsForPlatform(config, platform));
   }
 
   return connectors;
 };
 
-const buildConnectorForPlatform = (config, platform) => {
+const buildConnectorsForPlatform = (config, platform) => {
   const { twitch, kick, x } = config.connectors;
+  const platformConfig = config.connectors[platform];
+  const sourceEntries = createConfiguredConnectorSources(platform, platformConfig);
 
-  if (platform === 'kick' && kick.enabled) {
-    return createKickConnector({
-      channel: kick.channel,
-      chatroomId: kick.chatroomId || undefined,
+  if (platform === 'kick') {
+    return sourceEntries.map(({ connectorConfig, index, source }) => attachConnectorSource(createKickConnector({
+      channel: connectorConfig.channel,
+      chatroomId: index === 0 ? kick.chatroomId || undefined : undefined,
       accessToken: kick.accessToken || undefined,
       refreshToken: kick.refreshToken || undefined,
       clientId: kick.clientId || undefined,
@@ -103,26 +105,31 @@ const buildConnectorForPlatform = (config, platform) => {
           fetchImpl,
           BrowserWindow,
         }),
-    });
+    }), source));
   }
 
-  if (platform === 'twitch' && twitch.enabled) {
-    return createTwitchConnector({
-      channel: twitch.channel,
+  if (platform === 'twitch') {
+    return sourceEntries.map(({ connectorConfig, source }) => attachConnectorSource(createTwitchConnector({
+      channel: connectorConfig.channel,
       accessToken: twitch.accessToken || undefined,
-    });
+    }), source));
   }
 
-  if (platform === 'x' && x.enabled && x.liveUrl) {
-    return createXConnector({
-      liveUrl: x.liveUrl,
+  if (platform === 'x') {
+    return sourceEntries.map(({ connectorConfig, source }) => attachConnectorSource(createXConnector({
+      liveUrl: connectorConfig.liveUrl,
       BrowserWindow,
       show: x.showBrowser,
-    });
+    }), source));
   }
 
-  return undefined;
+  return [];
 };
+
+const attachConnectorSource = (connector, source) => ({
+  ...connector,
+  source,
+});
 
 const wireChatHub = (nextChatHub) => {
   unsubscribeHubMessage?.();
@@ -134,10 +141,10 @@ const wireChatHub = (nextChatHub) => {
   });
   unsubscribeHubStatus = nextChatHub.onStatus((status) => {
     if (status.platform === 'x' && Object.hasOwn(status.details ?? {}, 'viewerCount')) {
-      viewerMonitor?.updateExternalCount('x', status.details.viewerCount);
+      viewerMonitor?.updateExternalCount(status.source ?? 'x', status.details.viewerCount);
     }
 
-    broadcastToWindows('chat:status', status);
+    broadcastToWindows('chat:status', getDisplayStatus(status.platform));
     publishPublicStatus(status);
   });
 };
@@ -180,13 +187,11 @@ const restartChangedConnectors = async (nextSavedConfig, forcePlatforms = []) =>
   }
 
   for (const platform of changedPlatforms) {
-    const connector = buildConnectorForPlatform(runtimeConfig, platform);
-
-    if (connector) {
-      await chatHub.replaceConnector(connector);
-    } else {
-      await chatHub.removeConnector(platform);
-    }
+    await chatHub.replacePlatformConnectors(
+      platform,
+      buildConnectorsForPlatform(runtimeConfig, platform),
+      { replaceExisting: forcePlatforms.includes(platform) },
+    );
   }
 
   broadcastRuntimeSnapshot();
@@ -231,7 +236,7 @@ const getPublicRealtimeSnapshot = () => {
   return serializePublicSnapshot(
     {
       manifest,
-      statuses: getDisplayStatuses(),
+      statuses: chatHub.getStatuses(),
       viewers: viewerMonitor?.getSnapshot(),
     },
     { sources },
@@ -264,8 +269,9 @@ const startHttpGateway = async () => {
 
 const publishPublicStatus = (status) => {
   const sources = createPublicSources(runtimeConfig);
+  const sourceId = status.source?.sourceId;
 
-  if (!sources[status.platform]) {
+  if (sourceId && !sources[sourceId]) {
     return;
   }
 
@@ -298,13 +304,14 @@ const getDisplayStatuses = () => {
 
   for (const status of chatHub.getStatuses()) {
     const defaultStatus = statuses.get(status.platform) ?? {};
+    const sources = upsertSourceStatus(defaultStatus.details?.sources, status);
 
     statuses.set(status.platform, {
       ...defaultStatus,
-      ...status,
+      ...aggregatePlatformStatus(defaultStatus, sources),
       details: {
         ...defaultStatus.details,
-        ...status.details,
+        sources,
       },
     });
   }
@@ -312,11 +319,27 @@ const getDisplayStatuses = () => {
   return [...statuses.values()];
 };
 
+const getDisplayStatus = (platform) =>
+  getDisplayStatuses().find((status) => status.platform === platform);
+
 const createDefaultPlatformStatus = (platform, platformConfig = {}) => {
   const enabled = Boolean(platformConfig.enabled);
+  const sources = createConfiguredConnectorSources(platform, platformConfig).map(
+    ({ source, connectorConfig }) => ({
+      source,
+      state: 'idle',
+      messageCount: 0,
+      lastMessageAt: undefined,
+      error: undefined,
+      details: {
+        channel: connectorConfig.channel,
+        liveUrl: connectorConfig.liveUrl,
+      },
+    }),
+  );
   const error =
-    platform === 'x' && enabled && !platformConfig.liveUrl
-      ? 'X live URL is required.'
+    enabled && sources.length === 0
+      ? `${platform === 'x' ? 'X live URL' : 'Channel'} is required.`
       : undefined;
 
   return {
@@ -329,8 +352,76 @@ const createDefaultPlatformStatus = (platform, platformConfig = {}) => {
       channel: platformConfig.channel,
       liveUrl: platformConfig.liveUrl,
       authenticatedUser: platformConfig.login,
+      sources,
     },
   };
+};
+
+const upsertSourceStatus = (previousSources = [], status) => {
+  const sourceStatus = createDisplaySourceStatus(status);
+  const sources = [...previousSources];
+  const index = sources.findIndex(
+    (entry) => entry.source?.sourceId === sourceStatus.source?.sourceId,
+  );
+
+  if (index === -1) {
+    sources.push(sourceStatus);
+  } else {
+    sources[index] = {
+      ...sources[index],
+      ...sourceStatus,
+      details: {
+        ...sources[index].details,
+        ...sourceStatus.details,
+      },
+    };
+  }
+
+  return sources;
+};
+
+const createDisplaySourceStatus = (status) => ({
+  source: status.source,
+  state: status.state,
+  messageCount: status.messageCount ?? 0,
+  lastMessageAt: status.lastMessageAt,
+  error: status.error,
+  details: status.details ?? {},
+});
+
+const aggregatePlatformStatus = (defaultStatus, sources) => {
+  const messageCount = sources.reduce((sum, source) => sum + (source.messageCount ?? 0), 0);
+  const lastMessageAt = sources
+    .map((source) => source.lastMessageAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  const error = sources.find((source) => source.error)?.error ?? defaultStatus.error;
+
+  return {
+    state: error ? 'error' : aggregateSourceState(defaultStatus.state, sources),
+    messageCount,
+    lastMessageAt,
+    error,
+  };
+};
+
+const aggregateSourceState = (defaultState, sources) => {
+  const states = new Set(sources.map((source) => source.state));
+
+  if (states.has('error')) {
+    return 'error';
+  }
+
+  if (states.has('connecting')) {
+    return 'connecting';
+  }
+
+  if (states.has('connected')) {
+    return 'connected';
+  }
+
+  return defaultState;
 };
 
 const mergeSavedAuth = (config) => {
@@ -574,25 +665,32 @@ if (!hasSingleInstanceLock) {
   });
 
   app.whenReady().then(async () => {
-    configStore = createAppConfigStore(path.join(app.getPath('userData'), 'config.json'));
-    allowEnvironmentOverrides = !configStore.exists();
-    savedConfig = configStore.load();
-    viewerMonitor = createViewerMonitor({
-      getConfig: () => runtimeConfig,
-      onUpdate: (snapshot) => {
-        broadcastToWindows('viewers:update', snapshot);
-        publishPublicViewers(snapshot);
-      },
-      fetchKick: createRefreshingKickViewerFetcher({
-        fetchViewerCount: fetchKickViewerCount,
-        refreshAccessToken: (config) => refreshKickAccessToken(config),
-        onAuthUpdate: persistKickAuthUpdate,
-      }),
-    });
-    await restartRuntime(savedConfig);
-    await startHttpGateway();
-    viewerMonitor.start();
-    createSetupWindow();
+    try {
+      configStore = createAppConfigStore(path.join(app.getPath('userData'), 'config.json'));
+      allowEnvironmentOverrides = !configStore.exists();
+      savedConfig = configStore.load();
+      applyRuntimeConfig(savedConfig);
+      createSetupWindow();
+
+      viewerMonitor = createViewerMonitor({
+        getConfig: () => runtimeConfig,
+        onUpdate: (snapshot) => {
+          broadcastToWindows('viewers:update', snapshot);
+          publishPublicViewers(snapshot);
+        },
+        fetchKick: createRefreshingKickViewerFetcher({
+          fetchViewerCount: fetchKickViewerCount,
+          refreshAccessToken: (config) => refreshKickAccessToken(config),
+          onAuthUpdate: persistKickAuthUpdate,
+        }),
+      });
+      await restartRuntime(savedConfig);
+      await startHttpGateway();
+      viewerMonitor.start();
+    } catch (error) {
+      console.error(`App startup failed: ${error.stack ?? error.message}`);
+      createSetupWindow();
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {

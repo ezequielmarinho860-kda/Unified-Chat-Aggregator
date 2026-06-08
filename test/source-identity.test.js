@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createConnectorSource } = require('../src/source-identity');
+const {
+  createConfiguredConnectorSources,
+  createConnectorSource,
+} = require('../src/source-identity');
 
 test('creates source identity from a connector channel', () => {
   assert.deepEqual(
@@ -49,4 +52,22 @@ test('creates stable source identity from an X broadcast URL without inventing a
 
 test('returns no source when a connector has no channel or live URL', () => {
   assert.equal(createConnectorSource({ platform: 'twitch' }), undefined);
+});
+
+test('creates configured source entries for two enabled channels', () => {
+  const sources = createConfiguredConnectorSources('kick', {
+    enabled: true,
+    sources: [
+      { enabled: true, channel: 'StreamerA' },
+      { enabled: true, channel: 'StreamerB' },
+    ],
+  });
+
+  assert.deepEqual(
+    sources.map(({ index, source }) => [index, source.sourceId, source.channelLabel]),
+    [
+      [0, 'kick:streamera', 'StreamerA'],
+      [1, 'kick:streamerb', 'StreamerB'],
+    ],
+  );
 });

@@ -58,8 +58,9 @@ const serializePublicStatus = (status, { sources = {}, generatedAt = nowIso() } 
 };
 
 const serializePublicViewers = (snapshot = {}, { sources = {} } = {}) => {
-  const sourceViewers = Array.isArray(snapshot.platforms)
-    ? snapshot.platforms
+  const viewerSources = Array.isArray(snapshot.sources) ? snapshot.sources : snapshot.platforms;
+  const sourceViewers = Array.isArray(viewerSources)
+    ? viewerSources
       .filter((viewer) => hasPublicSource(viewer, sources))
       .map((viewer) => serializePublicViewer(viewer, sources))
     : [];
@@ -167,9 +168,10 @@ const serializePublicFragments = (fragments) => {
 };
 
 const resolvePublicSource = (value, sources) =>
-  serializePublicSource(value.source ?? sources[value.platform]);
+  serializePublicSource(value.source ?? sources[value.sourceId] ?? sources[value.platform]);
 
-const hasPublicSource = (value, sources) => Boolean(value?.source ?? sources[value?.platform]);
+const hasPublicSource = (value, sources) =>
+  Boolean(value?.source ?? sources[value?.sourceId] ?? sources[value?.platform]);
 
 const compactObject = (value) =>
   Object.fromEntries(Object.entries(value).filter(([, field]) => field !== undefined));

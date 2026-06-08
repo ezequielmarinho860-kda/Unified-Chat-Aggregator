@@ -21,7 +21,7 @@ test('adds public Twitch player config without credentials', () => {
   });
 
   assert.deepEqual(sources, {
-    twitch: {
+    'twitch:monstercat': {
       sourceId: 'twitch:monstercat',
       platform: 'twitch',
       channelLabel: 'monstercat',
@@ -35,6 +35,23 @@ test('adds public Twitch player config without credentials', () => {
   assert.doesNotMatch(JSON.stringify(sources), /secret|accessToken/);
 });
 
+test('adds multiple public sources for the same platform', () => {
+  const sources = createPublicViewerSources({
+    connectors: {
+      twitch: {
+        enabled: true,
+        sources: [
+          { enabled: true, channel: 'Monstercat' },
+          { enabled: true, channel: 'ESL_SC2' },
+        ],
+      },
+    },
+  });
+
+  assert.equal(sources['twitch:monstercat'].watchUrl, 'https://www.twitch.tv/monstercat');
+  assert.equal(sources['twitch:esl_sc2'].watchUrl, 'https://www.twitch.tv/esl_sc2');
+});
+
 test('adds public fallback URLs for non Twitch sources without player config', () => {
   const sources = createPublicViewerSources({
     connectors: {
@@ -44,10 +61,10 @@ test('adds public fallback URLs for non Twitch sources without player config', (
     },
   });
 
-  assert.equal(sources.kick.watchUrl, 'https://kick.com/xqc');
-  assert.equal(sources.kick.player, undefined);
-  assert.equal(sources.x.watchUrl, 'https://x.com/chooserich/live');
-  assert.equal(sources.x.player, undefined);
+  assert.equal(sources['kick:xqc'].watchUrl, 'https://kick.com/xqc');
+  assert.equal(sources['kick:xqc'].player, undefined);
+  assert.equal(sources['x:chooserich'].watchUrl, 'https://x.com/chooserich/live');
+  assert.equal(sources['x:chooserich'].player, undefined);
   assert.doesNotMatch(JSON.stringify(sources), /secret|accessToken/);
 });
 

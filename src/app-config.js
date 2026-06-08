@@ -23,6 +23,10 @@ const DEFAULT_APP_CONFIG = Object.freeze({
     twitch: {
       enabled: true,
       channel: 'monstercat',
+      sources: [
+        { enabled: true, channel: 'monstercat' },
+        { enabled: false, channel: '' },
+      ],
       clientId: DEFAULT_TWITCH_CLIENT_ID,
       accessToken: '',
       userId: '',
@@ -32,6 +36,10 @@ const DEFAULT_APP_CONFIG = Object.freeze({
     kick: {
       enabled: true,
       channel: 'xqc',
+      sources: [
+        { enabled: true, channel: 'xqc' },
+        { enabled: false, channel: '' },
+      ],
       chatroomId: '',
       clientId: DEFAULT_KICK_CLIENT_ID,
       clientSecret: '',
@@ -46,6 +54,10 @@ const DEFAULT_APP_CONFIG = Object.freeze({
     x: {
       enabled: false,
       liveUrl: '',
+      sources: [
+        { enabled: false, liveUrl: '' },
+        { enabled: false, liveUrl: '' },
+      ],
       showBrowser: false,
     },
   },
@@ -53,6 +65,15 @@ const DEFAULT_APP_CONFIG = Object.freeze({
 
 const normalizeAppConfig = (config = {}) => {
   const connectors = config.connectors ?? {};
+  const twitchSources = normalizeChannelSources(connectors.twitch, [
+    { enabled: true, channel: 'monstercat' },
+    { enabled: false, channel: '' },
+  ]);
+  const kickSources = normalizeChannelSources(connectors.kick, [
+    { enabled: true, channel: 'xqc' },
+    { enabled: false, channel: '' },
+  ]);
+  const xSources = normalizeLiveUrlSources(connectors.x);
 
   return {
     ui: {
@@ -61,7 +82,8 @@ const normalizeAppConfig = (config = {}) => {
     connectors: {
       twitch: {
         enabled: normalizeBoolean(connectors.twitch?.enabled, true),
-        channel: normalizeString(connectors.twitch?.channel, 'monstercat'),
+        channel: twitchSources[0].channel,
+        sources: twitchSources,
         clientId: normalizeString(connectors.twitch?.clientId, ''),
         accessToken: normalizeString(connectors.twitch?.accessToken, ''),
         userId: normalizeString(connectors.twitch?.userId, ''),
@@ -70,7 +92,8 @@ const normalizeAppConfig = (config = {}) => {
       },
       kick: {
         enabled: normalizeBoolean(connectors.kick?.enabled, true),
-        channel: normalizeString(connectors.kick?.channel, 'xqc'),
+        channel: kickSources[0].channel,
+        sources: kickSources,
         chatroomId: normalizeString(connectors.kick?.chatroomId, ''),
         clientId: normalizeString(connectors.kick?.clientId, DEFAULT_KICK_CLIENT_ID),
         clientSecret: normalizeString(connectors.kick?.clientSecret, ''),
@@ -87,7 +110,8 @@ const normalizeAppConfig = (config = {}) => {
       },
       x: {
         enabled: normalizeBoolean(connectors.x?.enabled, false),
-        liveUrl: normalizeString(connectors.x?.liveUrl, ''),
+        liveUrl: xSources[0].liveUrl,
+        sources: xSources,
         showBrowser: normalizeBoolean(connectors.x?.showBrowser, false),
       },
     },
@@ -115,6 +139,10 @@ const applyEnvironmentOverrides = (config, env = process.env) => {
 
   if (env.TWITCH_CHANNEL) {
     runtimeConfig.connectors.twitch.channel = env.TWITCH_CHANNEL;
+    runtimeConfig.connectors.twitch.sources[0] = {
+      enabled: true,
+      channel: normalizeString(env.TWITCH_CHANNEL, ''),
+    };
     runtimeConfig.connectors.twitch.enabled =
       runtimeConfig.connectors.twitch.enabled || !hasConnectorOverride;
     overrides.push('TWITCH_CHANNEL');
@@ -134,6 +162,10 @@ const applyEnvironmentOverrides = (config, env = process.env) => {
 
   if (env.KICK_CHANNEL) {
     runtimeConfig.connectors.kick.channel = env.KICK_CHANNEL;
+    runtimeConfig.connectors.kick.sources[0] = {
+      enabled: true,
+      channel: normalizeString(env.KICK_CHANNEL, ''),
+    };
     runtimeConfig.connectors.kick.enabled =
       runtimeConfig.connectors.kick.enabled || !hasConnectorOverride;
     overrides.push('KICK_CHANNEL');
@@ -148,6 +180,10 @@ const applyEnvironmentOverrides = (config, env = process.env) => {
 
   if (env.X_LIVE_URL) {
     runtimeConfig.connectors.x.liveUrl = env.X_LIVE_URL;
+    runtimeConfig.connectors.x.sources[0] = {
+      enabled: true,
+      liveUrl: normalizeString(env.X_LIVE_URL, ''),
+    };
     runtimeConfig.connectors.x.enabled =
       runtimeConfig.connectors.x.enabled || !hasConnectorOverride;
     overrides.push('X_LIVE_URL');
@@ -194,6 +230,7 @@ const createPublicAppConfig = (config = {}) => {
       twitch: {
         enabled: twitch.enabled,
         channel: twitch.channel,
+        sources: twitch.sources,
         auth: {
           connected: Boolean(twitch.accessToken),
           userId: twitch.userId,
@@ -204,6 +241,7 @@ const createPublicAppConfig = (config = {}) => {
       kick: {
         enabled: kick.enabled,
         channel: kick.channel,
+        sources: kick.sources,
         chatroomId: kick.chatroomId,
         auth: {
           connected: Boolean(kick.accessToken),
@@ -217,6 +255,52 @@ const createPublicAppConfig = (config = {}) => {
     },
   };
 };
+
+const normalizeChannelSources = (connectorConfig = {}, defaults) =>
+  normalizeFixedSources({
+    fieldName: 'channel',
+    connectorConfig,
+    defaults,
+  });
+
+const normalizeLiveUrlSources = (connectorConfig = {}) =>
+  normalizeFixedSources({
+    fieldName: 'liveUrl',
+    connectorConfig,
+    defaults: [
+      { enabled: false, liveUrl: '' },
+      { enabled: false, liveUrl: '' },
+    ],
+  });
+
+const normalizeFixedSources = ({ fieldName, connectorConfig = {}, defaults }) => {
+  const rawSources = Array.isArray(connectorConfig.sources)
+    ? connectorConfig.sources
+    : createLegacySources({ fieldName, connectorConfig });
+
+  return defaults.map((defaultSource, index) => {
+    const rawSource = rawSources[index] ?? {};
+    const value = normalizeString(rawSource[fieldName], defaultSource[fieldName]);
+    const enabledFallback =
+      index === 0 ? defaultSource.enabled : value.length > 0 || defaultSource.enabled;
+
+    return {
+      enabled: normalizeBoolean(rawSource.enabled, enabledFallback),
+      [fieldName]: value,
+    };
+  });
+};
+
+const createLegacySources = ({ fieldName, connectorConfig = {} }) => [
+  {
+    enabled: fieldName === 'liveUrl' ? Boolean(connectorConfig[fieldName]) : true,
+    [fieldName]: connectorConfig[fieldName],
+  },
+  {
+    enabled: Boolean(connectorConfig[`${fieldName}2`]),
+    [fieldName]: connectorConfig[`${fieldName}2`],
+  },
+];
 
 const normalizeBoolean = (value, fallback) => {
   if (typeof value === 'boolean') {

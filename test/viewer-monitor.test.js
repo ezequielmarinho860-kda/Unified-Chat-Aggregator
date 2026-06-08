@@ -122,8 +122,8 @@ test('publishes Kick viewers without waiting for Twitch', async () => {
   const monitor = createViewerMonitor({
     getConfig: () => ({
       connectors: {
-        twitch: { enabled: true },
-        kick: { enabled: true },
+        twitch: { enabled: true, channel: 'monstercat' },
+        kick: { enabled: true, channel: 'xqc' },
         x: { enabled: false },
       },
     }),
@@ -142,4 +142,37 @@ test('publishes Kick viewers without waiting for Twitch', async () => {
 
   resolveTwitch(100);
   await refreshPromise;
+});
+
+test('collects multiple viewer sources and aggregates platform totals', async () => {
+  const monitor = createViewerMonitor({
+    getConfig: () => ({
+      connectors: {
+        twitch: {
+          enabled: true,
+          accessToken: 'token',
+          sources: [
+            { enabled: true, channel: 'monstercat' },
+            { enabled: true, channel: 'esl_sc2' },
+          ],
+        },
+        kick: { enabled: false },
+        x: { enabled: false },
+      },
+    }),
+    fetchTwitch: async ({ channel }) => (channel === 'monstercat' ? 100 : 200),
+  });
+
+  await monitor.refresh();
+
+  const twitch = monitor.getSnapshot().platforms.find(({ platform }) => platform === 'twitch');
+
+  assert.equal(twitch.count, 300);
+  assert.deepEqual(
+    twitch.sources.map(({ source, count }) => [source.sourceId, count]),
+    [
+      ['twitch:monstercat', 100],
+      ['twitch:esl_sc2', 200],
+    ],
+  );
 });
