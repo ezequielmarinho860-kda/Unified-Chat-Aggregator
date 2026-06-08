@@ -65,8 +65,47 @@
               <button class="chat-filter-button is-active" type="button" data-chat-platform-filter="x" aria-pressed="true">
                 X
               </button>
+              <button class="chat-filter-button is-active" type="button" data-chat-platform-filter="local" aria-pressed="true">
+                Local
+              </button>
             </div>
           </div>
+          <section class="local-chat-controls" aria-label="Local chat">
+            <form class="local-auth-form" data-local-auth-form>
+              <label>
+                <span class="visually-hidden">Email</span>
+                <input name="email" type="email" autocomplete="email" placeholder="Email">
+              </label>
+              <label>
+                <span class="visually-hidden">Nick</span>
+                <input name="nick" type="text" autocomplete="nickname" maxlength="24" placeholder="Nick">
+              </label>
+              <button class="local-chat-button" type="submit" data-local-auth-action="register">
+                Join
+              </button>
+              <button class="local-chat-button local-chat-button--secondary" type="submit" data-local-auth-action="login">
+                Login
+              </button>
+              <button class="local-chat-button local-chat-button--secondary" type="button" data-local-google-login hidden>
+                Google
+              </button>
+            </form>
+            <div class="local-session-panel" data-local-session-panel hidden>
+              <strong data-local-session-label></strong>
+              <button class="local-chat-button local-chat-button--secondary" type="button" data-local-logout>
+                Logout
+              </button>
+            </div>
+            <form class="local-message-form" data-local-message-form hidden>
+              <label>
+                <span class="visually-hidden">Local chat message</span>
+                <textarea name="text" rows="1" maxlength="500" placeholder="Local chat message"></textarea>
+              </label>
+              <button class="local-chat-button" type="submit">Send</button>
+            </form>
+            <div class="local-chat-suggestions" data-local-chat-suggestions hidden></div>
+            <p class="local-chat-status" data-local-chat-status aria-live="polite"></p>
+          </section>
           <div class="chat-list" data-chat-list aria-live="polite" aria-label="Combined chat messages">
             <div class="empty-state" data-chat-empty>
               Waiting for new public chat messages from the realtime stream.

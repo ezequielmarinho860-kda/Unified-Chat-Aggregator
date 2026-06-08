@@ -1,10 +1,11 @@
 (() => {
   const MAX_MESSAGES = 200;
   const CHAT_BOTTOM_TOLERANCE_PX = 120;
+  const LOCAL_SESSION_STORAGE_KEY = 'uca.localChatSession';
   const reconnectBaseMs = 1_000;
   const reconnectMaxMs = 10_000;
   const transport = window.ViewerTransports.createDefaultViewerTransportClient();
-  const filterPlatforms = ['twitch', 'kick', 'x'];
+  const filterPlatforms = ['twitch', 'kick', 'x', 'local'];
   const state = {
     eventConnection: undefined,
     snapshot: undefined,
@@ -21,15 +22,20 @@
     chatDomDirty: false,
     hasRenderedChat: false,
     activeChatPlatforms: new Set(filterPlatforms),
+    localSession: undefined,
+    localModerationCommands: [],
+    pendingGoogleOAuth: undefined,
   };
   const platformLabels = {
     twitch: 'Twitch',
     kick: 'Kick',
+    local: 'Local',
     x: 'X',
     youtube: 'YouTube',
   };
   const platformSymbols = {
     kick: 'K',
+    local: 'L',
     x: 'X',
   };
   const platformIconUrls = {
@@ -47,6 +53,14 @@
     messageCount: document.querySelector('[data-message-count]'),
     chatList: document.querySelector('[data-chat-list]'),
     chatFilterButtons: document.querySelectorAll('[data-chat-platform-filter]'),
+    localAuthForm: document.querySelector('[data-local-auth-form]'),
+    localChatStatus: document.querySelector('[data-local-chat-status]'),
+    localChatSuggestions: document.querySelector('[data-local-chat-suggestions]'),
+    localGoogleLogin: document.querySelector('[data-local-google-login]'),
+    localLogout: document.querySelector('[data-local-logout]'),
+    localMessageForm: document.querySelector('[data-local-message-form]'),
+    localSessionLabel: document.querySelector('[data-local-session-label]'),
+    localSessionPanel: document.querySelector('[data-local-session-panel]'),
     resumeChat: document.querySelector('[data-resume-chat]'),
   };
   const viewerCards = new Map(
@@ -194,6 +208,11 @@
 
   const start = async () => {
     try {
+      restoreLocalSession();
+      consumeGoogleOAuthRedirect();
+      await verifyLocalSession();
+      await refreshGoogleOAuthStatus();
+      await refreshLocalModerationCommands();
       await loadSnapshot();
       connectEvents();
     } catch (error) {
@@ -752,7 +771,7 @@
   };
 
   const shouldRenderAuthorAvatar = (message) =>
-    !['kick', 'twitch'].includes(message.source?.platform);
+    !['kick', 'local', 'twitch'].includes(getMessagePlatform(message));
 
   const createMessageSource = (source = {}) => {
     const label = source.broadcasterName ?? source.channelLabel;
@@ -858,10 +877,14 @@
     const fragments = Array.isArray(message.fragments) ? message.fragments : [];
 
     if (fragments.length === 0) {
-      return [document.createTextNode(message.text ?? '')];
+      return createTextWithMentions(message.text ?? '');
     }
 
-    return fragments.map((fragment) => {
+    return fragments.flatMap((fragment) => {
+      if (fragment.type === 'mention') {
+        return [createMentionElement(fragment.text)];
+      }
+
       if (fragment.type === 'emote' && fragment.imageUrl) {
         const image = document.createElement('img');
 
@@ -876,11 +899,49 @@
         image.title = fragment.text;
         image.loading = 'lazy';
         image.referrerPolicy = 'no-referrer';
-        return image;
+        return [image];
       }
 
-      return document.createTextNode(fragment.text ?? '');
+      return createTextWithMentions(fragment.text ?? '');
     });
+  };
+
+  const createTextWithMentions = (text) =>
+    splitTextByVisibleMention(text).map((part) =>
+      part.type === 'mention'
+        ? createMentionElement(part.text)
+        : document.createTextNode(part.text));
+
+  const splitTextByVisibleMention = (text = '') => {
+    const parts = [];
+    const mentionPattern = /(^|[^\w])(@[A-Za-z0-9_]{2,24})\b/g;
+    let cursor = 0;
+    let match;
+
+    while ((match = mentionPattern.exec(text)) !== null) {
+      const mentionStart = match.index + match[1].length;
+
+      if (mentionStart > cursor) {
+        parts.push({ type: 'text', text: text.slice(cursor, mentionStart) });
+      }
+
+      parts.push({ type: 'mention', text: match[2] });
+      cursor = mentionStart + match[2].length;
+    }
+
+    if (cursor < text.length) {
+      parts.push({ type: 'text', text: text.slice(cursor) });
+    }
+
+    return parts.length > 0 ? parts : [{ type: 'text', text }];
+  };
+
+  const createMentionElement = (text) => {
+    const mention = document.createElement('span');
+
+    mention.className = 'message__mention';
+    mention.textContent = text;
+    return mention;
   };
 
   const maintainChatBottomAfterMediaLoad = () => {
@@ -928,6 +989,319 @@
         ? 'Waiting for new public chat messages from the realtime stream.'
         : `No ${filterLabel} messages in the current chat buffer.`;
     return empty;
+  };
+
+  const restoreLocalSession = () => {
+    try {
+      const rawSession = window.localStorage.getItem(LOCAL_SESSION_STORAGE_KEY);
+
+      state.localSession = rawSession ? JSON.parse(rawSession) : undefined;
+    } catch {
+      state.localSession = undefined;
+    }
+
+    renderLocalChatControls();
+  };
+
+  const verifyLocalSession = async () => {
+    if (!state.localSession?.token) {
+      renderLocalChatControls();
+      return;
+    }
+
+    try {
+      const { user } = await transport.getLocalSession(state.localSession.token);
+
+      setLocalSession({ token: state.localSession.token, user });
+    } catch {
+      clearLocalSession();
+      setLocalChatStatus('Local chat login expired.');
+    }
+  };
+
+  const consumeGoogleOAuthRedirect = () => {
+    if (!window.location.hash) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const token = params.get('localToken');
+    const rawUser = params.get('localUser');
+    const ticket = params.get('oauthTicket');
+
+    if (token && rawUser) {
+      try {
+        setLocalSession({ token, user: JSON.parse(rawUser) });
+        setLocalChatStatus('Logged in with Google.');
+      } catch (error) {
+        setLocalChatStatus(error.message);
+      } finally {
+        clearGoogleOAuthHash();
+      }
+
+      return;
+    }
+
+    if (ticket) {
+      const email = params.get('oauthEmail') ?? '';
+
+      state.pendingGoogleOAuth = {
+        email,
+        name: params.get('oauthName') ?? '',
+        ticket,
+      };
+      setLocalChatStatus(`Google verified ${email}. Choose a nick and click Join.`);
+      clearGoogleOAuthHash();
+      renderLocalChatControls();
+    }
+  };
+
+  const clearGoogleOAuthHash = () => {
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  };
+
+  const refreshGoogleOAuthStatus = async () => {
+    if (!elements.localGoogleLogin || typeof transport.getGoogleOAuthStatus !== 'function') {
+      return;
+    }
+
+    try {
+      const { enabled } = await transport.getGoogleOAuthStatus();
+
+      elements.localGoogleLogin.hidden = !enabled;
+    } catch {
+      elements.localGoogleLogin.hidden = true;
+    }
+  };
+
+  const refreshLocalModerationCommands = async () => {
+    if (typeof transport.getLocalModerationCommands !== 'function') {
+      return;
+    }
+
+    try {
+      const { commands } = await transport.getLocalModerationCommands();
+
+      state.localModerationCommands = Array.isArray(commands) ? commands : [];
+    } catch {
+      state.localModerationCommands = [];
+    }
+  };
+
+  const isLocalModerator = () =>
+    ['host', 'moderator'].includes(state.localSession?.user?.role);
+
+  const updateLocalChatSuggestions = () => {
+    if (!elements.localChatSuggestions || !elements.localMessageForm || !state.localSession?.token) {
+      clearLocalChatSuggestions();
+      return;
+    }
+
+    const input = elements.localMessageForm.elements.namedItem('text');
+    const token = getActiveTextToken(input);
+
+    if (!token) {
+      clearLocalChatSuggestions();
+      return;
+    }
+
+    if (token.value.startsWith('/')) {
+      renderLocalCommandSuggestions(input, token);
+      return;
+    }
+
+    if (token.value.startsWith('@')) {
+      renderLocalMentionSuggestions(input, token);
+      return;
+    }
+
+    clearLocalChatSuggestions();
+  };
+
+  const renderLocalCommandSuggestions = (input, token) => {
+    if (!isLocalModerator()) {
+      clearLocalChatSuggestions();
+      return;
+    }
+
+    const query = token.value.toLowerCase();
+    const commands = state.localModerationCommands
+      .filter((command) => command.name.toLowerCase().startsWith(query))
+      .slice(0, 8);
+
+    renderSuggestionButtons(
+      commands.map((command) => ({
+        description: command.description,
+        label: command.usage,
+        value: `${command.name} `,
+      })),
+      (suggestion) => replaceActiveTextToken(input, token, suggestion.value),
+    );
+  };
+
+  const renderLocalMentionSuggestions = (input, token) => {
+    const query = token.value.slice(1).toLowerCase();
+    const authors = getMentionCandidates()
+      .filter((name) => name.toLowerCase().startsWith(query))
+      .slice(0, 8);
+
+    renderSuggestionButtons(
+      authors.map((name) => ({
+        description: 'Mention this user.',
+        label: `@${name}`,
+        value: `@${name} `,
+      })),
+      (suggestion) => replaceActiveTextToken(input, token, suggestion.value),
+    );
+  };
+
+  const renderSuggestionButtons = (suggestions, onPick) => {
+    if (!elements.localChatSuggestions || suggestions.length === 0) {
+      clearLocalChatSuggestions();
+      return;
+    }
+
+    elements.localChatSuggestions.replaceChildren(
+      ...suggestions.map((suggestion) => {
+        const button = document.createElement('button');
+        const label = document.createElement('strong');
+        const description = document.createElement('span');
+
+        button.className = 'local-chat-suggestion';
+        button.type = 'button';
+        label.textContent = suggestion.label;
+        description.textContent = suggestion.description;
+        button.append(label, description);
+        button.addEventListener('click', () => onPick(suggestion));
+        return button;
+      }),
+    );
+    elements.localChatSuggestions.hidden = false;
+  };
+
+  const clearLocalChatSuggestions = () => {
+    if (!elements.localChatSuggestions) {
+      return;
+    }
+
+    elements.localChatSuggestions.hidden = true;
+    elements.localChatSuggestions.replaceChildren();
+  };
+
+  const getMentionCandidates = () => {
+    const names = new Map();
+
+    if (state.localSession?.user?.nick) {
+      names.set(state.localSession.user.nick.toLowerCase(), state.localSession.user.nick);
+    }
+
+    for (const message of state.messages.slice(-250)) {
+      const name = message.author?.name;
+
+      if (typeof name === 'string' && /^[A-Za-z0-9_]{2,24}$/.test(name)) {
+        names.set(name.toLowerCase(), name);
+      }
+    }
+
+    return [...names.values()].sort((left, right) => left.localeCompare(right));
+  };
+
+  const getActiveTextToken = (input) => {
+    if (!input) {
+      return undefined;
+    }
+
+    const cursor = input.selectionStart ?? input.value.length;
+    const beforeCursor = input.value.slice(0, cursor);
+    const match = beforeCursor.match(/(?:^|\s)([\/@][^\s]*)$/);
+
+    if (!match) {
+      return undefined;
+    }
+
+    return {
+      end: cursor,
+      start: cursor - match[1].length,
+      value: match[1],
+    };
+  };
+
+  const replaceActiveTextToken = (input, token, replacement) => {
+    input.value = `${input.value.slice(0, token.start)}${replacement}${input.value.slice(token.end)}`;
+    const cursor = token.start + replacement.length;
+
+    input.focus();
+    input.setSelectionRange(cursor, cursor);
+    clearLocalChatSuggestions();
+  };
+
+  const setLocalSession = ({ session, token, user }) => {
+    state.localSession = { token: token ?? session?.token, user };
+    state.pendingGoogleOAuth = undefined;
+
+    try {
+      window.localStorage.setItem(LOCAL_SESSION_STORAGE_KEY, JSON.stringify(state.localSession));
+    } catch {
+      // localStorage can be unavailable in restricted browser contexts.
+    }
+
+    renderLocalChatControls();
+  };
+
+  const clearLocalSession = () => {
+    state.localSession = undefined;
+    state.pendingGoogleOAuth = undefined;
+
+    try {
+      window.localStorage.removeItem(LOCAL_SESSION_STORAGE_KEY);
+    } catch {
+      // localStorage can be unavailable in restricted browser contexts.
+    }
+
+    renderLocalChatControls();
+  };
+
+  const renderLocalChatControls = () => {
+    const isLoggedIn = Boolean(state.localSession?.token);
+
+    if (!isLoggedIn) {
+      clearLocalChatSuggestions();
+    }
+
+    if (elements.localAuthForm) {
+      elements.localAuthForm.hidden = isLoggedIn;
+
+      const emailField = elements.localAuthForm.elements.namedItem('email');
+
+      if (emailField) {
+        emailField.disabled = Boolean(state.pendingGoogleOAuth);
+        emailField.value = state.pendingGoogleOAuth?.email ?? emailField.value;
+      }
+    }
+
+    if (elements.localGoogleLogin) {
+      elements.localGoogleLogin.disabled = isLoggedIn || Boolean(state.pendingGoogleOAuth);
+    }
+
+    if (elements.localMessageForm) {
+      elements.localMessageForm.hidden = !isLoggedIn;
+    }
+
+    if (elements.localSessionPanel) {
+      elements.localSessionPanel.hidden = !isLoggedIn;
+    }
+
+    if (elements.localSessionLabel) {
+      const user = state.localSession?.user;
+
+      elements.localSessionLabel.textContent = user ? `${user.nick} (${user.role})` : '';
+    }
+  };
+
+  const setLocalChatStatus = (message) => {
+    if (elements.localChatStatus) {
+      elements.localChatStatus.textContent = message;
+    }
   };
 
   const isChatNearBottom = () =>
@@ -1038,6 +1412,12 @@
   const formatClock = (date) =>
     new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(date);
 
+  const getSubmitterAction = (event) =>
+    event.submitter?.dataset.localAuthAction ?? 'register';
+
+  const getFormFieldValue = (form, name) =>
+    form?.elements.namedItem(name)?.value.trim() ?? '';
+
   elements.resumeChat?.addEventListener('click', () => {
     chatScrollDebug.log('resume_click');
     setChatPinnedToBottom(true, 'resume_click');
@@ -1068,6 +1448,95 @@
   }
 
   updateChatFilterControls();
+
+  elements.localAuthForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const action = getSubmitterAction(event);
+    const email = getFormFieldValue(elements.localAuthForm, 'email');
+    const nick = getFormFieldValue(elements.localAuthForm, 'nick');
+
+    try {
+      if (state.pendingGoogleOAuth) {
+        if (!nick) {
+          throw new Error('Nick is required after Google OAuth.');
+        }
+
+        const session = await transport.completeGoogleOAuth({
+          nick,
+          ticket: state.pendingGoogleOAuth.ticket,
+        });
+
+        setLocalSession(session);
+        setLocalChatStatus('Joined local chat with Google.');
+        return;
+      }
+
+      const session =
+        action === 'login'
+          ? await transport.loginLocalUser({ email })
+          : await transport.registerLocalUser({ email, nick });
+
+      setLocalSession(session);
+      setLocalChatStatus(action === 'login' ? 'Logged in.' : 'Joined local chat.');
+    } catch (error) {
+      setLocalChatStatus(error.message);
+    }
+  });
+
+  elements.localGoogleLogin?.addEventListener('click', () => {
+    if (typeof transport.createGoogleOAuthStartUrl !== 'function') {
+      setLocalChatStatus('Google OAuth is not available.');
+      return;
+    }
+
+    window.location.href = transport.createGoogleOAuthStartUrl({ returnTo: '/viewer' });
+  });
+
+  elements.localLogout?.addEventListener('click', () => {
+    clearLocalSession();
+    setLocalChatStatus('Logged out.');
+  });
+
+  elements.localMessageForm?.elements.namedItem('text')?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      clearLocalChatSuggestions();
+      return;
+    }
+
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    elements.localMessageForm.requestSubmit();
+  });
+
+  elements.localMessageForm?.elements.namedItem('text')?.addEventListener('input', updateLocalChatSuggestions);
+
+  elements.localMessageForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const text = getFormFieldValue(elements.localMessageForm, 'text');
+    const token = state.localSession?.token;
+
+    if (!token || !text) {
+      return;
+    }
+
+    try {
+      if (text.startsWith('/')) {
+        await transport.runLocalModerationCommand({ command: text, token });
+        setLocalChatStatus('Moderation command applied.');
+      } else {
+        await transport.sendLocalMessage({ text, token });
+        setLocalChatStatus('Message sent.');
+      }
+
+      elements.localMessageForm.elements.namedItem('text').value = '';
+      clearLocalChatSuggestions();
+    } catch (error) {
+      setLocalChatStatus(error.message);
+    }
+  });
 
   elements.chatList?.addEventListener('scroll', (event) => {
     setChatPinnedToBottom(isChatNearBottom(), 'scroll', {
