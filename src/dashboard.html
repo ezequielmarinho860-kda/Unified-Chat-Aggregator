@@ -45,14 +45,14 @@
         </article>
       </header>
 
-      <section class="feed-panel" aria-labelledby="feed-title">
+      <section class="feed-panel feed-panel--read-only" aria-labelledby="feed-title">
         <div class="feed-panel__header">
           <p class="eyebrow" id="feed-title">Live feed</p>
           <div class="platform-filter" id="platform-filter" role="group" aria-label="Platform filter">
-            <button class="filter-button filter-button--compact is-active" type="button" data-filter-platform="all">All</button>
-            <button class="filter-button filter-button--compact" type="button" data-filter-platform="twitch">Twitch</button>
-            <button class="filter-button filter-button--compact" type="button" data-filter-platform="kick">Kick</button>
-            <button class="filter-button filter-button--compact" type="button" data-filter-platform="x">X</button>
+            <button class="filter-button filter-button--compact is-active" type="button" data-filter-platform="all" aria-pressed="true">All</button>
+            <button class="filter-button filter-button--compact is-active" type="button" data-filter-platform="twitch" aria-pressed="true">Twitch</button>
+            <button class="filter-button filter-button--compact is-active" type="button" data-filter-platform="kick" aria-pressed="true">Kick</button>
+            <button class="filter-button filter-button--compact is-active" type="button" data-filter-platform="x" aria-pressed="true">X</button>
           </div>
           <div class="feed-actions">
             <button class="tool-button tool-button--compact" type="button" id="clear-feed">Clear</button>
@@ -66,7 +66,7 @@
           Novas mensagens
         </button>
 
-        <form class="composer-panel" id="message-composer" aria-label="Send message">
+        <form class="composer-panel" id="message-composer" aria-label="Send message" hidden>
           <label class="composer-panel__target">
             <span class="visually-hidden">Send to</span>
             <select name="platform">

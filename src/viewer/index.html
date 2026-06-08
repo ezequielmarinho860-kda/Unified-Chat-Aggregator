@@ -6,6 +6,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; script-src 'self'; style-src 'self'; img-src 'self' https: data:; frame-src https://player.twitch.tv; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
     <title>Viewer Mode</title>
     <link rel="stylesheet" href="/viewer/viewer-mode.css">
+    <script src="/viewer/viewer-transport.js" defer></script>
     <script src="/viewer/viewer-mode.js" defer></script>
   </head>
   <body>
@@ -47,12 +48,28 @@
 
         <article class="panel chat-panel">
           <div class="panel-heading">
-            <p class="panel-kicker">Combined Chat</p>
-            <span class="message-count"><span data-message-count>0</span> live messages seen</span>
+            <div class="chat-heading-copy">
+              <p class="panel-kicker">Combined Chat</p>
+              <span class="message-count"><span data-message-count>0</span> live messages seen</span>
+            </div>
+            <div class="chat-filter-control" role="group" aria-label="Chat platform filter">
+              <button class="chat-filter-button is-active" type="button" data-chat-platform-filter="all" aria-pressed="true">
+                All
+              </button>
+              <button class="chat-filter-button is-active" type="button" data-chat-platform-filter="twitch" aria-pressed="true">
+                Twitch
+              </button>
+              <button class="chat-filter-button is-active" type="button" data-chat-platform-filter="kick" aria-pressed="true">
+                Kick
+              </button>
+              <button class="chat-filter-button is-active" type="button" data-chat-platform-filter="x" aria-pressed="true">
+                X
+              </button>
+            </div>
           </div>
           <div class="chat-list" data-chat-list aria-live="polite" aria-label="Combined chat messages">
             <div class="empty-state" data-chat-empty>
-              Waiting for new public chat messages from the realtime gateway.
+              Waiting for new public chat messages from the realtime stream.
             </div>
           </div>
           <button class="chat-resume-button" type="button" data-resume-chat hidden>

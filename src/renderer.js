@@ -43,7 +43,8 @@ const loggedIdentities = new Map();
 const pendingOutgoingMessages = new Map();
 const maxRenderedMessages = 250;
 const outgoingMessageMatchWindowMs = 30_000;
-let activeFilter = 'all';
+const filterPlatforms = ['twitch', 'kick', 'x'];
+const activeFilterPlatforms = new Set(filterPlatforms);
 let feedPinnedToBottom = true;
 let unseenMessageCount = 0;
 let totalMessages = 0;
@@ -269,8 +270,39 @@ const formatUnseenMessageCount = (count) => {
   return count === 1 ? '1 nova mensagem' : `${count} novas mensagens`;
 };
 
-const isMessageVisibleInActiveFilter = (message) =>
-  activeFilter === 'all' || message.platform === activeFilter;
+const areAllFilterPlatformsActive = () => activeFilterPlatforms.size === filterPlatforms.length;
+
+const isMessageVisibleInActiveFilter = (message) => activeFilterPlatforms.has(message.platform);
+
+const getFilteredMessages = () =>
+  messages.filter(isMessageVisibleInActiveFilter);
+
+const formatActiveFilterLabel = () => {
+  if (areAllFilterPlatformsActive()) {
+    return 'messages';
+  }
+
+  return [...activeFilterPlatforms]
+    .map((platform) => platformLabels[platform] ?? platform)
+    .join(' + ');
+};
+
+const updatePlatformFilterButtons = () => {
+  if (!platformFilter) {
+    return;
+  }
+
+  for (const button of platformFilter.querySelectorAll('[data-filter-platform]')) {
+    const platform = button.dataset.filterPlatform;
+    const isActive =
+      platform === 'all'
+        ? areAllFilterPlatformsActive()
+        : activeFilterPlatforms.has(platform);
+
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  }
+};
 
 const renderMessage = (message) => {
   const item = document.createElement('li');
@@ -558,11 +590,7 @@ const updateMessageMetrics = () => {
   }
 
   messageCount.textContent = String(totalMessages);
-  visibleMessageCount.textContent = String(
-    activeFilter === 'all'
-      ? messages.length
-      : messages.filter((message) => message.platform === activeFilter).length,
-  );
+  visibleMessageCount.textContent = String(getFilteredMessages().length);
 };
 
 const renderFeed = ({ stickToBottom = isAutoscrollEnabled() } = {}) => {
@@ -571,11 +599,7 @@ const renderFeed = ({ stickToBottom = isAutoscrollEnabled() } = {}) => {
   }
 
   const previousScrollTop = messageFeed.scrollTop;
-  const filteredMessages =
-    activeFilter === 'all'
-      ? messages
-      : messages.filter((message) => message.platform === activeFilter);
-  const visibleMessages = filteredMessages.slice(-maxRenderedMessages);
+  const visibleMessages = getFilteredMessages().slice(-maxRenderedMessages);
 
   messageFeed.replaceChildren(
     ...(visibleMessages.length > 0
@@ -583,9 +607,9 @@ const renderFeed = ({ stickToBottom = isAutoscrollEnabled() } = {}) => {
       : [emptyState]),
   );
   emptyState.textContent =
-    activeFilter === 'all'
+    areAllFilterPlatformsActive()
       ? 'Waiting for messages...'
-      : `No ${platformLabels[activeFilter] ?? activeFilter} messages.`;
+      : `No ${formatActiveFilterLabel()} messages.`;
 
   if (stickToBottom) {
     scrollFeedToBottom();
@@ -615,6 +639,7 @@ const renderConnectorStatus = (status) => {
     status.details?.authenticatedUser
       ? `Authenticated: ${status.details.authenticatedUser}`
       : undefined,
+    formatStatusSourcesDetail(status.details?.sources),
     formatRelativeDetail(status.lastMessageAt),
     `${messageCount} msg`,
   ].filter(Boolean);
@@ -622,6 +647,7 @@ const renderConnectorStatus = (status) => {
   card.dataset.state = state;
   stateElement.textContent = stateLabels[state] ?? state;
   detailElement.textContent = detailParts.join(' | ');
+  card.dataset.statusTitle = formatStatusSourcesTitle(status);
 };
 
 const renderViewerSnapshot = (snapshot) => {
@@ -640,9 +666,17 @@ const renderViewerSnapshot = (snapshot) => {
     const countElement = card.querySelector('[data-viewer-count]');
 
     countElement.textContent = viewer.count === undefined ? '--' : formatViewerCount(viewer.count);
-    countElement.title = viewer.updatedAt
-      ? `Last response: ${formatTimestamp(viewer.updatedAt)}`
-      : 'No viewer response yet';
+    countElement.removeAttribute('title');
+    card.removeAttribute('title');
+    const viewerTooltip = formatViewerSourcesTooltip(viewer);
+
+    if (viewerTooltip) {
+      card.dataset.viewerTooltip = viewerTooltip;
+      card.setAttribute('aria-label', viewerTooltip);
+    } else {
+      delete card.dataset.viewerTooltip;
+      card.removeAttribute('aria-label');
+    }
 
     if (viewer.state === 'available' && viewerUpdateTimes.get(viewer.platform) !== viewer.updatedAt) {
       viewerUpdateTimes.set(viewer.platform, viewer.updatedAt);
@@ -657,6 +691,61 @@ const renderViewerSnapshot = (snapshot) => {
   if (totalViewerCount) {
     totalViewerCount.textContent = formatViewerCount(snapshot.total ?? 0);
   }
+};
+
+const formatStatusSourcesDetail = (sources = []) => {
+  const activeSources = sources.filter((source) => source.source);
+
+  if (activeSources.length === 0) {
+    return undefined;
+  }
+
+  return activeSources.map(formatStatusSourceLabel).join(', ');
+};
+
+const formatStatusSourcesTitle = (status) => {
+  const sources = status.details?.sources ?? [];
+
+  if (sources.length === 0) {
+    return status.error || `${platformLabels[status.platform] ?? status.platform}: no sources`;
+  }
+
+  return sources.map((source) => {
+    const label = formatStatusSourceLabel(source);
+    const state = stateLabels[source.state] ?? source.state ?? 'Idle';
+    const count = source.messageCount ?? 0;
+    const error = source.error ? ` - ${source.error}` : '';
+
+    return `${label}: ${state}, ${count} msg${error}`;
+  }).join('\n');
+};
+
+const formatStatusSourceLabel = (sourceStatus = {}) =>
+  sourceStatus.source?.channelLabel ||
+  sourceStatus.details?.channel ||
+  sourceStatus.details?.liveUrl ||
+  sourceStatus.source?.sourceId ||
+  'source';
+
+const formatViewerSourcesTooltip = (viewer = {}) => {
+  const sources = viewer.sources ?? [];
+
+  if (sources.length < 2) {
+    return undefined;
+  }
+
+  const platform = platformLabels[viewer.platform] ?? viewer.platform ?? 'Platform';
+
+  return [
+    platform,
+    ...sources.map((source) => {
+      const label = source.source?.channelLabel ?? source.source?.sourceId ?? 'source';
+      const count = source.count === undefined ? '--' : formatViewerCount(source.count);
+      const state = source.error || viewerStateLabels[source.state] || source.state;
+
+      return `${label}: ${count} (${state})`;
+    }),
+  ].join('\n');
 };
 
 const formatViewerCount = (count) => new Intl.NumberFormat('en-US').format(count);
@@ -704,12 +793,15 @@ const populateConfigForm = (config) => {
   setFormValue('ui.theme', config.ui?.theme);
   setFormValue('twitch.enabled', config.connectors.twitch.enabled);
   setFormValue('twitch.channel', config.connectors.twitch.channel);
+  setFormValue('twitch.channel2', config.connectors.twitch.sources?.[1]?.channel);
   renderTwitchAuthStatus(config.connectors.twitch.auth);
   setFormValue('kick.enabled', config.connectors.kick.enabled);
   setFormValue('kick.channel', config.connectors.kick.channel);
+  setFormValue('kick.channel2', config.connectors.kick.sources?.[1]?.channel);
   renderKickAuthStatus(config.connectors.kick.auth);
   setFormValue('x.enabled', config.connectors.x.enabled);
   setFormValue('x.liveUrl', config.connectors.x.liveUrl);
+  setFormValue('x.liveUrl2', config.connectors.x.sources?.[1]?.liveUrl);
   setFormValue('x.showBrowser', config.connectors.x.showBrowser);
   renderXAuthStatus(xAuthState);
 };
@@ -722,14 +814,44 @@ const readConfigForm = () => ({
     twitch: {
       enabled: getFormValue('twitch.enabled'),
       channel: getFormValue('twitch.channel'),
+      sources: [
+        {
+          enabled: Boolean(getFormValue('twitch.channel')),
+          channel: getFormValue('twitch.channel'),
+        },
+        {
+          enabled: Boolean(getFormValue('twitch.channel2')),
+          channel: getFormValue('twitch.channel2'),
+        },
+      ],
     },
     kick: {
       enabled: getFormValue('kick.enabled'),
       channel: getFormValue('kick.channel'),
+      sources: [
+        {
+          enabled: Boolean(getFormValue('kick.channel')),
+          channel: getFormValue('kick.channel'),
+        },
+        {
+          enabled: Boolean(getFormValue('kick.channel2')),
+          channel: getFormValue('kick.channel2'),
+        },
+      ],
     },
     x: {
       enabled: getFormValue('x.enabled'),
       liveUrl: getFormValue('x.liveUrl'),
+      sources: [
+        {
+          enabled: Boolean(getFormValue('x.liveUrl')),
+          liveUrl: getFormValue('x.liveUrl'),
+        },
+        {
+          enabled: Boolean(getFormValue('x.liveUrl2')),
+          liveUrl: getFormValue('x.liveUrl2'),
+        },
+      ],
       showBrowser: getFormValue('x.showBrowser'),
     },
   },
@@ -895,6 +1017,8 @@ window.chatAggregator?.onChatMessage((message) => {
   renderFeed({ stickToBottom: shouldStickToBottom });
 });
 
+updatePlatformFilterButtons();
+
 platformFilter?.addEventListener('click', (event) => {
   const button = event.target.closest('[data-filter-platform]');
 
@@ -902,14 +1026,24 @@ platformFilter?.addEventListener('click', (event) => {
     return;
   }
 
-  activeFilter = button.dataset.filterPlatform;
-  setFeedPinnedToBottom(true, 'filter_click', { activeFilter });
-  unseenMessageCount = 0;
+  const platform = button.dataset.filterPlatform;
 
-  for (const filterButton of platformFilter.querySelectorAll('.filter-button')) {
-    filterButton.classList.toggle('is-active', filterButton === button);
+  if (platform === 'all') {
+    activeFilterPlatforms.clear();
+    for (const filterPlatform of filterPlatforms) {
+      activeFilterPlatforms.add(filterPlatform);
+    }
+  } else if (activeFilterPlatforms.has(platform) && activeFilterPlatforms.size > 1) {
+    activeFilterPlatforms.delete(platform);
+  } else if (!activeFilterPlatforms.has(platform) && filterPlatforms.includes(platform)) {
+    activeFilterPlatforms.add(platform);
   }
 
+  setFeedPinnedToBottom(true, 'filter_click', {
+    activeFilterPlatforms: [...activeFilterPlatforms],
+  });
+  unseenMessageCount = 0;
+  updatePlatformFilterButtons();
   renderFeed({ stickToBottom: true });
 });
 

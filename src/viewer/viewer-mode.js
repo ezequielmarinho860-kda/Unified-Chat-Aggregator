@@ -3,8 +3,10 @@
   const CHAT_BOTTOM_TOLERANCE_PX = 120;
   const reconnectBaseMs = 1_000;
   const reconnectMaxMs = 10_000;
+  const transport = window.ViewerTransports.createDefaultViewerTransportClient();
+  const filterPlatforms = ['twitch', 'kick', 'x'];
   const state = {
-    socket: undefined,
+    eventConnection: undefined,
     snapshot: undefined,
     reconnectAttempt: 0,
     messageCount: 0,
@@ -18,6 +20,7 @@
     pendingStickToBottom: undefined,
     chatDomDirty: false,
     hasRenderedChat: false,
+    activeChatPlatforms: new Set(filterPlatforms),
   };
   const platformLabels = {
     twitch: 'Twitch',
@@ -43,6 +46,7 @@
     sourceList: document.querySelector('[data-source-list]'),
     messageCount: document.querySelector('[data-message-count]'),
     chatList: document.querySelector('[data-chat-list]'),
+    chatFilterButtons: document.querySelectorAll('[data-chat-platform-filter]'),
     resumeChat: document.querySelector('[data-resume-chat]'),
   };
   const viewerCards = new Map(
@@ -199,43 +203,37 @@
   };
 
   const loadSnapshot = async () => {
-    setConnection('loading', 'Loading snapshot', 'Fetching public gateway state.');
-    const response = await fetch('/api/v1/snapshot', { cache: 'no-store' });
-
-    if (!response.ok) {
-      throw new Error(`Snapshot request failed with ${response.status}.`);
-    }
-
-    applySnapshot(await response.json());
+    setConnection('loading', 'Loading snapshot', 'Fetching public viewer state.');
+    applySnapshot(await transport.loadSnapshot());
   };
 
   const connectEvents = () => {
-    state.socket?.close();
-    const socket = new WebSocket(createEventsUrl());
+    const previousEventConnection = state.eventConnection;
 
-    state.socket = socket;
-    setConnection('loading', 'Connecting realtime', 'Opening local WebSocket.');
-    socket.addEventListener('open', () => {
-      state.reconnectAttempt = 0;
-      setConnection('connected', 'Live connection', 'Receiving public realtime events.');
-    });
-    socket.addEventListener('message', (event) => applyEvent(JSON.parse(event.data)));
-    socket.addEventListener('close', () => {
-      if (state.socket === socket) {
+    state.eventConnection = undefined;
+    previousEventConnection?.close();
+    setConnection('loading', 'Connecting realtime', 'Opening realtime stream.');
+
+    const eventConnection = transport.connectEvents({
+      onClose: () => {
+        if (state.eventConnection !== eventConnection) {
+          return;
+        }
+
         setConnection('disconnected', 'Disconnected', 'Reconnecting with a fresh snapshot.');
         scheduleReconnect();
-      }
+      },
+      onError: () => {
+        setConnection('error', 'Connection error', 'Realtime stream is unavailable.');
+      },
+      onEvent: applyEvent,
+      onOpen: () => {
+        state.reconnectAttempt = 0;
+        setConnection('connected', 'Live connection', 'Receiving public realtime events.');
+      },
     });
-    socket.addEventListener('error', () => {
-      setConnection('error', 'Connection error', 'Realtime stream is unavailable.');
-    });
-  };
 
-  const createEventsUrl = () => {
-    const url = new URL('/api/v1/events', window.location.href);
-
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    return url;
+    state.eventConnection = eventConnection;
   };
 
   const scheduleReconnect = () => {
@@ -692,24 +690,42 @@
     return row;
   };
 
-  const createChatElements = () =>
-    state.messages.length > 0
-      ? state.messages.map(createMessageElement)
+  const createChatElements = () => {
+    const visibleMessages = getVisibleChatMessages();
+
+    return visibleMessages.length > 0
+      ? visibleMessages.map(createMessageElement)
       : [createEmptyChatElement()];
+  };
+
+  const getVisibleChatMessages = () =>
+    areAllChatPlatformsActive()
+      ? state.messages
+      : state.messages.filter((message) => state.activeChatPlatforms.has(getMessagePlatform(message)));
+
+  const getMessagePlatform = (message = {}) =>
+    message.source?.platform ?? message.platform ?? 'unknown';
+
+  const areAllChatPlatformsActive = () => state.activeChatPlatforms.size === filterPlatforms.length;
+
+  const formatActiveChatPlatformLabel = () =>
+    [...state.activeChatPlatforms]
+      .map((platform) => platformLabels[platform] ?? platform)
+      .join(' + ');
 
   const createMessageElement = (message) => {
     const article = document.createElement('article');
     const avatar = shouldRenderAuthorAvatar(message) ? createAvatarElement(message) : undefined;
     const body = document.createElement('div');
     const meta = document.createElement('div');
-    const platform = createPlatformBadge(message.source?.platform);
+    const platform = createPlatformBadge(getMessagePlatform(message));
     const source = createMessageSource(message.source);
     const author = document.createElement('strong');
     const time = document.createElement('time');
     const content = document.createElement('p');
 
     article.className = 'message';
-    article.dataset.platform = message.source?.platform ?? 'unknown';
+    article.dataset.platform = getMessagePlatform(message);
     body.className = 'message__content';
     meta.className = 'message__metadata';
     author.className = 'message__author';
@@ -903,10 +919,14 @@
 
   const createEmptyChatElement = () => {
     const empty = document.createElement('div');
+    const filterLabel = formatActiveChatPlatformLabel();
 
     empty.className = 'empty-state';
     empty.dataset.chatEmpty = '';
-    empty.textContent = 'Waiting for new public chat messages from the realtime gateway.';
+    empty.textContent =
+      areAllChatPlatformsActive()
+        ? 'Waiting for new public chat messages from the realtime stream.'
+        : `No ${filterLabel} messages in the current chat buffer.`;
     return empty;
   };
 
@@ -938,6 +958,22 @@
 
     elements.resumeChat.hidden = state.unseenMessageCount === 0 || state.chatPinnedToBottom;
     elements.resumeChat.textContent = formatUnseenMessageCount(state.unseenMessageCount);
+  };
+
+  const updateChatFilterControls = () => {
+    for (const button of elements.chatFilterButtons ?? []) {
+      const platform = button.dataset.chatPlatformFilter;
+      const isActive =
+        platform === 'all'
+          ? areAllChatPlatformsActive()
+          : state.activeChatPlatforms.has(platform);
+
+      button.classList.toggle('is-active', isActive);
+      button.setAttribute(
+        'aria-pressed',
+        String(isActive),
+      );
+    }
   };
 
   const formatUnseenMessageCount = (count) => {
@@ -1009,6 +1045,29 @@
     flushScheduledRender({ stickToBottom: true, forceChatRender: true });
     updateResumeChatControl();
   });
+
+  for (const button of elements.chatFilterButtons ?? []) {
+    button.addEventListener('click', () => {
+      const platform = button.dataset.chatPlatformFilter ?? 'all';
+
+      if (platform === 'all') {
+        state.activeChatPlatforms = new Set(filterPlatforms);
+      } else if (state.activeChatPlatforms.has(platform) && state.activeChatPlatforms.size > 1) {
+        state.activeChatPlatforms.delete(platform);
+      } else if (!state.activeChatPlatforms.has(platform) && filterPlatforms.includes(platform)) {
+        state.activeChatPlatforms.add(platform);
+      }
+
+      setChatPinnedToBottom(true, 'chat_filter_change', {
+        activeChatPlatforms: [...state.activeChatPlatforms],
+      });
+      state.unseenMessageCount = 0;
+      updateChatFilterControls();
+      flushScheduledRender({ stickToBottom: true, forceChatRender: true });
+    });
+  }
+
+  updateChatFilterControls();
 
   elements.chatList?.addEventListener('scroll', (event) => {
     setChatPinnedToBottom(isChatNearBottom(), 'scroll', {
