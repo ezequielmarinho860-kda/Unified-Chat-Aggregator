@@ -70,6 +70,7 @@ const createKickConnector = ({
 
   const openSocket = () => {
     const nextSocket = webSocketFactory(KICK_PUSHER_URL);
+    let isClosingAfterError = false;
 
     socket = nextSocket;
 
@@ -106,6 +107,11 @@ const createKickConnector = ({
     });
 
     nextSocket.addEventListener('error', () => {
+      if (nextSocket !== socket || isClosingAfterError || !canCloseSocket(nextSocket)) {
+        return;
+      }
+
+      isClosingAfterError = true;
       nextSocket.close();
     });
   };
@@ -213,6 +219,9 @@ const createKickConnector = ({
 
 const isUnauthorizedKickError = (error) =>
   error instanceof Error && /status 401|unauthorized/i.test(error.message);
+
+const canCloseSocket = (socket) =>
+  socket?.readyState === WebSocket.CONNECTING || socket?.readyState === WebSocket.OPEN;
 
 module.exports = {
   DEFAULT_SEEN_MESSAGE_LIMIT,

@@ -41,6 +41,10 @@ class FakeWebSocket extends EventEmitter {
     this.readyState = FakeWebSocket.CLOSED;
     this.emit('close');
   }
+
+  error() {
+    this.emit('error', new Error('socket error'));
+  }
 }
 
 test('subscribes to the Kick chatroom channel on connect', async () => {
@@ -203,6 +207,31 @@ test('responds to Pusher ping with pong', async () => {
     event: 'pusher:pong',
     data: {},
   });
+
+  await connector.disconnect();
+});
+
+test('closes Kick socket errors without recursive close loops', async () => {
+  class RecursiveErrorSocket extends FakeWebSocket {
+    close() {
+      this.error();
+      super.close();
+    }
+  }
+
+  const socket = new RecursiveErrorSocket(KICK_PUSHER_URL);
+  const connector = createKickConnector({
+    channel: 'xqc',
+    chatroomId: '12345',
+    reconnectMs: 60_000,
+    webSocketFactory: () => socket,
+  });
+
+  await connector.connect();
+  socket.open();
+
+  assert.doesNotThrow(() => socket.error());
+  assert.equal(socket.readyState, FakeWebSocket.CLOSED);
 
   await connector.disconnect();
 });
