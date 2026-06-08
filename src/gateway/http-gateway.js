@@ -2,14 +2,30 @@ const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { WebSocketServer, WebSocket } = require('ws');
-const { createPublicEvent } = require('../public-realtime');
+const {
+  LOCAL_MODERATION_COMMANDS,
+  applyModerationCommand,
+  requireModerator,
+} = require('../local-chat-moderation');
+const { createPublicEvent, serializePublicChatMessage } = require('../public-realtime');
 
 const GATEWAY_HOST = '127.0.0.1';
 const DEFAULT_GATEWAY_PORT = 47831;
 const SNAPSHOT_PATH = '/api/v1/snapshot';
 const EVENTS_PATH = '/api/v1/events';
+const GOOGLE_AUTH_CALLBACK_PATH = '/api/v1/auth/google/callback';
+const GOOGLE_AUTH_COMPLETE_PATH = '/api/v1/auth/google/complete';
+const GOOGLE_AUTH_START_PATH = '/api/v1/auth/google/start';
+const GOOGLE_AUTH_STATUS_PATH = '/api/v1/auth/google/status';
+const LOCAL_LOGIN_PATH = '/api/v1/local/login';
+const LOCAL_ME_PATH = '/api/v1/local/me';
+const LOCAL_MESSAGES_PATH = '/api/v1/local/messages';
+const LOCAL_MODERATION_COMMANDS_PATH = '/api/v1/local/moderation-commands';
+const LOCAL_MODERATION_PATH = '/api/v1/local/moderation';
+const LOCAL_REGISTER_PATH = '/api/v1/local/register';
 const VIEWER_PATH = '/viewer';
 const OVERLAY_PATH = '/overlay';
+const MAX_JSON_BODY_BYTES = 16 * 1024;
 const VIEWER_ASSETS = new Map([
   [VIEWER_PATH, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
   [`${VIEWER_PATH}/`, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
@@ -35,6 +51,9 @@ const SHARED_ASSET_DIR = path.join(__dirname, '..', 'assets');
 
 const createHttpGateway = ({
   getSnapshot,
+  googleOAuthService,
+  localChatStore,
+  onLocalChatMessage,
   port = DEFAULT_GATEWAY_PORT,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
   createServer = http.createServer,
@@ -54,7 +73,13 @@ const createHttpGateway = ({
     }
 
     server = createServer((request, response) => {
-      void handleRequest(request, response, getSnapshot);
+      void handleRequest(request, response, {
+        getSnapshot,
+        googleOAuthService,
+        localChatStore,
+        onLocalChatMessage,
+        publish: (type, data) => (webSocketServer ? broadcastEvent(webSocketServer, createPublicEvent(type, data)) : 0),
+      });
     });
     webSocketServer = createWebSocketServer(server, getSnapshot);
     heartbeatTimer = setInterval(() => heartbeatClients(webSocketServer), heartbeatMs);
@@ -185,11 +210,21 @@ const closeWebSocketClients = (webSocketServer) => {
   }
 };
 
-const handleRequest = async (request, response, getSnapshot) => {
+const handleRequest = async (request, response, context) => {
   const url = new URL(request.url ?? '/', `http://${GATEWAY_HOST}`);
 
   if (url.pathname === SNAPSHOT_PATH) {
-    await handleSnapshotRequest(request, response, getSnapshot);
+    await handleSnapshotRequest(request, response, context.getSnapshot);
+    return;
+  }
+
+  if (isLocalChatPath(url.pathname)) {
+    await handleLocalChatRequest(request, response, url.pathname, context);
+    return;
+  }
+
+  if (isGoogleAuthPath(url.pathname)) {
+    await handleGoogleAuthRequest(request, response, url, context);
     return;
   }
 
@@ -234,10 +269,323 @@ const handleViewerAssetRequest = async (request, response, pathname) => {
   }
 };
 
+const isLocalChatPath = (pathname) =>
+  [
+    LOCAL_LOGIN_PATH,
+    LOCAL_ME_PATH,
+    LOCAL_MESSAGES_PATH,
+    LOCAL_MODERATION_COMMANDS_PATH,
+    LOCAL_MODERATION_PATH,
+    LOCAL_REGISTER_PATH,
+  ].includes(pathname);
+
+const isGoogleAuthPath = (pathname) =>
+  [
+    GOOGLE_AUTH_CALLBACK_PATH,
+    GOOGLE_AUTH_COMPLETE_PATH,
+    GOOGLE_AUTH_START_PATH,
+    GOOGLE_AUTH_STATUS_PATH,
+  ].includes(pathname);
+
+const handleGoogleAuthRequest = async (
+  request,
+  response,
+  url,
+  { googleOAuthService, localChatStore },
+) => {
+  try {
+    if (url.pathname === GOOGLE_AUTH_STATUS_PATH) {
+      requireMethod(request, 'GET');
+      sendJson(response, 200, { enabled: Boolean(googleOAuthService?.isConfigured() && localChatStore) });
+      return;
+    }
+
+    if (!googleOAuthService?.isConfigured() || !localChatStore) {
+      sendJson(response, 404, { error: 'Google OAuth is not configured.' });
+      return;
+    }
+
+    if (url.pathname === GOOGLE_AUTH_START_PATH) {
+      requireMethod(request, 'GET');
+      const authUrl = googleOAuthService.createAuthorizationUrl({
+        resultKey: url.searchParams.get('resultKey'),
+        returnTo: sanitizeGoogleAuthReturnTo(url.searchParams.get('returnTo')),
+      });
+
+      sendRedirect(response, authUrl.toString());
+      return;
+    }
+
+    if (url.pathname === GOOGLE_AUTH_CALLBACK_PATH) {
+      requireMethod(request, 'GET');
+      const result = await googleOAuthService.handleCallback({
+        code: url.searchParams.get('code'),
+        state: url.searchParams.get('state'),
+      });
+
+      if (result.returnTo === 'app') {
+        sendHtml(response, 200, createGoogleAuthAppSuccessHtml());
+        return;
+      }
+
+      sendRedirect(response, createGoogleAuthViewerRedirect(result, localChatStore));
+      return;
+    }
+
+    if (url.pathname === GOOGLE_AUTH_COMPLETE_PATH) {
+      requireMethod(request, 'POST');
+      const body = await readJsonBody(request);
+      const { session, user } = completeGoogleOAuthTicket({
+        googleOAuthService,
+        localChatStore,
+        nick: body.nick,
+        ticket: body.ticket,
+      });
+
+      sendJson(response, 200, { session: serializeLocalSession(session), user: serializeLocalUser(user) });
+    }
+  } catch (error) {
+    sendLocalChatError(response, error);
+  }
+};
+
+const createGoogleAuthViewerRedirect = (result, localChatStore) => {
+  const returnTo = sanitizeGoogleAuthReturnTo(result.returnTo);
+  const existingUser = localChatStore.getUserByEmail(result.profile.email);
+
+  if (existingUser) {
+    const { session, user } = localChatStore.createSession({ email: existingUser.email });
+    const hash = new URLSearchParams({
+      localToken: session.token,
+      localUser: JSON.stringify(serializeLocalUser(user)),
+    });
+
+    return `${returnTo}#${hash}`;
+  }
+
+  const hash = new URLSearchParams({
+    oauthEmail: result.profile.email,
+    oauthName: result.profile.name ?? '',
+    oauthTicket: result.ticket,
+  });
+
+  return `${returnTo}#${hash}`;
+};
+
+const completeGoogleOAuthTicket = ({ googleOAuthService, localChatStore, nick, ticket }) => {
+  const profile = googleOAuthService.consumeTicket(ticket);
+  const existingUser = localChatStore.getUserByEmail(profile.email);
+
+  if (!existingUser && (!nick || typeof nick !== 'string' || nick.trim().length === 0)) {
+    const error = new Error('Local chat nick is required after Google OAuth.');
+
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const user = existingUser ?? localChatStore.registerUser({ email: profile.email, nick });
+  const sessionResult = localChatStore.createSession({ email: user.email });
+
+  return {
+    session: sessionResult.session,
+    user: sessionResult.user,
+  };
+};
+
+const sanitizeGoogleAuthReturnTo = (returnTo) => {
+  if (returnTo === 'app') {
+    return 'app';
+  }
+
+  if (typeof returnTo !== 'string' || returnTo.length === 0) {
+    return VIEWER_PATH;
+  }
+
+  try {
+    const parsed = new URL(returnTo, `http://${GATEWAY_HOST}`);
+
+    if (parsed.origin === `http://${GATEWAY_HOST}` && parsed.pathname.startsWith(VIEWER_PATH)) {
+      return `${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    return VIEWER_PATH;
+  }
+
+  return VIEWER_PATH;
+};
+
+const createGoogleAuthAppSuccessHtml = () => `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Google OAuth complete</title>
+  </head>
+  <body>
+    <p>Google login complete. You can close this window and return to the app.</p>
+  </body>
+</html>`;
+
+const handleLocalChatRequest = async (
+  request,
+  response,
+  pathname,
+  { localChatStore, onLocalChatMessage, publish },
+) => {
+  if (!localChatStore) {
+    sendJson(response, 404, { error: 'Not found.' });
+    return;
+  }
+
+  try {
+    if (pathname === LOCAL_ME_PATH) {
+      requireMethod(request, 'GET');
+      const user = requireAuthUser(request, localChatStore);
+
+      sendJson(response, 200, { user: serializeLocalUser(user) });
+      return;
+    }
+
+    if (pathname === LOCAL_MODERATION_COMMANDS_PATH) {
+      requireMethod(request, 'GET');
+      sendJson(response, 200, { commands: LOCAL_MODERATION_COMMANDS });
+      return;
+    }
+
+    requireMethod(request, 'POST');
+    const body = await readJsonBody(request);
+
+    if (pathname === LOCAL_REGISTER_PATH) {
+      const user = localChatStore.registerUser(body);
+      const { session } = localChatStore.createSession({ email: user.email });
+
+      sendJson(response, 201, { session: serializeLocalSession(session), user: serializeLocalUser(user) });
+      return;
+    }
+
+    if (pathname === LOCAL_LOGIN_PATH) {
+      const { session, user } = localChatStore.createSession(body);
+
+      sendJson(response, 200, { session: serializeLocalSession(session), user: serializeLocalUser(user) });
+      return;
+    }
+
+    const authUser = requireAuthUser(request, localChatStore);
+
+    if (pathname === LOCAL_MESSAGES_PATH) {
+      const message = localChatStore.createMessage({ token: getBearerToken(request), text: body.text });
+      const publicMessage = serializePublicChatMessage(message);
+
+      onLocalChatMessage?.(message);
+      publish('chat.message', publicMessage);
+      sendJson(response, 201, { message: publicMessage });
+      return;
+    }
+
+    if (pathname === LOCAL_MODERATION_PATH) {
+      requireModerator(authUser);
+      const result = applyModerationCommand(localChatStore, body.command, authUser);
+
+      sendJson(response, 200, { moderation: result });
+      return;
+    }
+  } catch (error) {
+    sendLocalChatError(response, error);
+  }
+};
+
+const requireMethod = (request, method) => {
+  if (request.method !== method) {
+    const error = new Error('Method not allowed.');
+
+    error.statusCode = 405;
+    error.allow = method;
+    throw error;
+  }
+};
+
+const readJsonBody = async (request) => {
+  let body = '';
+
+  for await (const chunk of request) {
+    body += chunk;
+    if (Buffer.byteLength(body) > MAX_JSON_BODY_BYTES) {
+      const error = new Error('Request body is too large.');
+
+      error.statusCode = 413;
+      throw error;
+    }
+  }
+
+  try {
+    return body.length > 0 ? JSON.parse(body) : {};
+  } catch {
+    const error = new Error('Request body must be valid JSON.');
+
+    error.statusCode = 400;
+    throw error;
+  }
+};
+
+const requireAuthUser = (request, localChatStore) => {
+  const user = localChatStore.getSessionUser(getBearerToken(request));
+
+  if (!user) {
+    const error = new Error('Local chat session is invalid.');
+
+    error.statusCode = 401;
+    throw error;
+  }
+
+  return user;
+};
+
+const getBearerToken = (request) => {
+  const authorization = request.headers.authorization ?? '';
+  const [, token] = authorization.match(/^Bearer\s+(.+)$/i) ?? [];
+
+  return token ?? '';
+};
+
+const serializeLocalUser = (user) => ({
+  id: user.id,
+  email: user.email,
+  nick: user.nick,
+  role: user.role,
+});
+
+const serializeLocalSession = (session) => ({
+  token: session.token,
+});
+
+const sendLocalChatError = (response, error) => {
+  const statusCode = error.statusCode ?? 400;
+
+  if (error.allow) {
+    response.setHeader('Allow', error.allow);
+  }
+
+  sendJson(response, statusCode, {
+    error: statusCode >= 500 ? 'Local chat request failed.' : error.message,
+  });
+};
+
 const sendJson = (response, statusCode, body) => {
   const payload = JSON.stringify(body);
 
   sendResponse(response, statusCode, payload, 'application/json; charset=utf-8');
+};
+
+const sendHtml = (response, statusCode, body) => {
+  sendResponse(response, statusCode, body, 'text/html; charset=utf-8');
+};
+
+const sendRedirect = (response, location) => {
+  response.writeHead(302, {
+    'Cache-Control': 'no-store',
+    Location: location,
+    'X-Content-Type-Options': 'nosniff',
+  });
+  response.end();
 };
 
 const sendResponse = (response, statusCode, body, contentType) => {

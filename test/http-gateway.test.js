@@ -1,8 +1,66 @@
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 const { WebSocket } = require('ws');
 const { createHttpGateway, GATEWAY_HOST } = require('../src/gateway/http-gateway');
+const { createLocalChatStore } = require('../src/local-chat-store');
+
+const createTestLocalChatStore = () => {
+  let id = 0;
+
+  return createLocalChatStore({
+    filePath: path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'uca-local-chat-')),
+      'local-chat.json',
+    ),
+    idFactory: () => `id-${++id}`,
+    now: () => new Date('2026-06-08T12:00:00.000Z'),
+  });
+};
+
+const localUrl = (address, path) => `http://${address.host}:${address.port}${path}`;
+
+const postJson = (url, body, token) =>
+  fetch(url, {
+    body: JSON.stringify(body),
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    method: 'POST',
+  });
+
+const createFakeGoogleOAuthService = ({
+  authorizationUrl = 'https://accounts.google.com/mock',
+  callbackResult,
+  onCreateAuthorizationUrl = () => {},
+  profile = {
+    email: 'google@example.com',
+    name: 'Google User',
+  },
+} = {}) => ({
+  consumeTicket(ticket) {
+    assert.equal(ticket, 'ticket-1');
+    return profile;
+  },
+  createAuthorizationUrl(options) {
+    onCreateAuthorizationUrl(options);
+    return new URL(authorizationUrl);
+  },
+  async handleCallback() {
+    return callbackResult ?? {
+      profile,
+      returnTo: '/viewer',
+      ticket: 'ticket-1',
+    };
+  },
+  isConfigured() {
+    return true;
+  },
+});
 
 test('serves the public snapshot on the versioned read-only endpoint', async () => {
   const snapshot = { protocolVersion: '1', statuses: [], viewers: { sources: [], total: 0 } };
@@ -59,6 +117,11 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(html, /data-chat-platform-filter="twitch"/);
     assert.match(html, /data-chat-platform-filter="kick"/);
     assert.match(html, /data-chat-platform-filter="x"/);
+    assert.match(html, /data-chat-platform-filter="local"/);
+    assert.match(html, /data-local-auth-form/);
+    assert.match(html, /data-local-google-login/);
+    assert.match(html, /data-local-message-form/);
+    assert.match(html, /data-local-chat-suggestions/);
     assert.match(html, /data-resume-chat/);
     assert.doesNotMatch(html, /window\.chatAggregator/);
     assert.equal(overlayResponse.status, 200);
@@ -76,6 +139,13 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(transportScript, /new WebSocketImpl/);
     assert.match(transportScript, /\/api\/v1\/snapshot/);
     assert.match(transportScript, /\/api\/v1\/events/);
+    assert.match(transportScript, /\/api\/v1\/local\/register/);
+    assert.match(transportScript, /\/api\/v1\/local\/moderation-commands/);
+    assert.match(transportScript, /\/api\/v1\/auth\/google\/start/);
+    assert.match(transportScript, /completeGoogleOAuth/);
+    assert.match(transportScript, /getGoogleOAuthStatus/);
+    assert.match(transportScript, /sendLocalMessage/);
+    assert.match(transportScript, /runLocalModerationCommand/);
     assert.equal(scriptResponse.status, 200);
     assert.match(scriptResponse.headers.get('content-type'), /^text\/javascript/);
     assert.match(script, /createDefaultViewerTransportClient/);
@@ -108,6 +178,15 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(script, /updateResumeChatControl/);
     assert.match(script, /activeChatPlatforms/);
     assert.match(script, /getVisibleChatMessages/);
+    assert.match(script, /LOCAL_SESSION_STORAGE_KEY/);
+    assert.match(script, /localModerationCommands/);
+    assert.match(script, /localChatSuggestions/);
+    assert.match(script, /consumeGoogleOAuthRedirect/);
+    assert.match(script, /completeGoogleOAuth/);
+    assert.match(script, /createGoogleOAuthStartUrl/);
+    assert.match(script, /sendLocalMessage/);
+    assert.match(script, /runLocalModerationCommand/);
+    assert.match(script, /requestSubmit/);
     assert.doesNotMatch(script, /window\.chatAggregator/);
     assert.equal(styleResponse.status, 200);
     assert.match(styleResponse.headers.get('content-type'), /^text\/css/);
@@ -118,6 +197,11 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(style, /\.chat-resume-button/);
     assert.match(style, /\.chat-filter-control/);
     assert.match(style, /\.chat-filter-button/);
+    assert.match(style, /align-content: start/);
+    assert.match(style, /grid-auto-rows: max-content/);
+    assert.match(style, /\.local-chat-controls/);
+    assert.match(style, /\.local-chat-suggestions/);
+    assert.match(style, /\.message__badge--local/);
     assert.match(style, /\.viewer-status-grid/);
     assert.equal(overlayScriptResponse.status, 200);
     assert.match(overlayScriptResponse.headers.get('content-type'), /^text\/javascript/);
@@ -154,6 +238,333 @@ test('rejects write methods and unknown routes', async () => {
     assert.equal(overlayWriteResponse.status, 405);
     assert.equal(overlayWriteResponse.headers.get('allow'), 'GET');
     assert.equal(missingResponse.status, 404);
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('keeps local chat endpoints disabled unless a local store is configured', async () => {
+  const gateway = createHttpGateway({ getSnapshot: () => ({}), port: 0 });
+
+  try {
+    const address = await gateway.start();
+    const response = await postJson(localUrl(address, '/api/v1/local/register'), {
+      email: 'ana@example.com',
+      nick: 'ana',
+    });
+
+    assert.equal(response.status, 404);
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('reports Google OAuth status and redirects authorization starts', async () => {
+  let authorizationOptions;
+  const googleOAuthService = createFakeGoogleOAuthService({
+    onCreateAuthorizationUrl: (options) => {
+      authorizationOptions = options;
+    },
+  });
+  const gateway = createHttpGateway({
+    getSnapshot: () => ({}),
+    googleOAuthService,
+    localChatStore: createTestLocalChatStore(),
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const statusResponse = await fetch(localUrl(address, '/api/v1/auth/google/status'));
+    const startResponse = await fetch(
+      localUrl(address, '/api/v1/auth/google/start?returnTo=/viewer?debugChat=1&resultKey=result-1'),
+      { redirect: 'manual' },
+    );
+
+    assert.equal(statusResponse.status, 200);
+    assert.deepEqual(await statusResponse.json(), { enabled: true });
+    assert.equal(startResponse.status, 302);
+    assert.equal(startResponse.headers.get('location'), 'https://accounts.google.com/mock');
+    assert.deepEqual(authorizationOptions, {
+      resultKey: 'result-1',
+      returnTo: '/viewer?debugChat=1',
+    });
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('serves local moderation command suggestions', async () => {
+  const gateway = createHttpGateway({
+    getSnapshot: () => ({}),
+    localChatStore: createTestLocalChatStore(),
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const response = await fetch(localUrl(address, '/api/v1/local/moderation-commands'));
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(
+      body.commands.map((command) => command.name),
+      ['/ban', '/timeout', '/unban', '/untimeout', '/mod', '/unmod', '/ban-email', '/unban-email'],
+    );
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('keeps Google OAuth disabled when it is not configured', async () => {
+  const gateway = createHttpGateway({
+    getSnapshot: () => ({}),
+    localChatStore: createTestLocalChatStore(),
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const statusResponse = await fetch(localUrl(address, '/api/v1/auth/google/status'));
+    const startResponse = await fetch(
+      localUrl(address, '/api/v1/auth/google/start'),
+      { redirect: 'manual' },
+    );
+
+    assert.equal(statusResponse.status, 200);
+    assert.deepEqual(await statusResponse.json(), { enabled: false });
+    assert.equal(startResponse.status, 404);
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('keeps Google OAuth disabled without a local chat store', async () => {
+  const gateway = createHttpGateway({
+    getSnapshot: () => ({}),
+    googleOAuthService: createFakeGoogleOAuthService(),
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const response = await fetch(localUrl(address, '/api/v1/auth/google/status'));
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { enabled: false });
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('redirects Google OAuth callbacks to existing local sessions', async () => {
+  const localChatStore = createTestLocalChatStore();
+  const googleOAuthService = createFakeGoogleOAuthService({
+    callbackResult: {
+      profile: { email: 'ana@example.com', name: 'Ana' },
+      returnTo: '/viewer?debugChat=1',
+      ticket: 'ticket-1',
+    },
+  });
+  const user = localChatStore.registerUser({ email: 'ana@example.com', nick: 'ana' });
+  const gateway = createHttpGateway({
+    getSnapshot: () => ({}),
+    googleOAuthService,
+    localChatStore,
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const response = await fetch(
+      localUrl(address, '/api/v1/auth/google/callback?code=code-1&state=state-1'),
+      { redirect: 'manual' },
+    );
+    const redirectUrl = new URL(response.headers.get('location'), `http://${address.host}:${address.port}`);
+    const hash = new URLSearchParams(redirectUrl.hash.slice(1));
+    const redirectedUser = JSON.parse(hash.get('localUser'));
+
+    assert.equal(response.status, 302);
+    assert.equal(redirectUrl.pathname, '/viewer');
+    assert.equal(redirectUrl.search, '?debugChat=1');
+    assert.match(hash.get('localToken'), /id-/);
+    assert.equal(redirectedUser.id, user.id);
+    assert.equal(redirectedUser.nick, 'ana');
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('completes Google OAuth tickets for new local chat users', async () => {
+  const gateway = createHttpGateway({
+    getSnapshot: () => ({}),
+    googleOAuthService: createFakeGoogleOAuthService(),
+    localChatStore: createTestLocalChatStore(),
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const response = await postJson(localUrl(address, '/api/v1/auth/google/complete'), {
+      nick: 'GoogleUser',
+      ticket: 'ticket-1',
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.match(body.session.token, /id-/);
+    assert.equal(body.user.email, 'google@example.com');
+    assert.equal(body.user.nick, 'GoogleUser');
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('registers, logs in, and resolves local chat users', async () => {
+  const gateway = createHttpGateway({
+    getSnapshot: () => ({}),
+    localChatStore: createTestLocalChatStore(),
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const registerResponse = await postJson(localUrl(address, '/api/v1/local/register'), {
+      email: 'ana@example.com',
+      nick: 'ana',
+    });
+    const registerBody = await registerResponse.json();
+
+    assert.equal(registerResponse.status, 201);
+    assert.equal(registerBody.user.nick, 'ana');
+    assert.match(registerBody.session.token, /id-/);
+
+    const loginResponse = await postJson(localUrl(address, '/api/v1/local/login'), {
+      email: 'ANA@example.com',
+    });
+    const loginBody = await loginResponse.json();
+
+    assert.equal(loginResponse.status, 200);
+    assert.equal(loginBody.user.email, 'ana@example.com');
+
+    const meResponse = await fetch(localUrl(address, '/api/v1/local/me'), {
+      headers: { Authorization: `Bearer ${loginBody.session.token}` },
+    });
+
+    assert.equal(meResponse.status, 200);
+    assert.equal((await meResponse.json()).user.nick, 'ana');
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('publishes local chat messages over realtime', async () => {
+  const localChatStore = createTestLocalChatStore();
+  const appMessages = [];
+  const gateway = createHttpGateway({
+    getSnapshot: () => ({}),
+    localChatStore,
+    onLocalChatMessage: (message) => appMessages.push(message),
+    port: 0,
+  });
+  let client;
+
+  try {
+    const address = await gateway.start();
+    const registerResponse = await postJson(localUrl(address, '/api/v1/local/register'), {
+      email: 'ana@example.com',
+      nick: 'ana',
+    });
+    const { session } = await registerResponse.json();
+
+    client = new WebSocket(address.eventsUrl);
+    await once(client, 'message');
+    const nextMessage = once(client, 'message');
+    const messageResponse = await postJson(
+      localUrl(address, '/api/v1/local/messages'),
+      { text: ' hello local ' },
+      session.token,
+    );
+    const messageBody = await messageResponse.json();
+    const [eventPayload] = await nextMessage;
+    const event = JSON.parse(eventPayload.toString());
+
+    assert.equal(messageResponse.status, 201);
+    assert.equal(messageBody.message.text, 'hello local');
+    assert.equal(event.type, 'chat.message');
+    assert.equal(event.data.source.platform, 'local');
+    assert.equal(event.data.text, 'hello local');
+    assert.equal(appMessages.length, 1);
+    assert.equal(appMessages[0].platform, 'local');
+    assert.equal(appMessages[0].text, 'hello local');
+  } finally {
+    client?.close();
+    await gateway.stop();
+  }
+});
+
+test('runs local chat moderation commands for moderators', async () => {
+  const localChatStore = createTestLocalChatStore();
+  const gateway = createHttpGateway({ getSnapshot: () => ({}), localChatStore, port: 0 });
+
+  try {
+    const address = await gateway.start();
+    const modRegisterResponse = await postJson(localUrl(address, '/api/v1/local/register'), {
+      email: 'mod@example.com',
+      nick: 'mod_user',
+    });
+    const { session: modSession } = await modRegisterResponse.json();
+
+    localChatStore.addModerator({ email: 'mod@example.com' });
+
+    const userRegisterResponse = await postJson(localUrl(address, '/api/v1/local/register'), {
+      email: 'ana@example.com',
+      nick: 'ana',
+    });
+    const { session: userSession } = await userRegisterResponse.json();
+    const moderationResponse = await postJson(
+      localUrl(address, '/api/v1/local/moderation'),
+      { command: '/ban ana spam' },
+      modSession.token,
+    );
+
+    assert.equal(moderationResponse.status, 200);
+    assert.equal((await moderationResponse.json()).moderation.action, 'ban');
+
+    const blockedResponse = await postJson(
+      localUrl(address, '/api/v1/local/messages'),
+      { text: 'blocked' },
+      userSession.token,
+    );
+
+    assert.equal(blockedResponse.status, 400);
+    assert.match((await blockedResponse.json()).error, /banned/);
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('rejects local chat moderation commands from normal users', async () => {
+  const gateway = createHttpGateway({
+    getSnapshot: () => ({}),
+    localChatStore: createTestLocalChatStore(),
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const registerResponse = await postJson(localUrl(address, '/api/v1/local/register'), {
+      email: 'ana@example.com',
+      nick: 'ana',
+    });
+    const { session } = await registerResponse.json();
+    const moderationResponse = await postJson(
+      localUrl(address, '/api/v1/local/moderation'),
+      { command: '/ban other spam' },
+      session.token,
+    );
+
+    assert.equal(moderationResponse.status, 403);
   } finally {
     await gateway.stop();
   }
