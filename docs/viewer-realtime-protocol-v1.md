@@ -396,6 +396,13 @@ implementacao planejada usa:
 Uma implementacao hospedada pode usar outras URLs e autenticacao, desde que
 preserve os payloads definidos aqui.
 
+O Viewer Mode local acessa esse transporte por uma fronteira substituivel em
+`src/viewer/viewer-transport.js`. Um backend hospedado pode fornecer uma fabrica
+`window.__viewerTransportFactory` antes de carregar a UI principal. O formato do
+cliente e os cuidados de integracao estao documentados em
+`docs/viewer-transport-client.md`. O guia de handoff para uma integracao
+MarketBubble hospedada esta em `docs/marketbubble-integration-guide.md`.
+
 ## Relacao com o codigo atual
 
 O contrato descreve o alvo publico. Nem todos os campos existem hoje:
@@ -411,7 +418,8 @@ O contrato descreve o alvo publico. Nem todos os campos existem hoje:
 - manifesto, player Twitch e watch links externos ja sao publicados para o
   Viewer Mode local;
 - manifesto publico ja possui normalizacao/validacao separada da config interna;
-- transporte substituivel continua planejado para a Fase D.
+- transporte substituivel ja existe como fronteira browser-native do Viewer
+  Mode.
 
 O snapshot interno atual de `src/main.js` nao atende este contrato e nao deve ser
 publicado diretamente.

@@ -30,8 +30,13 @@ Ja existe:
 - contagens individuais e total combinado de viewers;
 - gateway local HTTP/WebSocket somente leitura;
 - Viewer Mode browser-native servido em `/viewer`;
+- overlay publico somente leitura servido em `/overlay` para OBS Browser
+  Source;
 - player Twitch embutido no Viewer Mode com fallback externo para providers sem
   embed aprovado;
+- cliente de transporte substituivel para trocar gateway local por backend
+  MarketBubble;
+- guia de integracao MarketBubble;
 - configuracao persistida localmente;
 - janelas separadas de setup e dashboard;
 - modelo canonico de mensagem e camada `chat-hub`;
@@ -39,10 +44,7 @@ Ja existe:
 
 Ainda nao existe:
 
-- cliente de transporte substituivel para trocar gateway local por backend
-  MarketBubble;
-- guia de integracao MarketBubble;
-- overlay ou dock para OBS;
+- dock para OBS;
 - conceito consistente de stream, transmissao ou streamer de origem no modelo
   canonico;
 - suporte a mais de um canal por plataforma;
@@ -632,6 +634,10 @@ em lote por frame e fallback de assets do Viewer servido pelo gateway.
 
 **Objetivo:** permitir que o MarketBubble troque o gateway local por seu backend.
 
+**Status:** concluido com fronteira `window.ViewerTransports`, cliente local
+HTTP/WebSocket, fabrica injetavel `window.__viewerTransportFactory`, mock
+browser-native para demo/testes e guia em `docs/viewer-transport-client.md`.
+
 **Mudancas previstas:**
 
 - interface de cliente para snapshot e eventos;
@@ -656,6 +662,12 @@ em lote por frame e fallback de assets do Viewer servido pelo gateway.
 ## Bloco D3 - Documentar pacote de integracao MarketBubble
 
 **Objetivo:** transformar a demo em uma proposta tecnicamente migravel.
+
+**Status:** concluido com guia de handoff em
+`docs/marketbubble-integration-guide.md`, cobrindo arquitetura hospedada,
+contratos reutilizaveis, transporte injetavel, manifesto, requisitos de
+backend, seguranca, chat nativo futuro, limites conhecidos e checklist de
+handoff.
 
 **Mudancas previstas:**
 
@@ -775,6 +787,11 @@ deve bloquear a demo principal.
 ## Bloco F1 - Overlay publico somente leitura
 
 **Objetivo:** permitir adicionar o chat combinado como Browser Source no OBS.
+
+**Status:** concluido com rota local `/overlay`, pagina transparente, consumo do
+mesmo transporte publico do Viewer Mode, renderizacao somente leitura das
+mensagens recentes, parametro seguro `maxMessages` e bloqueio de metodos de
+escrita pelo gateway.
 
 **Mudancas previstas:**
 

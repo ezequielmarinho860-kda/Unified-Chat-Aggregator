@@ -384,6 +384,12 @@ The first browser-native Viewer Mode shell is served locally at:
 http://127.0.0.1:47831/viewer
 ```
 
+The OBS-friendly read-only chat overlay is served locally at:
+
+```text
+http://127.0.0.1:47831/overlay
+```
+
 The page consumes only the public gateway contract. It bootstraps from the
 snapshot endpoint, reconnects to the realtime WebSocket when needed, and renders
 new combined chat messages as a read-only feed with platform, source, author,
@@ -407,17 +413,31 @@ so credentials and local runtime details are not part of the Viewer Mode
 contract. Example manifests live in `docs/examples/viewer-manifest-demo.json`
 and `docs/examples/viewer-manifest-marketbubble.json`.
 
+Viewer Mode reads snapshots and realtime events through a small browser-native
+transport boundary in `src/viewer/viewer-transport.js`. The default transport
+uses the local gateway, but a hosted page can provide
+`window.__viewerTransportFactory` to use a MarketBubble backend without changing
+the main Viewer Mode UI. Integration notes live in
+`docs/viewer-transport-client.md`, and the broader MarketBubble handoff guide
+lives in `docs/marketbubble-integration-guide.md`.
+
 Viewer Mode is a fixed-viewport app shell on desktop. New visual blocks should
 be added inside existing grid regions or panels with their own internal scroll,
 not as loose content below the grid. Letting the page itself grow can push the
 player out of view or cause the embedded Twitch player to pause/reload while the
 user scrolls.
 
+The overlay is a separate transparent browser page for OBS Browser Source. It
+uses the same public transport as Viewer Mode, renders only recent combined chat
+messages, accepts a bounded `maxMessages` query parameter, and exposes no chat
+sending or moderation controls.
+
 The gateway binds only to the local loopback address, accepts only `GET` on the
-versioned snapshot and Viewer Mode routes, and serializes realtime responses
-through a public allowlist. It does not expose chat sending, moderation actions,
-tokens, raw platform payloads, local config paths, or environment override
-details. Browser WebSocket connections are accepted only from loopback origins.
+versioned snapshot, Viewer Mode, and overlay routes, and serializes realtime
+responses through a public allowlist. It does not expose chat sending,
+moderation actions, tokens, raw platform payloads, local config paths, or
+environment override details. Browser WebSocket connections are accepted only
+from loopback origins.
 
 Twitch embeds require a `parent` parameter matching the page host. The local
 Viewer Mode derives that from the current browser hostname. A future hosted
