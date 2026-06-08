@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; script-src 'self'; style-src 'self'; img-src 'self' https: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+    <title>Chat Overlay</title>
+    <link rel="stylesheet" href="/overlay/overlay.css">
+    <script src="/viewer/viewer-transport.js" defer></script>
+    <script src="/overlay/overlay.js" defer></script>
+  </head>
+  <body>
+    <main class="overlay-shell" aria-label="Combined chat overlay">
+      <div class="overlay-chat" data-overlay-chat aria-live="polite"></div>
+    </main>
+  </body>
+</html>

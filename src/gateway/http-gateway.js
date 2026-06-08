@@ -9,11 +9,20 @@ const DEFAULT_GATEWAY_PORT = 47831;
 const SNAPSHOT_PATH = '/api/v1/snapshot';
 const EVENTS_PATH = '/api/v1/events';
 const VIEWER_PATH = '/viewer';
+const OVERLAY_PATH = '/overlay';
 const VIEWER_ASSETS = new Map([
   [VIEWER_PATH, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
   [`${VIEWER_PATH}/`, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
   [`${VIEWER_PATH}/viewer-mode.css`, { file: 'viewer-mode.css', contentType: 'text/css; charset=utf-8' }],
+  [`${VIEWER_PATH}/viewer-transport.js`, {
+    file: 'viewer-transport.js',
+    contentType: 'text/javascript; charset=utf-8',
+  }],
   [`${VIEWER_PATH}/viewer-mode.js`, { file: 'viewer-mode.js', contentType: 'text/javascript; charset=utf-8' }],
+  [OVERLAY_PATH, { file: 'overlay.html', contentType: 'text/html; charset=utf-8' }],
+  [`${OVERLAY_PATH}/`, { file: 'overlay.html', contentType: 'text/html; charset=utf-8' }],
+  [`${OVERLAY_PATH}/overlay.css`, { file: 'overlay.css', contentType: 'text/css; charset=utf-8' }],
+  [`${OVERLAY_PATH}/overlay.js`, { file: 'overlay.js', contentType: 'text/javascript; charset=utf-8' }],
   [`${VIEWER_PATH}/assets/twitch-glitch.svg`, {
     file: 'twitch-glitch.svg',
     contentType: 'image/svg+xml; charset=utf-8',
@@ -273,6 +282,9 @@ const getAddress = (server) => {
     viewerUrl: `http://${GATEWAY_HOST}:${
       typeof address === 'object' && address ? address.port : DEFAULT_GATEWAY_PORT
     }${VIEWER_PATH}`,
+    overlayUrl: `http://${GATEWAY_HOST}:${
+      typeof address === 'object' && address ? address.port : DEFAULT_GATEWAY_PORT
+    }${OVERLAY_PATH}`,
     eventsUrl: `ws://${GATEWAY_HOST}:${
       typeof address === 'object' && address ? address.port : DEFAULT_GATEWAY_PORT
     }${EVENTS_PATH}`,
@@ -293,6 +305,7 @@ module.exports = {
   DEFAULT_GATEWAY_PORT,
   EVENTS_PATH,
   GATEWAY_HOST,
+  OVERLAY_PATH,
   SNAPSHOT_PATH,
   VIEWER_PATH,
   createHttpGateway,

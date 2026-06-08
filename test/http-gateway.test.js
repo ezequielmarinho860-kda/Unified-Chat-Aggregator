@@ -28,29 +28,59 @@ test('serves the browser-native viewer mode shell and assets', async () => {
   try {
     const address = await gateway.start();
     const viewerResponse = await fetch(address.viewerUrl);
+    const overlayResponse = await fetch(address.overlayUrl);
+    const transportResponse = await fetch(`http://${address.host}:${address.port}/viewer/viewer-transport.js`);
     const scriptResponse = await fetch(`http://${address.host}:${address.port}/viewer/viewer-mode.js`);
     const styleResponse = await fetch(`http://${address.host}:${address.port}/viewer/viewer-mode.css`);
+    const overlayScriptResponse = await fetch(`http://${address.host}:${address.port}/overlay/overlay.js`);
+    const overlayStyleResponse = await fetch(`http://${address.host}:${address.port}/overlay/overlay.css`);
     const twitchIconResponse = await fetch(
       `http://${address.host}:${address.port}/viewer/assets/twitch-glitch.svg`,
     );
     const html = await viewerResponse.text();
+    const overlayHtml = await overlayResponse.text();
+    const transportScript = await transportResponse.text();
     const script = await scriptResponse.text();
     const style = await styleResponse.text();
+    const overlayScript = await overlayScriptResponse.text();
+    const overlayStyle = await overlayStyleResponse.text();
     const twitchIcon = await twitchIconResponse.text();
 
     assert.equal(viewerResponse.status, 200);
     assert.match(viewerResponse.headers.get('content-type'), /^text\/html/);
     assert.match(html, /Viewer Mode/);
     assert.match(html, /player\.twitch\.tv/);
+    assert.match(html, /viewer-transport\.js/);
     assert.match(html, /data-player-panel/);
     assert.match(html, /data-viewer-card="twitch"/);
     assert.match(html, /data-viewer-platform-count="total"/);
     assert.match(html, /data-chat-list/);
+    assert.match(html, /data-chat-platform-filter="all"/);
+    assert.match(html, /data-chat-platform-filter="twitch"/);
+    assert.match(html, /data-chat-platform-filter="kick"/);
+    assert.match(html, /data-chat-platform-filter="x"/);
     assert.match(html, /data-resume-chat/);
     assert.doesNotMatch(html, /window\.chatAggregator/);
+    assert.equal(overlayResponse.status, 200);
+    assert.match(overlayResponse.headers.get('content-type'), /^text\/html/);
+    assert.match(overlayHtml, /Chat Overlay/);
+    assert.match(overlayHtml, /viewer-transport\.js/);
+    assert.match(overlayHtml, /overlay\.js/);
+    assert.match(overlayHtml, /data-overlay-chat/);
+    assert.doesNotMatch(overlayHtml, /window\.chatAggregator/);
+    assert.equal(transportResponse.status, 200);
+    assert.match(transportResponse.headers.get('content-type'), /^text\/javascript/);
+    assert.match(transportScript, /createLocalViewerTransportClient/);
+    assert.match(transportScript, /createMockViewerTransportClient/);
+    assert.match(transportScript, /__viewerTransportFactory/);
+    assert.match(transportScript, /new WebSocketImpl/);
+    assert.match(transportScript, /\/api\/v1\/snapshot/);
+    assert.match(transportScript, /\/api\/v1\/events/);
     assert.equal(scriptResponse.status, 200);
     assert.match(scriptResponse.headers.get('content-type'), /^text\/javascript/);
-    assert.match(script, /new WebSocket/);
+    assert.match(script, /createDefaultViewerTransportClient/);
+    assert.doesNotMatch(script, /new WebSocket/);
+    assert.doesNotMatch(script, /fetch\('/);
     assert.match(script, /chat\.message/);
     assert.match(script, /createTwitchPlayerUrl/);
     assert.match(script, /renderedPlayerKey/);
@@ -76,6 +106,8 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(script, /\/viewer\/assets\/twitch-glitch\.svg/);
     assert.match(script, /unseenMessageCount/);
     assert.match(script, /updateResumeChatControl/);
+    assert.match(script, /activeChatPlatforms/);
+    assert.match(script, /getVisibleChatMessages/);
     assert.doesNotMatch(script, /window\.chatAggregator/);
     assert.equal(styleResponse.status, 200);
     assert.match(styleResponse.headers.get('content-type'), /^text\/css/);
@@ -84,7 +116,19 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(style, /\.chat-emote--extension/);
     assert.match(style, /\.chat-emote--large/);
     assert.match(style, /\.chat-resume-button/);
+    assert.match(style, /\.chat-filter-control/);
+    assert.match(style, /\.chat-filter-button/);
     assert.match(style, /\.viewer-status-grid/);
+    assert.equal(overlayScriptResponse.status, 200);
+    assert.match(overlayScriptResponse.headers.get('content-type'), /^text\/javascript/);
+    assert.match(overlayScript, /createDefaultViewerTransportClient/);
+    assert.match(overlayScript, /chat\.message/);
+    assert.match(overlayScript, /maxMessages/);
+    assert.doesNotMatch(overlayScript, /window\.chatAggregator/);
+    assert.equal(overlayStyleResponse.status, 200);
+    assert.match(overlayStyleResponse.headers.get('content-type'), /^text\/css/);
+    assert.match(overlayStyle, /background: transparent/);
+    assert.match(overlayStyle, /\.overlay-message/);
     assert.equal(twitchIconResponse.status, 200);
     assert.match(twitchIconResponse.headers.get('content-type'), /^image\/svg\+xml/);
     assert.match(twitchIcon, /aria-label="Twitch"/);
@@ -100,12 +144,15 @@ test('rejects write methods and unknown routes', async () => {
     const address = await gateway.start();
     const writeResponse = await fetch(address.snapshotUrl, { method: 'POST' });
     const viewerWriteResponse = await fetch(address.viewerUrl, { method: 'POST' });
+    const overlayWriteResponse = await fetch(address.overlayUrl, { method: 'POST' });
     const missingResponse = await fetch(`http://${address.host}:${address.port}/api/v1/missing`);
 
     assert.equal(writeResponse.status, 405);
     assert.equal(writeResponse.headers.get('allow'), 'GET');
     assert.equal(viewerWriteResponse.status, 405);
     assert.equal(viewerWriteResponse.headers.get('allow'), 'GET');
+    assert.equal(overlayWriteResponse.status, 405);
+    assert.equal(overlayWriteResponse.headers.get('allow'), 'GET');
     assert.equal(missingResponse.status, 404);
   } finally {
     await gateway.stop();
