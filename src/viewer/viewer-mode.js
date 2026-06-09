@@ -25,6 +25,7 @@
     localSession: undefined,
     localModerationCommands: [],
     pendingGoogleOAuth: undefined,
+    pendingLocalRegistrationEmail: undefined,
   };
   const platformLabels = {
     twitch: 'Twitch',
@@ -1238,6 +1239,7 @@
   const setLocalSession = ({ session, token, user }) => {
     state.localSession = { token: token ?? session?.token, user };
     state.pendingGoogleOAuth = undefined;
+    state.pendingLocalRegistrationEmail = undefined;
 
     try {
       window.localStorage.setItem(LOCAL_SESSION_STORAGE_KEY, JSON.stringify(state.localSession));
@@ -1251,6 +1253,7 @@
   const clearLocalSession = () => {
     state.localSession = undefined;
     state.pendingGoogleOAuth = undefined;
+    state.pendingLocalRegistrationEmail = undefined;
 
     try {
       window.localStorage.removeItem(LOCAL_SESSION_STORAGE_KEY);
@@ -1263,6 +1266,7 @@
 
   const renderLocalChatControls = () => {
     const isLoggedIn = Boolean(state.localSession?.token);
+    const needsNick = Boolean(state.pendingGoogleOAuth || state.pendingLocalRegistrationEmail);
 
     if (!isLoggedIn) {
       clearLocalChatSuggestions();
@@ -1274,13 +1278,26 @@
       const emailField = elements.localAuthForm.elements.namedItem('email');
 
       if (emailField) {
-        emailField.disabled = Boolean(state.pendingGoogleOAuth);
-        emailField.value = state.pendingGoogleOAuth?.email ?? emailField.value;
+        emailField.disabled = needsNick;
+        emailField.value = state.pendingGoogleOAuth?.email ??
+          state.pendingLocalRegistrationEmail ??
+          emailField.value;
+      }
+
+      const nickField = elements.localAuthForm.querySelector('[data-local-nick-field]');
+      const submitButton = elements.localAuthForm.querySelector('[data-local-auth-action]');
+
+      if (nickField) {
+        nickField.hidden = !needsNick;
+      }
+
+      if (submitButton) {
+        submitButton.textContent = needsNick ? 'Join' : 'Continue';
       }
     }
 
     if (elements.localGoogleLogin) {
-      elements.localGoogleLogin.disabled = isLoggedIn || Boolean(state.pendingGoogleOAuth);
+      elements.localGoogleLogin.disabled = isLoggedIn || needsNick;
     }
 
     if (elements.localMessageForm) {
@@ -1303,6 +1320,9 @@
       elements.localChatStatus.textContent = message;
     }
   };
+
+  const isUnknownLocalChatEmailError = (error) =>
+    /user was not found/i.test(error?.message ?? '');
 
   const isChatNearBottom = () =>
     elements.chatList.scrollHeight - elements.chatList.scrollTop - elements.chatList.clientHeight <=
@@ -1412,9 +1432,6 @@
   const formatClock = (date) =>
     new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(date);
 
-  const getSubmitterAction = (event) =>
-    event.submitter?.dataset.localAuthAction ?? 'register';
-
   const getFormFieldValue = (form, name) =>
     form?.elements.namedItem(name)?.value.trim() ?? '';
 
@@ -1451,7 +1468,6 @@
 
   elements.localAuthForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const action = getSubmitterAction(event);
     const email = getFormFieldValue(elements.localAuthForm, 'email');
     const nick = getFormFieldValue(elements.localAuthForm, 'nick');
 
@@ -1471,15 +1487,33 @@
         return;
       }
 
-      const session =
-        action === 'login'
-          ? await transport.loginLocalUser({ email })
-          : await transport.registerLocalUser({ email, nick });
+      if (state.pendingLocalRegistrationEmail) {
+        if (!nick) {
+          throw new Error('Nick is required to join local chat.');
+        }
+
+        const session = await transport.registerLocalUser({
+          email: state.pendingLocalRegistrationEmail,
+          nick,
+        });
+
+        setLocalSession(session);
+        setLocalChatStatus('Joined local chat.');
+        return;
+      }
+
+      const session = await transport.loginLocalUser({ email });
 
       setLocalSession(session);
-      setLocalChatStatus(action === 'login' ? 'Logged in.' : 'Joined local chat.');
+      setLocalChatStatus('Logged in.');
     } catch (error) {
-      setLocalChatStatus(error.message);
+      if (isUnknownLocalChatEmailError(error)) {
+        state.pendingLocalRegistrationEmail = email;
+        renderLocalChatControls();
+        setLocalChatStatus('Choose a nick to join local chat.');
+      } else {
+        setLocalChatStatus(error.message);
+      }
     }
   });
 

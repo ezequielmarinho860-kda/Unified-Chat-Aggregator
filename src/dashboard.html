@@ -73,12 +73,11 @@
               <span>Email</span>
               <input name="email" type="email" autocomplete="email" placeholder="host@example.com" required />
             </label>
-            <label>
+            <label data-local-nick-field hidden>
               <span>Nick</span>
               <input name="nick" type="text" autocomplete="nickname" maxlength="24" placeholder="host_nick" />
             </label>
-            <button class="tool-button tool-button--primary" type="submit" data-local-auth-action="register">Join</button>
-            <button class="tool-button" type="submit" data-local-auth-action="login">Login</button>
+            <button class="tool-button tool-button--primary" type="submit" data-local-auth-action="login">Continue</button>
             <button class="tool-button" type="button" id="local-chat-google-login">Google</button>
           </form>
           <div class="local-chat-panel__session" id="local-chat-session-panel" hidden>

@@ -31,6 +31,8 @@ const localChatLogout = document.querySelector('#local-chat-logout');
 const localChatGoogleLogin = document.querySelector('#local-chat-google-login');
 const localChatMeta = document.querySelector('#local-chat-meta');
 const localChatSuggestions = document.querySelector('#local-chat-suggestions');
+const localChatNickField = localChatAuthForm?.querySelector('[data-local-nick-field]');
+const localChatAuthSubmit = localChatAuthForm?.querySelector('[data-local-auth-action]');
 const totalViewerCount = document.querySelector('#total-viewer-count');
 const statusCards = new Map(
   [...document.querySelectorAll('[data-platform]')].map((card) => [
@@ -61,6 +63,7 @@ let xAuthState = { connected: false };
 let xAuthPollingTimer;
 let localChatSession;
 let pendingGoogleOAuth;
+let pendingLocalRegistrationEmail;
 let localModerationCommands = [];
 const view = document.body.classList.contains('dashboard-view') ? 'dashboard' : 'setup';
 
@@ -428,6 +431,8 @@ const verifyLocalChatSession = async () => {
 
 const setLocalChatSession = (session) => {
   localChatSession = session;
+  pendingGoogleOAuth = undefined;
+  pendingLocalRegistrationEmail = undefined;
 
   try {
     window.localStorage.setItem(LOCAL_CHAT_SESSION_STORAGE_KEY, JSON.stringify(session));
@@ -441,6 +446,7 @@ const setLocalChatSession = (session) => {
 
 const clearLocalChatSession = () => {
   localChatSession = undefined;
+  pendingLocalRegistrationEmail = undefined;
 
   try {
     window.localStorage.removeItem(LOCAL_CHAT_SESSION_STORAGE_KEY);
@@ -454,6 +460,7 @@ const clearLocalChatSession = () => {
 
 const renderLocalChatSession = () => {
   const isLoggedIn = Boolean(localChatSession?.token && localChatSession.user);
+  const needsNick = Boolean(pendingGoogleOAuth || pendingLocalRegistrationEmail);
 
   if (!isLoggedIn) {
     clearLocalChatSuggestions();
@@ -464,9 +471,17 @@ const renderLocalChatSession = () => {
     const emailField = localChatAuthForm.elements.namedItem('email');
 
     if (emailField) {
-      emailField.disabled = Boolean(pendingGoogleOAuth);
-      emailField.value = pendingGoogleOAuth?.email ?? emailField.value;
+      emailField.disabled = needsNick;
+      emailField.value = pendingGoogleOAuth?.email ?? pendingLocalRegistrationEmail ?? emailField.value;
     }
+  }
+
+  if (localChatNickField) {
+    localChatNickField.hidden = !needsNick;
+  }
+
+  if (localChatAuthSubmit) {
+    localChatAuthSubmit.textContent = needsNick ? 'Join' : 'Continue';
   }
 
   if (localChatSessionPanel) {
@@ -498,8 +513,8 @@ const setLocalChatBusy = (isBusy) => {
   }
 };
 
-const getLocalAuthAction = (event) =>
-  event.submitter?.dataset.localAuthAction === 'login' ? 'login' : 'register';
+const isUnknownLocalChatEmailError = (error) =>
+  /user was not found/i.test(error?.message ?? '');
 
 const refreshLocalGoogleOAuthStatus = async () => {
   if (!localChatGoogleLogin || typeof window.chatAggregator?.localChatGoogleStatus !== 'function') {
@@ -1429,7 +1444,6 @@ clearFeed?.addEventListener('click', () => {
 localChatAuthForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
 
-  const action = getLocalAuthAction(event);
   const email = getNamedFormValue(localChatAuthForm, 'email');
   const nick = getNamedFormValue(localChatAuthForm, 'nick');
 
@@ -1448,7 +1462,6 @@ localChatAuthForm?.addEventListener('submit', async (event) => {
         ticket: pendingGoogleOAuth.ticket,
       });
 
-      pendingGoogleOAuth = undefined;
       setLocalChatSession({ token: result.session.token, user: result.user });
       localChatMeta.textContent = `Logged in with Google as ${result.user.nick}.`;
     } catch (error) {
@@ -1460,27 +1473,52 @@ localChatAuthForm?.addEventListener('submit', async (event) => {
     return;
   }
 
-  if (!email || (action === 'register' && !nick)) {
-    localChatMeta.textContent = action === 'register'
-      ? 'Email and nick are required.'
-      : 'Email is required.';
+  if (pendingLocalRegistrationEmail) {
+    if (!nick) {
+      localChatMeta.textContent = 'Choose a nick to join local chat.';
+      return;
+    }
+
+    setLocalChatBusy(true);
+    localChatMeta.textContent = 'Creating local chat identity...';
+
+    try {
+      const result = await window.chatAggregator.localChatRegister({
+        email: pendingLocalRegistrationEmail,
+        nick,
+      });
+
+      setLocalChatSession({ token: result.session.token, user: result.user });
+      localChatMeta.textContent = `Logged in as ${result.user.nick}.`;
+    } catch (error) {
+      localChatMeta.textContent = `Local chat login failed: ${error.message}`;
+    } finally {
+      setLocalChatBusy(false);
+      renderLocalChatSession();
+    }
+    return;
+  }
+
+  if (!email) {
+    localChatMeta.textContent = 'Email is required.';
     return;
   }
 
   setLocalChatBusy(true);
-  localChatMeta.textContent = action === 'register'
-    ? 'Creating local chat identity...'
-    : 'Logging into local chat...';
+  localChatMeta.textContent = 'Logging into local chat...';
 
   try {
-    const result = action === 'register'
-      ? await window.chatAggregator.localChatRegister({ email, nick })
-      : await window.chatAggregator.localChatLogin({ email });
+    const result = await window.chatAggregator.localChatLogin({ email });
 
     setLocalChatSession({ token: result.session.token, user: result.user });
     localChatMeta.textContent = `Logged in as ${result.user.nick}.`;
   } catch (error) {
-    localChatMeta.textContent = `Local chat login failed: ${error.message}`;
+    if (isUnknownLocalChatEmailError(error)) {
+      pendingLocalRegistrationEmail = email;
+      localChatMeta.textContent = 'Choose a nick to join local chat.';
+    } else {
+      localChatMeta.textContent = `Local chat login failed: ${error.message}`;
+    }
   } finally {
     setLocalChatBusy(false);
     renderLocalChatSession();
@@ -1489,6 +1527,7 @@ localChatAuthForm?.addEventListener('submit', async (event) => {
 
 localChatLogout?.addEventListener('click', () => {
   pendingGoogleOAuth = undefined;
+  pendingLocalRegistrationEmail = undefined;
   clearLocalChatSession();
   localChatMeta.textContent = 'Logged out from local chat.';
 });
