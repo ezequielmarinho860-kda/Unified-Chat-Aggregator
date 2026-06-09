@@ -8,6 +8,13 @@ Kick after the user connects the corresponding account.
 The project is still in active development. The current implementation is a
 desktop chat aggregator, not a fully automated moderation bot.
 
+The current direction is external app bridge mode: the browser backend serves
+the live viewer, overlay, realtime events, and local chat, while the Electron
+app remains the local collector for Twitch, Kick, and X. Closing Electron in
+external mode leaves the browser viewer and local chat online, but platform
+collection stops until the app is opened again. The implementation plan lives in
+`docs/external-app-bridge-plan.md`.
+
 ## Current Capabilities
 
 ### Unified Live Feed
@@ -371,9 +378,20 @@ backend variables are the exception: `BROWSER_BACKEND_URL`,
 demo machine can switch between embedded and standalone backend modes without
 editing `config.json`.
 
-## Local Viewer Gateway
+## Browser Viewer Gateway
 
-The app exposes a read-only public snapshot for future Viewer Mode clients at:
+The browser viewer gateway can run in two modes:
+
+- `embedded`: the Electron app starts the gateway locally. Closing the app also
+  closes the viewer/local chat backend.
+- `external`: a standalone Node backend serves the viewer/local chat, and the
+  Electron app connects to it to publish Twitch, Kick, X, status, and viewer
+  count events.
+
+The target operating mode for the current roadmap is `external`. The embedded
+mode remains useful as a local fallback and development path.
+
+The gateway exposes a public snapshot for Viewer Mode clients at:
 
 ```text
 http://127.0.0.1:47831/api/v1/snapshot
@@ -399,12 +417,17 @@ http://127.0.0.1:47831/overlay
 
 The page consumes only the public gateway contract. It bootstraps from the
 snapshot endpoint, reconnects to the realtime WebSocket when needed, and renders
-new combined chat messages as a read-only feed with platform, source, author,
-badges, emotes, timestamp, and a bounded in-memory list. The chat uses the same
+new combined chat messages with platform, source, author, badges, emotes,
+timestamp, and a bounded in-memory list. The chat uses the same
 compact message visual language as the app dashboard. It pauses autoscroll when
 the user scrolls up, keeps buffering incoming messages, shows a new-message
 button to return to the live edge, and batches realtime renders so a browser tab
 returning from the background does not re-render once per queued event.
+
+The local chat is writable through the browser backend. Local users can register
+or log in, send local chat messages, and use moderation commands when their role
+allows it. Twitch, Kick, and X messages are not persisted in `local-chat.json`;
+they are published as public realtime feed events by the Electron app.
 
 Viewer Mode shows per-platform viewer cards and a combined total in a compact
 top bar similar to the app dashboard. Platform cards are calculated from the
@@ -439,12 +462,11 @@ uses the same public transport as Viewer Mode, renders only recent combined chat
 messages, accepts a bounded `maxMessages` query parameter, and exposes no chat
 sending or moderation controls.
 
-The gateway binds only to the local loopback address, accepts only `GET` on the
-versioned snapshot, Viewer Mode, and overlay routes, and serializes realtime
-responses through a public allowlist. It does not expose chat sending,
-moderation actions, tokens, raw platform payloads, local config paths, or
-environment override details. Browser WebSocket connections are accepted only
-from loopback origins.
+The gateway currently binds only to the local loopback address and serializes
+public realtime responses through an allowlist. Browser WebSocket connections
+are accepted only from loopback origins. A VPS or public-domain deployment needs
+an explicit reverse proxy/origin plan before the viewer is exposed to the
+internet.
 
 Twitch embeds require a `parent` parameter matching the page host. The local
 Viewer Mode derives that from the current browser hostname. A future hosted
@@ -472,6 +494,10 @@ npm.cmd start
 In external mode, the browser viewer and local chat continue while the backend
 process is running. Closing the Electron app still stops Twitch/Kick/X
 collection because those connectors remain inside the app.
+
+The browser-only admin roadmap is paused for now. The active plan is to keep the
+Electron app as the platform collector and use the standalone browser backend as
+the always-on viewer/local-chat service.
 
 ## Development Setup
 
