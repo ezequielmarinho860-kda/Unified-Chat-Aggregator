@@ -35,6 +35,7 @@ const startStandaloneBrowserBackend = async ({
         data: createPublicManifestFromBrowserBackendConfig(browserConfig),
         type: 'manifest.update',
       }),
+    onExternalConnectorEvent: snapshotState.applyEvent,
     port: config.port,
   });
   const address = await runtime.start();

@@ -454,7 +454,7 @@ const handleAdminConfigRequest = async (
       const body = await readJsonBody(request);
       const config = browserConfigStore.save(body);
 
-      onBrowserConfigUpdate?.(config);
+      await onBrowserConfigUpdate?.(config);
       sendJson(response, 200, config);
       return;
     }

@@ -56,6 +56,7 @@ test('starts and stops the standalone browser backend cli controller', async () 
     env: {
       ADMIN_TOKEN: 'admin-token',
       APP_INGEST_TOKEN: 'app-token',
+      BROWSER_BACKEND_CONNECTORS: '0',
       BROWSER_BACKEND_DATA_DIR: dataDir,
       BROWSER_BACKEND_PORT: '0',
     },

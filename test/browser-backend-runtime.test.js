@@ -65,3 +65,51 @@ test('publishes browser backend runtime events to connected viewers', async () =
     await runtime.stop();
   }
 });
+
+test('applies browser admin config to backend external connectors', async () => {
+  const appliedConfigs = [];
+  let stopCount = 0;
+  const runtime = createBrowserBackendRuntime({
+    createExternalConnectors: () => ({
+      applyConfig: async (config) => appliedConfigs.push(config),
+      stop: async () => {
+        stopCount += 1;
+      },
+    }),
+    dataDir: createTempDataDir(),
+    env: { ADMIN_TOKEN: 'runtime-admin-token' },
+    getSnapshot: () => ({ protocolVersion: '1', statuses: [], viewers: { sources: [], total: 0 } }),
+    port: 0,
+  });
+
+  try {
+    const address = await runtime.start();
+    const loginResponse = await fetch(`http://${address.host}:${address.port}/api/admin/login`, {
+      body: JSON.stringify({ token: 'runtime-admin-token' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+    const sessionCookie = loginResponse.headers.get('set-cookie').split(';')[0];
+    const saveResponse = await fetch(`http://${address.host}:${address.port}/api/admin/config`, {
+      body: JSON.stringify({
+        sources: {
+          twitch: [{ channel: 'Monstercat', enabled: true }],
+        },
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: sessionCookie,
+      },
+      method: 'PUT',
+    });
+
+    assert.equal(saveResponse.status, 200);
+    assert.equal(appliedConfigs.length, 2);
+    assert.equal(appliedConfigs[0].viewer.title, 'Unified Chat Aggregator');
+    assert.equal(appliedConfigs[1].sources.twitch[0].channel, 'Monstercat');
+  } finally {
+    await runtime.stop();
+  }
+
+  assert.equal(stopCount, 1);
+});

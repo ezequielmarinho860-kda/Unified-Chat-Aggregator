@@ -3,17 +3,21 @@ const { createHttpGateway, DEFAULT_GATEWAY_PORT } = require('../gateway/http-gat
 const { createGoogleOAuthService } = require('../google-oauth');
 const { createLocalChatStore } = require('../local-chat-store');
 const { createBrowserBackendConfigStore } = require('./config-store');
+const { createBrowserBackendExternalConnectors } = require('./external-connectors');
 
 const createBrowserBackendRuntime = ({
   dataDir,
   env = process.env,
   adminToken = env.ADMIN_TOKEN,
   appIngestToken = env.APP_INGEST_TOKEN,
+  createExternalConnectors = createBrowserBackendExternalConnectors,
+  externalConnectorsEnabled = env.BROWSER_BACKEND_CONNECTORS !== '0',
   getSnapshot,
   browserConfigFileName = 'browser-config.json',
   localChatFileName = 'local-chat.json',
   onAppEvent,
   onBrowserConfigUpdate,
+  onExternalConnectorEvent,
   onLocalChatMessage,
   port = env.BROWSER_BACKEND_PORT ?? env.VIEWER_GATEWAY_PORT,
 } = {}) => {
@@ -41,12 +45,21 @@ const createBrowserBackendRuntime = ({
   });
   let gateway;
   let address;
+  let externalConnectors;
 
   const start = async () => {
     if (gateway) {
       return address;
     }
 
+    externalConnectors = externalConnectorsEnabled
+      ? createExternalConnectors({
+        onEvent: (event) => {
+          onExternalConnectorEvent?.(event);
+          gateway?.publish(event.type, event.data);
+        },
+      })
+      : undefined;
     gateway = createHttpGateway({
       adminToken,
       appIngestToken,
@@ -55,15 +68,21 @@ const createBrowserBackendRuntime = ({
       googleOAuthService,
       localChatStore,
       onAppEvent,
-      onBrowserConfigUpdate,
+      onBrowserConfigUpdate: async (browserConfig) => {
+        onBrowserConfigUpdate?.(browserConfig);
+        await externalConnectors?.applyConfig(browserConfig);
+      },
       onLocalChatMessage,
       port: normalizedPort,
     });
 
     try {
       address = await gateway.start();
+      await externalConnectors?.applyConfig(browserConfigStore.load());
       return address;
     } catch (error) {
+      await externalConnectors?.stop();
+      externalConnectors = undefined;
       gateway = undefined;
       address = undefined;
       throw error;
@@ -71,7 +90,9 @@ const createBrowserBackendRuntime = ({
   };
 
   const stop = async () => {
+    await externalConnectors?.stop();
     await gateway?.stop();
+    externalConnectors = undefined;
     gateway = undefined;
     address = undefined;
   };
@@ -85,6 +106,9 @@ const createBrowserBackendRuntime = ({
     browserConfigStore,
     googleOAuthService,
     localChatStore,
+    get externalConnectors() {
+      return externalConnectors;
+    },
     publish,
     start,
     stop,
