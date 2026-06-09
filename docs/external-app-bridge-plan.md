@@ -227,6 +227,8 @@ Itens:
 - Definir backup/reset do `local-chat.json`.
 - Adiar banco hospedado ate existir necessidade real.
 
+Notas operacionais vivem em `docs/external-app-bridge-deployment.md`.
+
 Validacao:
 
 ```powershell
@@ -274,4 +276,3 @@ http://127.0.0.1:47831/viewer
 3. `feat: surface backend connection status`
 4. `test: add external bridge smoke coverage`
 5. `docs: document external deployment notes`
-

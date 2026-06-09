@@ -499,6 +499,9 @@ The browser-only admin roadmap is paused for now. The active plan is to keep the
 Electron app as the platform collector and use the standalone browser backend as
 the always-on viewer/local-chat service.
 
+Deployment notes for the external backend live in
+`docs/external-app-bridge-deployment.md`.
+
 ## Development Setup
 
 Install dependencies:
