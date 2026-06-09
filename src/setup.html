@@ -135,7 +135,12 @@
           </section>
 
           <p class="config-panel__meta" id="config-meta">Loading configuration...</p>
-          <p class="backend-status" id="backend-status" aria-live="polite">Browser backend: checking...</p>
+          <div class="backend-status-row">
+            <p class="backend-status" id="backend-status" aria-live="polite">Browser backend: checking...</p>
+            <button class="tool-button tool-button--compact" type="button" id="reconnect-browser-backend" hidden>
+              Reconnect backend
+            </button>
+          </div>
         </section>
       </section>
     </main>

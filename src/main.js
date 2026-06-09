@@ -1027,6 +1027,11 @@ ipcMain.handle('connectors:restart', async () => {
   return getRuntimeSnapshot();
 });
 
+ipcMain.handle('browser-backend:reconnect', async () => {
+  await startHttpGateway();
+  return getRuntimeSnapshot();
+});
+
 ipcMain.handle('dashboard:open', () => {
   openDashboardWindow();
   return { opened: true };

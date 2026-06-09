@@ -10,6 +10,7 @@ const clearFeed = document.querySelector('#clear-feed');
 const configForm = document.querySelector('#connector-config-form');
 const configMeta = document.querySelector('#config-meta');
 const restartConnectors = document.querySelector('#restart-connectors');
+const reconnectBrowserBackend = document.querySelector('#reconnect-browser-backend');
 const connectTwitch = document.querySelector('#connect-twitch');
 const disconnectTwitch = document.querySelector('#disconnect-twitch');
 const clearTwitchSession = document.querySelector('#clear-twitch-session');
@@ -1267,8 +1268,12 @@ const renderBrowserBackendStatus = (status = {}) => {
     status.error,
   ].filter(Boolean);
 
-  backendStatus.textContent = details.join(' · ');
+  backendStatus.textContent = details.join(' | ');
   backendStatus.dataset.backendState = status.state ?? 'stopped';
+
+  if (reconnectBrowserBackend) {
+    reconnectBrowserBackend.hidden = status.mode !== 'external';
+  }
 };
 
 const setConfigBusy = (isBusy) => {
@@ -1277,6 +1282,7 @@ const setConfigBusy = (isBusy) => {
   }
 
   restartConnectors.disabled = isBusy;
+  reconnectBrowserBackend.disabled = isBusy;
   connectTwitch.disabled = isBusy;
   disconnectTwitch.disabled = isBusy;
   clearTwitchSession.disabled = isBusy;
@@ -1682,6 +1688,22 @@ restartConnectors?.addEventListener('click', async () => {
   try {
     const snapshot = await window.chatAggregator.restartConnectors();
     renderConfigSnapshot(snapshot);
+  } finally {
+    setConfigBusy(false);
+  }
+});
+
+reconnectBrowserBackend?.addEventListener('click', async () => {
+  setConfigBusy(true);
+  configMeta.textContent = 'Reconnecting browser backend...';
+
+  try {
+    const snapshot = await window.chatAggregator.reconnectBrowserBackend();
+
+    renderConfigSnapshot(snapshot);
+    configMeta.textContent = 'Browser backend reconnect attempted.';
+  } catch (error) {
+    configMeta.textContent = `Browser backend reconnect failed: ${error.message}`;
   } finally {
     setConfigBusy(false);
   }

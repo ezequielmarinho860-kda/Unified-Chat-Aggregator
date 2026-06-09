@@ -66,6 +66,7 @@ contextBridge.exposeInMainWorld('chatAggregator', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   saveConfig: (config) => ipcRenderer.invoke('config:save', config),
   restartConnectors: () => ipcRenderer.invoke('connectors:restart'),
+  reconnectBrowserBackend: () => ipcRenderer.invoke('browser-backend:reconnect'),
   openDashboard: () => ipcRenderer.invoke('dashboard:open'),
   sendMessage: invokeChatSend,
   localChatRegister: (payload) => ipcRenderer.invoke('local-chat:register', payload),

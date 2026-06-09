@@ -312,6 +312,13 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.backend-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .auth-actions {
   display: grid;
   gap: 8px;
