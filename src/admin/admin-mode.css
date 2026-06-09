@@ -1,0 +1,192 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  background: #0a0f14;
+  color: #f5f7fa;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #0a0f14;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0;
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+h2 {
+  margin-bottom: 0;
+  font-size: 1.5rem;
+}
+
+.admin-shell {
+  width: min(960px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 32px 0;
+}
+
+.admin-topbar,
+.session-pill,
+.admin-layout,
+.login-panel,
+.session-panel,
+.field {
+  display: flex;
+}
+
+.admin-topbar {
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.admin-kicker {
+  margin-bottom: 8px;
+  color: #99a8b8;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.session-pill {
+  align-items: center;
+  gap: 10px;
+  min-width: 154px;
+  padding: 10px 12px;
+  border: 1px solid #314153;
+  border-radius: 8px;
+  background: #101821;
+}
+
+.status-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: #f59e0b;
+}
+
+[data-session-state="authenticated"] .status-dot {
+  background: #22c55e;
+}
+
+[data-session-state="anonymous"] .status-dot {
+  background: #ef4444;
+}
+
+.admin-layout {
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.login-panel,
+.session-panel {
+  flex: 1 1 360px;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid #263646;
+  border-radius: 8px;
+  background: #101821;
+}
+
+.field {
+  flex-direction: column;
+  gap: 8px;
+  color: #c7d2df;
+  font-weight: 700;
+}
+
+input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #3b4c5e;
+  border-radius: 6px;
+  background: #0a0f14;
+  color: #f5f7fa;
+}
+
+input:focus {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+button {
+  min-height: 42px;
+  align-self: flex-start;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 6px;
+  background: #38bdf8;
+  color: #061018;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #7dd3fc;
+}
+
+.secondary-button {
+  border: 1px solid #3b4c5e;
+  background: transparent;
+  color: #f5f7fa;
+}
+
+.secondary-button:hover {
+  background: #172331;
+}
+
+.form-message,
+.session-copy {
+  margin-bottom: 0;
+  color: #c7d2df;
+  line-height: 1.5;
+}
+
+.form-message:not(:empty) {
+  color: #fca5a5;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 700px) {
+  .admin-topbar,
+  .admin-layout {
+    flex-direction: column;
+  }
+
+  .session-pill,
+  .login-panel,
+  .session-panel {
+    width: 100%;
+  }
+}

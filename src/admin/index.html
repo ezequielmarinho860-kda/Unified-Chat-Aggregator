@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+    <title>Admin</title>
+    <link rel="stylesheet" href="/admin/admin-mode.css">
+    <script src="/admin/admin-mode.js" defer></script>
+  </head>
+  <body>
+    <main class="admin-shell">
+      <header class="admin-topbar">
+        <div>
+          <p class="admin-kicker">Unified Chat</p>
+          <h1>Admin</h1>
+        </div>
+        <div class="session-pill" data-session-state="loading">
+          <span class="status-dot" aria-hidden="true"></span>
+          <strong data-session-label>Checking session</strong>
+        </div>
+      </header>
+
+      <section class="admin-layout" aria-label="Admin workspace">
+        <form class="login-panel" data-login-form>
+          <div>
+            <p class="admin-kicker">Private Access</p>
+            <h2>Sign in</h2>
+          </div>
+          <label class="field">
+            <span>Admin token</span>
+            <input name="token" type="password" autocomplete="current-password" required>
+          </label>
+          <button type="submit">Sign in</button>
+          <p class="form-message" data-login-message role="status"></p>
+        </form>
+
+        <section class="session-panel" data-session-panel hidden>
+          <div>
+            <p class="admin-kicker">Session</p>
+            <h2>Admin session active</h2>
+          </div>
+          <p class="session-copy">Protected admin tools will load here as the browser-only backend grows.</p>
+          <button class="secondary-button" type="button" data-logout-button>Sign out</button>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>
