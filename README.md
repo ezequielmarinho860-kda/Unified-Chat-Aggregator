@@ -368,6 +368,7 @@ Supported variables:
 | `BROWSER_BACKEND_MODE` | Forces `embedded` or `external` browser backend mode. Optional when `BROWSER_BACKEND_URL` is set. |
 | `APP_INGEST_TOKEN` | Bearer token used by the app to publish connector events into the standalone browser backend. |
 | `ADMIN_TOKEN` | Enables demo admin login and creates `HttpOnly` admin sessions for `/admin` and `/api/admin/*`. |
+| `BROWSER_BACKEND_CONNECTORS` | Set to `0` to disable standalone backend Twitch/Kick read connectors. |
 
 After a saved config file exists, the app prioritizes saved configuration on
 startup so old shell variables do not unexpectedly switch the stream. Browser
@@ -490,9 +491,9 @@ $env:APP_INGEST_TOKEN = "demo-token"
 npm.cmd start
 ```
 
-In external mode, the browser viewer and local chat continue while the backend
-process is running. Closing the Electron app still stops Twitch/Kick/X
-collection because those connectors remain inside the app.
+In external mode, the browser viewer, local chat, and standalone Twitch/Kick
+read collection continue while the backend process is running. Closing the
+Electron app still stops Electron-only connector work such as X capture.
 
 The standalone backend stores browser-owned state in its data directory. Local
 chat state uses `local-chat.json`, and browser-only admin configuration uses
@@ -500,6 +501,10 @@ chat state uses `local-chat.json`, and browser-only admin configuration uses
 derived from that browser-only admin configuration through a public allowlist.
 When `ADMIN_TOKEN` is configured, `/admin` can also manage local chat
 moderators stored in `local-chat.json`.
+
+The standalone backend can run Twitch and Kick read connectors directly from the
+browser-only admin source config. X remains Electron-capture based and is not
+started by the standalone backend.
 
 ## Development Setup
 

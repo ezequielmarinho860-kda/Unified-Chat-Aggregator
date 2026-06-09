@@ -404,6 +404,10 @@ npm.cmd test
 
 ### Bloco 8 - External Platform Connectors No Backend
 
+Estado atual: implementado para leitura Twitch/Kick no backend standalone a
+partir da configuracao do `/admin`. X segue limitado ao Electron porque o
+conector atual depende de `BrowserWindow` e captura DOM.
+
 Objetivo: deixar Twitch/Kick/X independentes do Electron.
 
 Prioridade:
