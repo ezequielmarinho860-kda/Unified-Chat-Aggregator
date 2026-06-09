@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
+const path = require('node:path');
 const test = require('node:test');
 const {
   createBackendConnectorsFromBrowserConfig,
@@ -55,15 +56,18 @@ test('builds backend Twitch and Kick connectors from browser admin config', () =
       },
     },
     {
+      browserDataDir: 'C:\\data',
       createKick: ({ channel }) => ({ platform: 'kick', channel }),
       createTwitch: ({ channel }) => ({ platform: 'twitch', channel }),
+      createX: ({ liveUrl, userDataDir }) => ({ platform: 'x', liveUrl, userDataDir }),
     },
   );
 
   assert.deepEqual(
-    connectors.map((connector) => `${connector.platform}:${connector.channel}`),
-    ['twitch:Monstercat', 'kick:xqc'],
+    connectors.map((connector) => `${connector.platform}:${connector.channel ?? connector.liveUrl}`),
+    ['twitch:Monstercat', 'kick:xqc', 'x:@chooserich'],
   );
+  assert.equal(connectors[2].userDataDir, path.join('C:\\data', 'x-browser-profile', 'x-chooserich'));
 });
 
 test('publishes public backend connector status and chat events', async () => {

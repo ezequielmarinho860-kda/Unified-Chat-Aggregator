@@ -54,6 +54,7 @@ const createBrowserBackendRuntime = ({
 
     externalConnectors = externalConnectorsEnabled
       ? createExternalConnectors({
+        browserDataDir: dataDir,
         onEvent: (event) => {
           onExternalConnectorEvent?.(event);
           gateway?.publish(event.type, event.data);

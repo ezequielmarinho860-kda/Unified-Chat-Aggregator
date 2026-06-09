@@ -68,15 +68,21 @@ test('publishes browser backend runtime events to connected viewers', async () =
 
 test('applies browser admin config to backend external connectors', async () => {
   const appliedConfigs = [];
+  let externalConnectorOptions;
   let stopCount = 0;
+  const dataDir = createTempDataDir();
   const runtime = createBrowserBackendRuntime({
-    createExternalConnectors: () => ({
-      applyConfig: async (config) => appliedConfigs.push(config),
-      stop: async () => {
-        stopCount += 1;
-      },
-    }),
-    dataDir: createTempDataDir(),
+    createExternalConnectors: (options) => {
+      externalConnectorOptions = options;
+
+      return {
+        applyConfig: async (config) => appliedConfigs.push(config),
+        stop: async () => {
+          stopCount += 1;
+        },
+      };
+    },
+    dataDir,
     env: { ADMIN_TOKEN: 'runtime-admin-token' },
     getSnapshot: () => ({ protocolVersion: '1', statuses: [], viewers: { sources: [], total: 0 } }),
     port: 0,
@@ -107,6 +113,7 @@ test('applies browser admin config to backend external connectors', async () => 
     assert.equal(appliedConfigs.length, 2);
     assert.equal(appliedConfigs[0].viewer.title, 'Unified Chat Aggregator');
     assert.equal(appliedConfigs[1].sources.twitch[0].channel, 'Monstercat');
+    assert.equal(externalConnectorOptions.browserDataDir, dataDir);
   } finally {
     await runtime.stop();
   }
