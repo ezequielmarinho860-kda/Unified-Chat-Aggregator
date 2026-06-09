@@ -12,6 +12,9 @@ Seguir com browser-only como caminho principal.
 O Electron app passa a ser opcional ou congelado. A configuracao sensivel deve
 ficar no backend, nao no viewer publico e nem em um app desktop distribuido.
 
+Status desta branch: o viewer publico, o overlay e o gateway browser-native ja
+existem, mas ainda convivem com o runtime Electron enquanto a transicao avanca.
+
 ## Objetivo
 
 - Ter um site publico de chat local em `/viewer`.
@@ -50,7 +53,7 @@ ficar no backend, nao no viewer publico e nem em um app desktop distribuido.
 - Nao basta esconder o link de `/admin`. Qualquer pessoa pode tentar acessar a
   rota manualmente.
 - A seguranca precisa estar no backend:
-  - `/admin` exige sessao admin;
+  - `/admin` pode servir apenas a shell de login sem dados privados;
   - toda API `/api/admin/*` exige role admin/host;
   - usuario comum do chat local nunca pode chamar API admin.
 - O viewer publico nao deve receber tokens, client secrets, config privada,
@@ -74,6 +77,7 @@ GET /viewer
 GET /overlay
 GET /api/v1/snapshot
 GET /api/v1/events
+POST /api/v1/app/events
 GET /api/v1/local/me
 POST /api/v1/local/login
 POST /api/v1/local/register
@@ -85,6 +89,9 @@ GET /api/v1/auth/google/start
 GET /api/v1/auth/google/callback
 POST /api/v1/auth/google/complete
 ```
+
+Observacao: `POST /api/v1/app/events` existe apenas quando `APP_INGEST_TOKEN`
+esta configurado e e a rota usada pelo app para publicar eventos no backend.
 
 Observacao: `POST /api/v1/local/moderation` continua publico no sentido de
 rota existente, mas precisa validar que o usuario autenticado tem role
@@ -108,7 +115,10 @@ POST /api/admin/moderators
 DELETE /api/admin/moderators/:id
 ```
 
-Todas essas rotas precisam exigir sessao admin.
+`GET /admin` pode ser carregado sem sessao para mostrar login, desde que nao
+inclua config privada, tokens ou dados internos. As APIs admin privadas precisam
+exigir sessao admin. `POST /api/admin/login` e `GET /api/admin/session` sao as
+excecoes publicas necessarias para iniciar e detectar sessao.
 
 ## Modelo de Auth Admin
 
@@ -218,6 +228,20 @@ Mover futuramente para backend:
 - Kick connector;
 - X, se houver estrategia sem Electron.
 
+## Dependencia Com App / Browser Split
+
+Antes de criar um painel `/admin` completo, a fronteira backend precisa estar
+clara. O codigo atual ja tem:
+
+- runtime sem Electron em `src/browser-backend/runtime.js`;
+- CLI standalone em `src/browser-backend/cli.js`;
+- cliente HTTP/WebSocket em `src/browser-backend/client.js`;
+- modo `embedded` e `external` em `src/main.js`.
+
+Portanto, a proxima etapa pratica deste roadmap e auth admin basico no backend.
+Criar shell visual de admin antes disso conflita com a decisao de que seguranca
+nao pode depender de URL escondida nem de HTML protegido isoladamente.
+
 ## Cronologia Recomendada
 
 ### Bloco 1 - Documento e Contrato
@@ -238,6 +262,8 @@ git diff --check
 
 ### Bloco 2 - Admin Auth Basico
 
+Estado atual: implementado no gateway/backend.
+
 Objetivo: proteger `/admin`.
 
 Mudancas:
@@ -248,7 +274,7 @@ Mudancas:
   - `POST /api/admin/login`
   - `POST /api/admin/logout`
   - `GET /api/admin/session`
-- Bloquear `/admin` sem sessao.
+- Servir `/admin` sem dados privados e detectar sessao pela API.
 
 Validacao:
 
@@ -260,7 +286,10 @@ npm.cmd test
 
 ### Bloco 3 - Admin Shell
 
-Objetivo: criar tela admin privada separada do viewer.
+Estado atual: implementado como shell de login/estado de sessao sem dados
+privados.
+
+Objetivo: criar shell admin separada do viewer.
 
 Mudancas:
 
@@ -402,4 +431,3 @@ npm.cmd test
 8. Moderadores usam comandos no browser.
 9. Streamer abre `/viewer?mode=popout` ou `/popout` para live/OBS.
 10. Usuario comum tentando `/admin` recebe bloqueio.
-

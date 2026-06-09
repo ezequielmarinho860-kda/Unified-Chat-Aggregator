@@ -8,6 +8,10 @@ Kick after the user connects the corresponding account.
 The project is still in active development. The current implementation is a
 desktop chat aggregator, not a fully automated moderation bot.
 
+This branch is the browser-only pivot branch: the current Electron runtime still
+exists, but the browser-native viewer, overlay, and backend contract are the
+direction of travel for the transition.
+
 ## Current Capabilities
 
 ### Unified Live Feed
@@ -363,6 +367,7 @@ Supported variables:
 | `BROWSER_BACKEND_URL` | Connects the app to a standalone browser backend instead of starting the embedded gateway. |
 | `BROWSER_BACKEND_MODE` | Forces `embedded` or `external` browser backend mode. Optional when `BROWSER_BACKEND_URL` is set. |
 | `APP_INGEST_TOKEN` | Bearer token used by the app to publish connector events into the standalone browser backend. |
+| `ADMIN_TOKEN` | Enables demo admin login and creates `HttpOnly` admin sessions for `/admin` and `/api/admin/*`. |
 
 After a saved config file exists, the app prioritizes saved configuration on
 startup so old shell variables do not unexpectedly switch the stream. Browser

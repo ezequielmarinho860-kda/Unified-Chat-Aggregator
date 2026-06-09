@@ -20,18 +20,23 @@ chat local.
 
 ## Estado Atual do Codigo
 
-Hoje o app Electron e dono de tudo:
+O split app/browser ja comecou no codigo:
 
-- `src/main.js` cria `localChatStore`.
-- `src/main.js` chama `createHttpGateway(...)`.
+- `src/browser-backend/runtime.js` cria `localChatStore`, `googleOAuthService` e
+  `createHttpGateway(...)` sem importar Electron.
+- `src/browser-backend/cli.js` inicia o backend como processo Node standalone
+  via `npm.cmd run backend`.
+- `src/browser-backend/client.js` permite o app falar com o backend por
+  HTTP/WebSocket.
+- `src/main.js` ainda orquestra o ciclo de vida do backend quando o modo e
+  `embedded`, e conecta em `BROWSER_BACKEND_URL` quando o modo e `external`.
 - `src/gateway/http-gateway.js` serve `/viewer`, `/overlay`, snapshot, eventos,
-  OAuth Google e endpoints do local chat.
-- O browser chat depende desse gateway local.
-- Se o app fechar, o gateway fecha junto.
+  OAuth Google, endpoints do local chat e ingestao do app.
 
-Portanto, a premissa "browser continua vivo com app fechado" conflita com a
-arquitetura atual. A solucao correta e extrair o gateway/local chat para um
-runtime separado.
+Portanto, a premissa "browser continua vivo com app fechado" so e verdadeira
+quando o backend esta rodando em modo externo. Em modo embedded, fechar o app
+ainda fecha o backend. Mesmo em modo externo, Twitch/Kick/X continuam dependendo
+do app enquanto os conectores nao forem movidos para o backend.
 
 ## Pontos Importantes
 
@@ -52,6 +57,21 @@ runtime separado.
   chat.
 - Essa e uma mudanca grande. Deve entrar em blocos pequenos, com testes em cada
   bloco.
+
+## Ordem Canonica Da Transicao
+
+1. Manter o contrato publico do browser estavel: `/viewer`, `/overlay`,
+   `/api/v1/snapshot`, `/api/v1/events` e local chat.
+2. Usar o runtime/CLI separados que ja existem como base do backend browser-only.
+3. Implementar auth admin no backend antes de qualquer tela `/admin` completa.
+4. Criar o shell `/admin` somente depois que `/admin` e `/api/admin/*` exigirem
+   sessao admin.
+5. Mover config privada/sources para o backend e manter o viewer recebendo
+   somente manifestos publicos.
+6. So depois disso avaliar conectores Twitch/Kick/X dentro do backend.
+
+Esta ordem evita criar painel visual ou config sensivel antes da fronteira de
+autenticacao e autorizacao existir no backend.
 
 ## Arquitetura Alvo
 
@@ -202,23 +222,20 @@ npm.cmd test
 git diff --check
 ```
 
-### Bloco 1 - Extrair Runtime do Gateway
+### Bloco 1 - Runtime do Gateway Sem Electron
 
-Objetivo: permitir iniciar o gateway sem Electron.
+Estado atual: implementado em `src/browser-backend/runtime.js` e validado por
+`test/browser-backend-runtime.test.js`.
 
-Mudancas:
+Objetivo: manter o gateway iniciavel sem Electron.
 
-- Criar modulo de runtime do backend, por exemplo:
+Mudancas restantes:
 
-```text
-src/browser-backend/runtime.js
-src/browser-backend/config.js
-```
-
-- Mover criacao de `localChatStore`, `googleOAuthService` e `createHttpGateway`
-  para esse runtime reutilizavel.
-- `src/main.js` passa a chamar esse runtime, nao montar tudo manualmente.
-- Ainda roda dentro do app neste bloco.
+- Nao deixar o runtime importar `electron`.
+- `src/main.js` deve continuar chamando esse runtime, nao montar gateway/store
+  manualmente.
+- Em modo embedded, ainda roda dentro do app. Em modo external, roda como
+  processo separado.
 
 Risco:
 
@@ -235,21 +252,12 @@ npm.cmd test
 
 ### Bloco 2 - CLI do Backend Separado
 
+Estado atual: implementado em `src/browser-backend/cli.js`, exposto por
+`npm.cmd run backend` e validado por `test/browser-backend-cli.test.js`.
+
 Objetivo: iniciar o backend como processo Node independente.
 
-Mudancas:
-
-- Criar entrypoint:
-
-```text
-src/browser-backend/cli.js
-```
-
-- Adicionar script no `package.json`:
-
-```json
-"backend": "node src/browser-backend/cli.js"
-```
+Mudancas restantes:
 
 - Configurar porta, store path, OAuth e token por env:
 
@@ -286,12 +294,14 @@ http://127.0.0.1:47831/viewer
 
 ### Bloco 3 - App Como Cliente do Backend
 
+Estado atual: parcialmente implementado em `src/browser-backend/client.js` e no
+modo `external` de `src/main.js`.
+
 Objetivo: o app conversar com o backend por HTTP/WebSocket.
 
-Mudancas:
+Mudancas restantes:
 
-- Criar `src/browser-backend/client.js`.
-- Implementar:
+- Confirmar/expandir os metodos do client:
   - `loadSnapshot()`
   - `connectEvents()`
   - `sendLocalMessage()`
