@@ -204,6 +204,13 @@ select:focus {
   align-items: end;
 }
 
+.source-field-actions {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
 .moderator-form {
   display: grid;
   gap: 12px;
@@ -298,7 +305,8 @@ button:hover {
   }
 
   .admin-layout,
-  .source-grid {
+  .source-grid,
+  .source-field-actions {
     grid-template-columns: 1fr;
   }
 

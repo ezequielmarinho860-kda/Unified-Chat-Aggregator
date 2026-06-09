@@ -37,6 +37,7 @@ const ADMIN_LOGOUT_PATH = '/api/admin/logout';
 const ADMIN_CONFIG_PATH = '/api/admin/config';
 const ADMIN_MODERATORS_PATH = '/api/admin/moderators';
 const ADMIN_SESSION_PATH = '/api/admin/session';
+const ADMIN_X_LOGIN_PATH = '/api/admin/x/login';
 const VIEWER_PATH = '/viewer';
 const OVERLAY_PATH = '/overlay';
 const POPOUT_PATH = '/popout';
@@ -91,6 +92,7 @@ const createHttpGateway = ({
   onAppEvent,
   onBrowserConfigUpdate,
   onLocalChatMessage,
+  openXLoginSession,
   port = DEFAULT_GATEWAY_PORT,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
   createServer = http.createServer,
@@ -121,6 +123,7 @@ const createHttpGateway = ({
         onAppEvent,
         onBrowserConfigUpdate,
         onLocalChatMessage,
+        openXLoginSession,
         publish: (type, data) => (webSocketServer ? broadcastEvent(webSocketServer, createPublicEvent(type, data)) : 0),
       });
     });
@@ -298,6 +301,7 @@ const isAdminPath = (pathname) =>
     ADMIN_LOGOUT_PATH,
     ADMIN_MODERATORS_PATH,
     ADMIN_SESSION_PATH,
+    ADMIN_X_LOGIN_PATH,
   ].includes(pathname) || pathname.startsWith(`${ADMIN_MODERATORS_PATH}/`);
 
 const handleAdminRequest = async (request, response, pathname, context) => {
@@ -345,6 +349,11 @@ const handleAdminRequest = async (request, response, pathname, context) => {
       return;
     }
 
+    if (pathname === ADMIN_X_LOGIN_PATH) {
+      await handleAdminXLoginRequest(request, response, context);
+      return;
+    }
+
     if (pathname === ADMIN_MODERATORS_PATH || pathname.startsWith(`${ADMIN_MODERATORS_PATH}/`)) {
       await handleAdminModeratorsRequest(request, response, pathname, context);
       return;
@@ -359,6 +368,31 @@ const handleAdminRequest = async (request, response, pathname, context) => {
         role: session?.role,
       });
     }
+  } catch (error) {
+    sendAdminError(response, error);
+  }
+};
+
+const handleAdminXLoginRequest = async (
+  request,
+  response,
+  { adminAuth, openXLoginSession },
+) => {
+  if (typeof openXLoginSession !== 'function') {
+    sendJson(response, 500, { error: 'X browser login is unavailable.' });
+    return;
+  }
+
+  try {
+    requireAdminSession(request, adminAuth);
+    requireMethod(request, 'POST');
+    const body = await readJsonBody(request);
+    const result = openXLoginSession({ liveUrl: optionalBodyString(body.liveUrl) });
+
+    sendJson(response, 202, {
+      opened: Boolean(result?.opened),
+      url: result?.url,
+    });
   } catch (error) {
     sendAdminError(response, error);
   }

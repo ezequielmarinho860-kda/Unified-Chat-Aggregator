@@ -154,6 +154,21 @@
     }
   };
 
+  const openXLogin = async (sourceIndex) => {
+    showConfigMessage('');
+    const liveUrl = getField(`sources.x.${sourceIndex}.liveUrl`);
+
+    if (!liveUrl) {
+      throw new Error('X source needs a live URL or handle.');
+    }
+
+    await requestJson('/api/admin/x/login', {
+      body: { liveUrl },
+      method: 'POST',
+    });
+    showConfigMessage('Chrome opened for X login. Sign in there, then close that Chrome window.');
+  };
+
   const loadModerators = async () => {
     showModeratorsMessage('');
 
@@ -260,6 +275,20 @@
         method: 'PUT',
       }));
       showConfigMessage('Saved.');
+    } catch (error) {
+      showConfigMessage(error.message);
+    }
+  });
+
+  elements.configForm.addEventListener('click', async (event) => {
+    const button = event.target?.closest?.('[data-x-login]');
+
+    if (!button) {
+      return;
+    }
+
+    try {
+      await openXLogin(button.dataset.xLogin);
     } catch (error) {
       showConfigMessage(error.message);
     }

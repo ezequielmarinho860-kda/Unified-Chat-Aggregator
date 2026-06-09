@@ -4,6 +4,7 @@ const { createGoogleOAuthService } = require('../google-oauth');
 const { createLocalChatStore } = require('../local-chat-store');
 const { createBrowserBackendConfigStore } = require('./config-store');
 const { createBrowserBackendExternalConnectors } = require('./external-connectors');
+const { openXBrowserLoginSession } = require('./x-browser-session');
 
 const createBrowserBackendRuntime = ({
   dataDir,
@@ -19,6 +20,7 @@ const createBrowserBackendRuntime = ({
   onBrowserConfigUpdate,
   onExternalConnectorEvent,
   onLocalChatMessage,
+  openXLoginSession = openXBrowserLoginSession,
   port = env.BROWSER_BACKEND_PORT ?? env.VIEWER_GATEWAY_PORT,
 } = {}) => {
   if (typeof dataDir !== 'string' || dataDir.length === 0) {
@@ -74,6 +76,12 @@ const createBrowserBackendRuntime = ({
         await externalConnectors?.applyConfig(browserConfig);
       },
       onLocalChatMessage,
+      openXLoginSession: ({ liveUrl }) =>
+        openXLoginSession({
+          browserDataDir: dataDir,
+          env,
+          liveUrl,
+        }),
       port: normalizedPort,
     });
 

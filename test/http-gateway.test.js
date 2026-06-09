@@ -322,6 +322,7 @@ test('serves the admin shell and protects session APIs with a configured admin c
     assert.match(adminShell, /data-config-form/);
     assert.match(adminShell, /data-moderator-form/);
     assert.match(adminShell, /data-moderator-list/);
+    assert.match(adminShell, /data-x-login/);
     assert.match(adminShell, /admin-mode\.js/);
     assert.match(adminShell, /admin-mode\.css/);
     assert.equal(adminStyleResponse.status, 200);
@@ -335,6 +336,7 @@ test('serves the admin shell and protects session APIs with a configured admin c
     assert.match(adminScript, /\/api\/admin\/logout/);
     assert.match(adminScript, /\/api\/admin\/config/);
     assert.match(adminScript, /\/api\/admin\/moderators/);
+    assert.match(adminScript, /\/api\/admin\/x\/login/);
     assert.doesNotMatch(adminShell, /demo-admin-token/);
     assert.doesNotMatch(adminScript, /demo-admin-token/);
     assert.deepEqual(await anonymousSessionResponse.json(), { authenticated: false });
@@ -348,6 +350,52 @@ test('serves the admin shell and protects session APIs with a configured admin c
     assert.equal(logoutResponse.status, 200);
     assert.match(expiredCookie, /Max-Age=0/);
     assert.deepEqual(await loggedOutSessionResponse.json(), { authenticated: false });
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('protects and opens X browser login sessions from admin APIs', async () => {
+  const openedLogins = [];
+  const gateway = createHttpGateway({
+    adminSessionIdFactory: () => 'admin-session-x-login',
+    adminToken: 'demo-admin-token',
+    getSnapshot: () => ({}),
+    openXLoginSession: ({ liveUrl }) => {
+      openedLogins.push(liveUrl);
+      return {
+        opened: true,
+        profileDir: 'C:\\data\\x-browser-profile\\x-chooserich',
+        url: 'https://x.com',
+      };
+    },
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const blockedResponse = await postJson(
+      localUrl(address, '/api/admin/x/login'),
+      { liveUrl: '@chooserich' },
+    );
+    const loginResponse = await postJson(localUrl(address, '/api/admin/login'), {
+      token: 'demo-admin-token',
+    });
+    const sessionCookie = loginResponse.headers.get('set-cookie').split(';')[0];
+    const openResponse = await postJson(
+      localUrl(address, '/api/admin/x/login'),
+      { liveUrl: '@chooserich' },
+      undefined,
+      { Cookie: sessionCookie },
+    );
+
+    assert.equal(blockedResponse.status, 401);
+    assert.equal(openResponse.status, 202);
+    assert.deepEqual(await openResponse.json(), {
+      opened: true,
+      url: 'https://x.com',
+    });
+    assert.deepEqual(openedLogins, ['@chooserich']);
   } finally {
     await gateway.stop();
   }
