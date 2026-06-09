@@ -480,7 +480,8 @@ collection because those connectors remain inside the app.
 
 The standalone backend stores browser-owned state in its data directory. Local
 chat state uses `local-chat.json`, and browser-only admin configuration uses
-`browser-config.json`.
+`browser-config.json`. In standalone backend mode, the public viewer manifest is
+derived from that browser-only admin configuration through a public allowlist.
 
 ## Development Setup
 

@@ -331,6 +331,9 @@ npm.cmd test
 
 ### Bloco 5 - Sources Admin
 
+Estado atual: implementado com UI admin para duas sources por plataforma e
+manifesto publico derivado da config privada no backend standalone.
+
 Objetivo: configurar lives pelo admin.
 
 Mudancas:

@@ -12,6 +12,23 @@ const { createBrowserBackendClient } = require('../src/browser-backend/client');
 const createTempDataDir = () =>
   fs.mkdtempSync(path.join(os.tmpdir(), 'uca-browser-backend-cli-'));
 
+const postJson = (url, body) =>
+  fetch(url, {
+    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
+  });
+
+const putJson = (url, body, cookie) =>
+  fetch(url, {
+    body: JSON.stringify(body),
+    headers: {
+      'Content-Type': 'application/json',
+      Cookie: cookie,
+    },
+    method: 'PUT',
+  });
+
 test('creates a standalone empty browser backend snapshot', () => {
   const snapshot = createEmptySnapshot();
 
@@ -23,9 +40,21 @@ test('creates a standalone empty browser backend snapshot', () => {
 
 test('starts and stops the standalone browser backend cli controller', async () => {
   const dataDir = createTempDataDir();
+  fs.writeFileSync(
+    path.join(dataDir, 'browser-config.json'),
+    `${JSON.stringify({
+      sources: {
+        twitch: [{ channel: 'Monstercat', enabled: true }],
+      },
+      viewer: {
+        title: 'Stored Admin Demo',
+      },
+    })}\n`,
+  );
   const logs = [];
   const controller = await startStandaloneBrowserBackend({
     env: {
+      ADMIN_TOKEN: 'admin-token',
       APP_INGEST_TOKEN: 'app-token',
       BROWSER_BACKEND_DATA_DIR: dataDir,
       BROWSER_BACKEND_PORT: '0',
@@ -38,7 +67,8 @@ test('starts and stops the standalone browser backend cli controller', async () 
     const snapshot = await response.json();
 
     assert.equal(response.status, 200);
-    assert.equal(snapshot.manifest.title, 'Unified Chat Aggregator');
+    assert.equal(snapshot.manifest.title, 'Stored Admin Demo');
+    assert.equal(snapshot.manifest.sources[0].sourceId, 'twitch:monstercat');
     assert.equal(controller.config.dataDir, dataDir);
     assert.match(logs[0], /Browser backend listening/);
     assert.match(logs[1], /Browser backend data directory/);
@@ -53,6 +83,28 @@ test('starts and stops the standalone browser backend cli controller', async () 
       { accepted: true, published: 0 },
     );
     assert.equal((await client.loadSnapshot()).viewers.total, 18);
+
+    const loginResponse = await postJson(
+      `http://${controller.address.host}:${controller.address.port}/api/admin/login`,
+      { token: 'admin-token' },
+    );
+    const sessionCookie = loginResponse.headers.get('set-cookie').split(';')[0];
+    const configResponse = await putJson(
+      `http://${controller.address.host}:${controller.address.port}/api/admin/config`,
+      {
+        sources: {
+          kick: [{ channel: 'xqc', enabled: true }],
+        },
+        viewer: {
+          title: 'Updated Admin Demo',
+        },
+      },
+      sessionCookie,
+    );
+
+    assert.equal(configResponse.status, 200);
+    assert.equal((await client.loadSnapshot()).manifest.title, 'Updated Admin Demo');
+    assert.equal((await client.loadSnapshot()).manifest.sources[0].sourceId, 'kick:xqc');
   } finally {
     await controller.stop();
   }

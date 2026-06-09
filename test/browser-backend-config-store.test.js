@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   createBrowserBackendConfigStore,
+  createPublicManifestFromBrowserBackendConfig,
   normalizeBrowserBackendConfig,
 } = require('../src/browser-backend/config-store');
 
@@ -76,4 +77,44 @@ test('saves and reloads browser backend config from disk', () => {
   assert.deepEqual(reloaded, saved);
   assert.equal(reloaded.viewer.title, 'Saved Demo');
   assert.equal(reloaded.sources.twitch[0].channel, 'ESL_SC2');
+});
+
+test('creates a public viewer manifest from private browser backend config', () => {
+  const manifest = createPublicManifestFromBrowserBackendConfig({
+    sources: {
+      kick: [{ channel: 'xqc', enabled: true, token: 'secret' }],
+      twitch: [{ channel: 'Monstercat', enabled: true, accessToken: 'secret' }],
+      x: [{ enabled: true, liveUrl: '@chooserich' }],
+    },
+    viewer: {
+      title: 'Admin Demo',
+    },
+  });
+
+  assert.equal(manifest.title, 'Admin Demo');
+  assert.deepEqual(
+    manifest.sources.map((source) => source.sourceId),
+    ['twitch:monstercat', 'kick:xqc', 'x:chooserich'],
+  );
+  assert.equal(manifest.sources[0].watchUrl, 'https://www.twitch.tv/monstercat');
+  assert.equal(manifest.sources[1].watchUrl, 'https://kick.com/xqc');
+  assert.equal(manifest.sources[2].watchUrl, 'https://x.com/chooserich/live');
+  assert.doesNotMatch(JSON.stringify(manifest), /secret|token|accessToken/);
+});
+
+test('rejects enabled sources without required values', () => {
+  assert.throws(
+    () =>
+      normalizeBrowserBackendConfig({
+        sources: { twitch: [{ enabled: true, channel: '' }] },
+      }),
+    /requires a value/,
+  );
+  assert.throws(
+    () =>
+      normalizeBrowserBackendConfig({
+        sources: { x: [{ enabled: true, liveUrl: 'https://example.com/live' }] },
+      }),
+    /x\.com or twitter\.com/,
+  );
 });

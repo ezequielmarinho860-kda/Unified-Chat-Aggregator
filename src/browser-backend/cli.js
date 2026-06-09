@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
+const path = require('node:path');
 const { createBrowserBackendConfig } = require('./config');
+const {
+  createBrowserBackendConfigStore,
+  createPublicManifestFromBrowserBackendConfig,
+} = require('./config-store');
 const { createBrowserBackendRuntime } = require('./runtime');
 const { createBrowserBackendSnapshotState } = require('./snapshot-state');
 
@@ -11,8 +16,13 @@ const startStandaloneBrowserBackend = async ({
   stdout = console.log,
 } = {}) => {
   const config = createBrowserBackendConfig({ env });
+  const browserConfigStore = createBrowserBackendConfigStore(
+    path.join(config.dataDir, 'browser-config.json'),
+  );
   const snapshotState = createBrowserBackendSnapshotState({
-    initialSnapshot: createEmptySnapshot(),
+    initialSnapshot: createEmptySnapshot({
+      manifest: createPublicManifestFromBrowserBackendConfig(browserConfigStore.load()),
+    }),
   });
   const runtime = createRuntime({
     appIngestToken: env.APP_INGEST_TOKEN,
@@ -20,6 +30,11 @@ const startStandaloneBrowserBackend = async ({
     env,
     getSnapshot: snapshotState.getSnapshot,
     onAppEvent: snapshotState.applyEvent,
+    onBrowserConfigUpdate: (browserConfig) =>
+      snapshotState.applyEvent({
+        data: createPublicManifestFromBrowserBackendConfig(browserConfig),
+        type: 'manifest.update',
+      }),
     port: config.port,
   });
   const address = await runtime.start();
@@ -35,9 +50,9 @@ const startStandaloneBrowserBackend = async ({
   };
 };
 
-const createEmptySnapshot = () => ({
+const createEmptySnapshot = ({ manifest } = {}) => ({
   generatedAt: new Date().toISOString(),
-  manifest: { sources: [], title: 'Unified Chat Aggregator' },
+  manifest: manifest ?? { sources: [], title: 'Unified Chat Aggregator' },
   protocolVersion: '1',
   statuses: [],
   viewers: { sources: [], total: 0 },

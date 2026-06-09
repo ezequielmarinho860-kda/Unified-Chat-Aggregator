@@ -40,9 +40,113 @@
             <p class="admin-kicker">Session</p>
             <h2>Admin session active</h2>
           </div>
-          <p class="session-copy">Protected admin tools will load here as the browser-only backend grows.</p>
+          <p class="session-copy">Browser-only configuration is stored on the backend.</p>
           <button class="secondary-button" type="button" data-logout-button>Sign out</button>
         </section>
+
+        <form class="config-panel" data-config-form hidden>
+          <div>
+            <p class="admin-kicker">Viewer</p>
+            <h2>Public viewer</h2>
+          </div>
+          <label class="field">
+            <span>Title</span>
+            <input name="viewer.title" type="text" autocomplete="off" required>
+          </label>
+          <div class="inline-fields">
+            <label class="field">
+              <span>Theme</span>
+              <select name="viewer.theme">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </label>
+            <label class="check-field">
+              <input name="viewer.showExternalChats" type="checkbox">
+              <span>Show external chats</span>
+            </label>
+          </div>
+
+          <section class="source-section" aria-label="Twitch sources">
+            <div>
+              <p class="admin-kicker">Twitch</p>
+              <h3>Sources</h3>
+            </div>
+            <div class="source-grid">
+              <label class="check-field">
+                <input name="sources.twitch.0.enabled" type="checkbox">
+                <span>Source 1</span>
+              </label>
+              <label class="field">
+                <span>Channel</span>
+                <input name="sources.twitch.0.channel" type="text" autocomplete="off">
+              </label>
+              <label class="check-field">
+                <input name="sources.twitch.1.enabled" type="checkbox">
+                <span>Source 2</span>
+              </label>
+              <label class="field">
+                <span>Channel</span>
+                <input name="sources.twitch.1.channel" type="text" autocomplete="off">
+              </label>
+            </div>
+          </section>
+
+          <section class="source-section" aria-label="Kick sources">
+            <div>
+              <p class="admin-kicker">Kick</p>
+              <h3>Sources</h3>
+            </div>
+            <div class="source-grid">
+              <label class="check-field">
+                <input name="sources.kick.0.enabled" type="checkbox">
+                <span>Source 1</span>
+              </label>
+              <label class="field">
+                <span>Channel</span>
+                <input name="sources.kick.0.channel" type="text" autocomplete="off">
+              </label>
+              <label class="check-field">
+                <input name="sources.kick.1.enabled" type="checkbox">
+                <span>Source 2</span>
+              </label>
+              <label class="field">
+                <span>Channel</span>
+                <input name="sources.kick.1.channel" type="text" autocomplete="off">
+              </label>
+            </div>
+          </section>
+
+          <section class="source-section" aria-label="X sources">
+            <div>
+              <p class="admin-kicker">X</p>
+              <h3>Sources</h3>
+            </div>
+            <div class="source-grid">
+              <label class="check-field">
+                <input name="sources.x.0.enabled" type="checkbox">
+                <span>Source 1</span>
+              </label>
+              <label class="field">
+                <span>Live URL or handle</span>
+                <input name="sources.x.0.liveUrl" type="text" autocomplete="off">
+              </label>
+              <label class="check-field">
+                <input name="sources.x.1.enabled" type="checkbox">
+                <span>Source 2</span>
+              </label>
+              <label class="field">
+                <span>Live URL or handle</span>
+                <input name="sources.x.1.liveUrl" type="text" autocomplete="off">
+              </label>
+            </div>
+          </section>
+
+          <div class="form-actions">
+            <button type="submit">Save</button>
+            <p class="form-message" data-config-message role="status"></p>
+          </div>
+        </form>
       </section>
     </main>
   </body>

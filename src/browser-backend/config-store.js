@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { createPublicViewerManifestContext } = require('../public-viewer-manifest');
 
 const DEFAULT_BROWSER_BACKEND_CONFIG = Object.freeze({
   sources: {
@@ -64,6 +65,35 @@ const normalizeBrowserBackendConfig = (config = {}) => {
   };
 };
 
+const createPublicManifestFromBrowserBackendConfig = (config = {}) => {
+  const normalizedConfig = normalizeBrowserBackendConfig(config);
+
+  return createPublicViewerManifestContext({
+    config: createRuntimeConfigFromBrowserBackendConfig(normalizedConfig),
+    title: normalizedConfig.viewer.title,
+  }).manifest;
+};
+
+const createRuntimeConfigFromBrowserBackendConfig = (config = {}) => {
+  const normalizedConfig = normalizeBrowserBackendConfig(config);
+
+  return {
+    connectors: {
+      kick: createRuntimeConnectorConfig(normalizedConfig.sources.kick, 'channel'),
+      twitch: createRuntimeConnectorConfig(normalizedConfig.sources.twitch, 'channel'),
+      x: createRuntimeConnectorConfig(normalizedConfig.sources.x, 'liveUrl'),
+    },
+  };
+};
+
+const createRuntimeConnectorConfig = (sources, fieldName) => ({
+  enabled: sources.some((source) => source.enabled),
+  sources: sources.map((source) => ({
+    enabled: source.enabled,
+    [fieldName]: source[fieldName],
+  })),
+});
+
 const normalizePlatformSources = (sources, fieldName) => {
   const inputSources = Array.isArray(sources) ? sources : [];
   const nextSources = inputSources.slice(0, 2).map((source) =>
@@ -83,7 +113,45 @@ const normalizeSourceEntry = (source = {}, fieldName) => {
   };
 
   normalizedSource[fieldName] = normalizeString(source[fieldName], '');
+  validateSourceEntry(normalizedSource, fieldName);
   return normalizedSource;
+};
+
+const validateSourceEntry = (source, fieldName) => {
+  const value = source[fieldName];
+
+  if (!source.enabled) {
+    return;
+  }
+
+  if (!value) {
+    throw new TypeError(`Enabled ${fieldName} source requires a value.`);
+  }
+
+  if (fieldName === 'liveUrl') {
+    validateXLiveUrl(value);
+  }
+};
+
+const validateXLiveUrl = (value) => {
+  try {
+    const parsedUrl = new URL(value);
+    const hostname = parsedUrl.hostname.replace(/^www\./, '');
+
+    if (!['x.com', 'twitter.com'].includes(hostname)) {
+      throw new TypeError('X source URL must use x.com or twitter.com.');
+    }
+  } catch (error) {
+    if (error instanceof TypeError && /x\.com|twitter\.com/.test(error.message)) {
+      throw error;
+    }
+
+    const handle = value.replace(/^[@#]+/, '');
+
+    if (!/^[A-Za-z0-9_]{1,15}$/.test(handle)) {
+      throw new TypeError('X source must be an X URL or handle.');
+    }
+  }
 };
 
 function createDefaultSourceEntry(fieldName) {
@@ -108,5 +176,7 @@ const normalizeString = (value, defaultValue) =>
 module.exports = {
   DEFAULT_BROWSER_BACKEND_CONFIG,
   createBrowserBackendConfigStore,
+  createPublicManifestFromBrowserBackendConfig,
+  createRuntimeConfigFromBrowserBackendConfig,
   normalizeBrowserBackendConfig,
 };

@@ -302,6 +302,7 @@ test('serves the admin shell and protects session APIs with a configured admin c
     assert.equal(adminShellResponse.status, 200);
     assert.match(adminShellResponse.headers.get('content-type'), /^text\/html/);
     assert.match(adminShell, /data-login-form/);
+    assert.match(adminShell, /data-config-form/);
     assert.match(adminShell, /admin-mode\.js/);
     assert.match(adminShell, /admin-mode\.css/);
     assert.equal(adminStyleResponse.status, 200);
@@ -312,6 +313,7 @@ test('serves the admin shell and protects session APIs with a configured admin c
     assert.match(adminScript, /\/api\/admin\/session/);
     assert.match(adminScript, /\/api\/admin\/login/);
     assert.match(adminScript, /\/api\/admin\/logout/);
+    assert.match(adminScript, /\/api\/admin\/config/);
     assert.doesNotMatch(adminShell, /demo-admin-token/);
     assert.doesNotMatch(adminScript, /demo-admin-token/);
     assert.deepEqual(await anonymousSessionResponse.json(), { authenticated: false });
@@ -332,6 +334,7 @@ test('serves the admin shell and protects session APIs with a configured admin c
 
 test('protects and persists browser backend admin config', async () => {
   const browserConfigStore = createTestBrowserConfigStore();
+  let updatedConfig;
   const gateway = createHttpGateway({
     adminSessionIdFactory: () => 'admin-session-config',
     adminToken: 'demo-admin-token',
@@ -342,6 +345,9 @@ test('protects and persists browser backend admin config', async () => {
       statuses: [],
       viewers: { sources: [], total: 0 },
     }),
+    onBrowserConfigUpdate: (config) => {
+      updatedConfig = config;
+    },
     port: 0,
   });
 
@@ -389,6 +395,7 @@ test('protects and persists browser backend admin config', async () => {
     assert.doesNotMatch(JSON.stringify(savedConfig), /secret|token/);
     assert.deepEqual(await reloadedConfigResponse.json(), savedConfig);
     assert.deepEqual(browserConfigStore.load(), savedConfig);
+    assert.deepEqual(updatedConfig, savedConfig);
     assert.equal((await snapshotResponse.json()).manifest.title, 'Public Snapshot');
   } finally {
     await gateway.stop();

@@ -85,6 +85,7 @@ const createHttpGateway = ({
   googleOAuthService,
   localChatStore,
   onAppEvent,
+  onBrowserConfigUpdate,
   onLocalChatMessage,
   port = DEFAULT_GATEWAY_PORT,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
@@ -114,6 +115,7 @@ const createHttpGateway = ({
         googleOAuthService,
         localChatStore,
         onAppEvent,
+        onBrowserConfigUpdate,
         onLocalChatMessage,
         publish: (type, data) => (webSocketServer ? broadcastEvent(webSocketServer, createPublicEvent(type, data)) : 0),
       });
@@ -364,7 +366,11 @@ const sendAdminError = (response, error) => {
   });
 };
 
-const handleAdminConfigRequest = async (request, response, { adminAuth, browserConfigStore }) => {
+const handleAdminConfigRequest = async (
+  request,
+  response,
+  { adminAuth, browserConfigStore, onBrowserConfigUpdate },
+) => {
   if (!browserConfigStore) {
     sendJson(response, 500, { error: 'Admin config store unavailable.' });
     return;
@@ -382,6 +388,7 @@ const handleAdminConfigRequest = async (request, response, { adminAuth, browserC
       const body = await readJsonBody(request);
       const config = browserConfigStore.save(body);
 
+      onBrowserConfigUpdate?.(config);
       sendJson(response, 200, config);
       return;
     }
