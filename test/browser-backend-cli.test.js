@@ -175,6 +175,56 @@ test('bridges app ingestion and browser local chat through standalone backend', 
   }
 });
 
+test('keeps browser backend online for local chat after app event connection closes', async () => {
+  const controller = await startStandaloneBrowserBackend({
+    env: {
+      APP_INGEST_TOKEN: 'app-token',
+      BROWSER_BACKEND_DATA_DIR: createTempDataDir(),
+      BROWSER_BACKEND_PORT: '0',
+    },
+    stdout: () => {},
+  });
+  let appConnection;
+
+  try {
+    const appClient = createBrowserBackendClient({
+      appIngestToken: 'app-token',
+      baseUrl: controller.address.viewerUrl,
+    });
+    const viewerClient = createBrowserBackendClient({
+      baseUrl: controller.address.viewerUrl,
+    });
+    const opened = new Promise((resolve) => {
+      appConnection = appClient.connectEvents({ onOpen: resolve });
+    });
+
+    await opened;
+    await appClient.publishAppEvent({
+      data: { sources: [], total: 9 },
+      type: 'viewers.update',
+    });
+    appConnection.close();
+    appConnection = undefined;
+
+    const registerResult = await viewerClient.registerLocalUser({
+      email: 'viewer@example.com',
+      nick: 'viewer',
+    });
+    const messageResult = await viewerClient.sendLocalMessage({
+      text: 'still online',
+      token: registerResult.session.token,
+    });
+    const snapshot = await viewerClient.loadSnapshot();
+
+    assert.equal(messageResult.message.source.platform, 'local');
+    assert.equal(messageResult.message.text, 'still online');
+    assert.equal(snapshot.viewers.total, 9);
+  } finally {
+    appConnection?.close();
+    await controller.stop();
+  }
+});
+
 const waitFor = async (predicate) => {
   const expiresAt = Date.now() + 1_000;
 
