@@ -7,6 +7,7 @@ const {
   createAdminSessionCookie,
   createExpiredAdminSessionCookie,
   getAdminSessionId,
+  requireAdminSession,
 } = require('./admin-auth');
 const {
   LOCAL_MODERATION_COMMANDS,
@@ -33,6 +34,7 @@ const LOCAL_REGISTER_PATH = '/api/v1/local/register';
 const ADMIN_PATH = '/admin';
 const ADMIN_LOGIN_PATH = '/api/admin/login';
 const ADMIN_LOGOUT_PATH = '/api/admin/logout';
+const ADMIN_CONFIG_PATH = '/api/admin/config';
 const ADMIN_SESSION_PATH = '/api/admin/session';
 const VIEWER_PATH = '/viewer';
 const OVERLAY_PATH = '/overlay';
@@ -78,6 +80,7 @@ const createHttpGateway = ({
   adminSessionIdFactory,
   adminToken,
   appIngestToken,
+  browserConfigStore,
   getSnapshot,
   googleOAuthService,
   localChatStore,
@@ -107,6 +110,7 @@ const createHttpGateway = ({
         getSnapshot,
         adminAuth,
         appIngestToken,
+        browserConfigStore,
         googleOAuthService,
         localChatStore,
         onAppEvent,
@@ -257,7 +261,7 @@ const handleRequest = async (request, response, context) => {
   }
 
   if (isAdminPath(url.pathname) || ADMIN_ASSETS.has(url.pathname)) {
-    await handleAdminRequest(request, response, url.pathname, context.adminAuth);
+    await handleAdminRequest(request, response, url.pathname, context);
     return;
   }
 
@@ -284,11 +288,14 @@ const isAdminPath = (pathname) =>
     ADMIN_PATH,
     `${ADMIN_PATH}/`,
     ADMIN_LOGIN_PATH,
+    ADMIN_CONFIG_PATH,
     ADMIN_LOGOUT_PATH,
     ADMIN_SESSION_PATH,
   ].includes(pathname);
 
-const handleAdminRequest = async (request, response, pathname, adminAuth) => {
+const handleAdminRequest = async (request, response, pathname, context) => {
+  const { adminAuth } = context;
+
   try {
     if (!adminAuth.isConfigured()) {
       sendJson(response, 404, { error: 'Not found.' });
@@ -326,6 +333,11 @@ const handleAdminRequest = async (request, response, pathname, adminAuth) => {
       return;
     }
 
+    if (pathname === ADMIN_CONFIG_PATH) {
+      await handleAdminConfigRequest(request, response, context);
+      return;
+    }
+
     if (pathname === ADMIN_SESSION_PATH) {
       requireMethod(request, 'GET');
       const session = adminAuth.getSession(getAdminSessionId(request));
@@ -350,6 +362,35 @@ const sendAdminError = (response, error) => {
   sendJson(response, statusCode, {
     error: statusCode >= 500 ? 'Admin request failed.' : error.message,
   });
+};
+
+const handleAdminConfigRequest = async (request, response, { adminAuth, browserConfigStore }) => {
+  if (!browserConfigStore) {
+    sendJson(response, 500, { error: 'Admin config store unavailable.' });
+    return;
+  }
+
+  try {
+    if (request.method === 'GET') {
+      requireAdminSession(request, adminAuth);
+      sendJson(response, 200, browserConfigStore.load());
+      return;
+    }
+
+    if (request.method === 'PUT') {
+      requireAdminSession(request, adminAuth);
+      const body = await readJsonBody(request);
+      const config = browserConfigStore.save(body);
+
+      sendJson(response, 200, config);
+      return;
+    }
+
+    response.setHeader('Allow', 'GET, PUT');
+    sendJson(response, 405, { error: 'Method not allowed.' });
+  } catch (error) {
+    sendAdminError(response, error);
+  }
 };
 
 const handleAdminAssetRequest = async (request, response, pathname) => {

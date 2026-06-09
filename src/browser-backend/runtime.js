@@ -2,6 +2,7 @@ const path = require('node:path');
 const { createHttpGateway, DEFAULT_GATEWAY_PORT } = require('../gateway/http-gateway');
 const { createGoogleOAuthService } = require('../google-oauth');
 const { createLocalChatStore } = require('../local-chat-store');
+const { createBrowserBackendConfigStore } = require('./config-store');
 
 const createBrowserBackendRuntime = ({
   dataDir,
@@ -9,6 +10,7 @@ const createBrowserBackendRuntime = ({
   adminToken = env.ADMIN_TOKEN,
   appIngestToken = env.APP_INGEST_TOKEN,
   getSnapshot,
+  browserConfigFileName = 'browser-config.json',
   localChatFileName = 'local-chat.json',
   onAppEvent,
   onLocalChatMessage,
@@ -26,6 +28,9 @@ const createBrowserBackendRuntime = ({
   const localChatStore = createLocalChatStore({
     filePath: path.join(dataDir, localChatFileName),
   });
+  const browserConfigStore = createBrowserBackendConfigStore(
+    path.join(dataDir, browserConfigFileName),
+  );
   const googleOAuthService = createGoogleOAuthService({
     clientId: env.GOOGLE_OAUTH_CLIENT_ID,
     clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET,
@@ -44,6 +49,7 @@ const createBrowserBackendRuntime = ({
     gateway = createHttpGateway({
       adminToken,
       appIngestToken,
+      browserConfigStore,
       getSnapshot,
       googleOAuthService,
       localChatStore,
@@ -74,6 +80,7 @@ const createBrowserBackendRuntime = ({
     get address() {
       return address;
     },
+    browserConfigStore,
     googleOAuthService,
     localChatStore,
     publish,

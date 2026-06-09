@@ -29,6 +29,7 @@ test('starts a browser backend runtime without Electron', async () => {
     assert.deepEqual(await oauthStatus.json(), { enabled: false });
     assert.deepEqual(await adminSession.json(), { authenticated: false });
     assert.equal(runtime.address, address);
+    assert.equal(runtime.browserConfigStore.load().viewer.title, 'Unified Chat Aggregator');
     assert.equal(typeof runtime.localChatStore.registerUser, 'function');
     assert.equal(runtime.googleOAuthService.isConfigured(), false);
   } finally {

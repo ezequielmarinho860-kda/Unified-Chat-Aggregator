@@ -6,6 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const { WebSocket } = require('ws');
 const { createHttpGateway, GATEWAY_HOST } = require('../src/gateway/http-gateway');
+const { createBrowserBackendConfigStore } = require('../src/browser-backend/config-store');
 const { createLocalChatStore } = require('../src/local-chat-store');
 
 const createTestLocalChatStore = () => {
@@ -21,6 +22,14 @@ const createTestLocalChatStore = () => {
   });
 };
 
+const createTestBrowserConfigStore = () =>
+  createBrowserBackendConfigStore(
+    path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'uca-browser-config-')),
+      'browser-config.json',
+    ),
+  );
+
 const localUrl = (address, path) => `http://${address.host}:${address.port}${path}`;
 
 const postJson = (url, body, token, headers = {}) =>
@@ -32,6 +41,16 @@ const postJson = (url, body, token, headers = {}) =>
       ...headers,
     },
     method: 'POST',
+  });
+
+const putJson = (url, body, headers = {}) =>
+  fetch(url, {
+    body: JSON.stringify(body),
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    method: 'PUT',
   });
 
 const createFakeGoogleOAuthService = ({
@@ -306,6 +325,71 @@ test('serves the admin shell and protects session APIs with a configured admin c
     assert.equal(logoutResponse.status, 200);
     assert.match(expiredCookie, /Max-Age=0/);
     assert.deepEqual(await loggedOutSessionResponse.json(), { authenticated: false });
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('protects and persists browser backend admin config', async () => {
+  const browserConfigStore = createTestBrowserConfigStore();
+  const gateway = createHttpGateway({
+    adminSessionIdFactory: () => 'admin-session-config',
+    adminToken: 'demo-admin-token',
+    browserConfigStore,
+    getSnapshot: () => ({
+      manifest: { title: 'Public Snapshot', sources: [] },
+      protocolVersion: '1',
+      statuses: [],
+      viewers: { sources: [], total: 0 },
+    }),
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const blockedResponse = await fetch(localUrl(address, '/api/admin/config'));
+    const snapshotResponse = await fetch(address.snapshotUrl);
+    const loginResponse = await postJson(localUrl(address, '/api/admin/login'), {
+      token: 'demo-admin-token',
+    });
+    const sessionCookie = loginResponse.headers.get('set-cookie').split(';')[0];
+    const defaultConfigResponse = await fetch(localUrl(address, '/api/admin/config'), {
+      headers: { Cookie: sessionCookie },
+    });
+    const saveResponse = await putJson(
+      localUrl(address, '/api/admin/config'),
+      {
+        sources: {
+          kick: [{ channel: 'xqc', enabled: true, token: 'secret' }],
+          twitch: [{ channel: 'Monstercat', enabled: true }],
+          x: [{ enabled: true, liveUrl: '@chooserich' }],
+        },
+        viewer: {
+          showExternalChats: false,
+          theme: 'light',
+          title: 'Admin Demo',
+        },
+      },
+      { Cookie: sessionCookie },
+    );
+    const savedConfig = await saveResponse.json();
+    const reloadedConfigResponse = await fetch(localUrl(address, '/api/admin/config'), {
+      headers: { Cookie: sessionCookie },
+    });
+
+    assert.equal(blockedResponse.status, 401);
+    assert.equal(defaultConfigResponse.status, 200);
+    assert.equal((await defaultConfigResponse.json()).viewer.title, 'Unified Chat Aggregator');
+    assert.equal(saveResponse.status, 200);
+    assert.equal(savedConfig.viewer.title, 'Admin Demo');
+    assert.equal(savedConfig.viewer.showExternalChats, false);
+    assert.equal(savedConfig.sources.twitch[0].channel, 'Monstercat');
+    assert.equal(savedConfig.sources.kick[0].channel, 'xqc');
+    assert.equal(savedConfig.sources.x[0].liveUrl, '@chooserich');
+    assert.doesNotMatch(JSON.stringify(savedConfig), /secret|token/);
+    assert.deepEqual(await reloadedConfigResponse.json(), savedConfig);
+    assert.deepEqual(browserConfigStore.load(), savedConfig);
+    assert.equal((await snapshotResponse.json()).manifest.title, 'Public Snapshot');
   } finally {
     await gateway.stop();
   }

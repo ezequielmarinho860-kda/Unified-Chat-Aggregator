@@ -309,6 +309,8 @@ npm.cmd test
 
 ### Bloco 4 - Config Store Do Backend
 
+Estado atual: implementado no backend como `browser-config.json` no data dir.
+
 Objetivo: backend virar dono da config browser-only.
 
 Mudancas:

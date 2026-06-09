@@ -478,6 +478,10 @@ In external mode, the browser viewer and local chat continue while the backend
 process is running. Closing the Electron app still stops Twitch/Kick/X
 collection because those connectors remain inside the app.
 
+The standalone backend stores browser-owned state in its data directory. Local
+chat state uses `local-chat.json`, and browser-only admin configuration uses
+`browser-config.json`.
+
 ## Development Setup
 
 Install dependencies:
