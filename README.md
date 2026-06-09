@@ -360,9 +360,16 @@ Supported variables:
 | `X_LIVE_URL` | Sets the X live URL, live chat URL, or handle and enables X before saved config exists. |
 | `X_SHOW_BROWSER` | Shows the X capture window when set to `true`. |
 | `VIEWER_GATEWAY_PORT` | Overrides the local read-only viewer gateway port. Defaults to `47831`. |
+| `BROWSER_BACKEND_URL` | Connects the app to a standalone browser backend instead of starting the embedded gateway. |
+| `BROWSER_BACKEND_MODE` | Forces `embedded` or `external` browser backend mode. Optional when `BROWSER_BACKEND_URL` is set. |
+| `APP_INGEST_TOKEN` | Bearer token used by the app to publish connector events into the standalone browser backend. |
 
 After a saved config file exists, the app prioritizes saved configuration on
-startup so old shell variables do not unexpectedly switch the stream.
+startup so old shell variables do not unexpectedly switch the stream. Browser
+backend variables are the exception: `BROWSER_BACKEND_URL`,
+`BROWSER_BACKEND_MODE`, and `APP_INGEST_TOKEN` continue to apply at runtime so a
+demo machine can switch between embedded and standalone backend modes without
+editing `config.json`.
 
 ## Local Viewer Gateway
 
@@ -443,6 +450,28 @@ Twitch embeds require a `parent` parameter matching the page host. The local
 Viewer Mode derives that from the current browser hostname. A future hosted
 Viewer Mode must serve over HTTPS and use the production MarketBubble domain as
 the Twitch embed parent.
+
+### Standalone Browser Backend
+
+For demos where the browser chat must stay online after the Electron app closes,
+run the viewer/local-chat backend as a separate Node process:
+
+```powershell
+$env:APP_INGEST_TOKEN = "demo-token"
+npm.cmd run backend
+```
+
+Then start the app in another terminal pointing at that backend:
+
+```powershell
+$env:BROWSER_BACKEND_URL = "http://127.0.0.1:47831"
+$env:APP_INGEST_TOKEN = "demo-token"
+npm.cmd start
+```
+
+In external mode, the browser viewer and local chat continue while the backend
+process is running. Closing the Electron app still stops Twitch/Kick/X
+collection because those connectors remain inside the app.
 
 ## Development Setup
 

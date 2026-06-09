@@ -1,6 +1,7 @@
 const { resolveEnabledConnectors } = require('./connector-config');
 
 const PLATFORM_ORDER = ['twitch', 'kick', 'x'];
+const DEFAULT_BROWSER_BACKEND_URL = 'http://127.0.0.1:47831';
 const DEFAULT_TWITCH_CLIENT_ID = 'juln34d24v0zdm6l2dtv8omk6g0cqd';
 const DEFAULT_KICK_CLIENT_ID = '01KTB84VBDCSE2QBMA531PZ5J1';
 const DEFAULT_KICK_OAUTH_BROKER_URL =
@@ -18,6 +19,11 @@ const ENV_OVERRIDE_KEYS = [
 const DEFAULT_APP_CONFIG = Object.freeze({
   ui: {
     theme: 'light',
+  },
+  browserBackend: {
+    mode: 'embedded',
+    url: DEFAULT_BROWSER_BACKEND_URL,
+    ingestToken: '',
   },
   connectors: {
     twitch: {
@@ -79,6 +85,7 @@ const normalizeAppConfig = (config = {}) => {
     ui: {
       theme: normalizeTheme(config.ui?.theme),
     },
+    browserBackend: normalizeBrowserBackendConfig(config.browserBackend),
     connectors: {
       twitch: {
         enabled: normalizeBoolean(connectors.twitch?.enabled, true),
@@ -194,6 +201,8 @@ const applyEnvironmentOverrides = (config, env = process.env) => {
     overrides.push('X_SHOW_BROWSER');
   }
 
+  applyBrowserBackendEnvironmentOverrides(runtimeConfig, env, overrides);
+
   return {
     runtimeConfig,
     overrides: [...new Set(overrides)],
@@ -205,13 +214,40 @@ const createRuntimeAppConfig = (
   { allowEnvironmentOverrides = true, env = process.env } = {},
 ) => {
   if (!allowEnvironmentOverrides) {
+    const runtimeConfig = normalizeAppConfig(config);
+    const overrides = [];
+
+    applyBrowserBackendEnvironmentOverrides(runtimeConfig, env, overrides);
     return {
-      runtimeConfig: normalizeAppConfig(config),
-      overrides: [],
+      runtimeConfig,
+      overrides,
     };
   }
 
   return applyEnvironmentOverrides(config, env);
+};
+
+const applyBrowserBackendEnvironmentOverrides = (runtimeConfig, env, overrides) => {
+  if (env.BROWSER_BACKEND_MODE) {
+    runtimeConfig.browserBackend.mode = normalizeBrowserBackendMode(env.BROWSER_BACKEND_MODE);
+    overrides.push('BROWSER_BACKEND_MODE');
+  }
+
+  if (env.BROWSER_BACKEND_URL) {
+    runtimeConfig.browserBackend.url = normalizeHttpUrl(
+      env.BROWSER_BACKEND_URL,
+      runtimeConfig.browserBackend.url,
+    );
+    if (!env.BROWSER_BACKEND_MODE) {
+      runtimeConfig.browserBackend.mode = 'external';
+    }
+    overrides.push('BROWSER_BACKEND_URL');
+  }
+
+  if (env.APP_INGEST_TOKEN) {
+    runtimeConfig.browserBackend.ingestToken = normalizeString(env.APP_INGEST_TOKEN, '');
+    overrides.push('APP_INGEST_TOKEN');
+  }
 };
 
 const clearEnvironmentOverrides = (env = process.env) => {
@@ -226,6 +262,10 @@ const createPublicAppConfig = (config = {}) => {
 
   return {
     ui: normalizedConfig.ui,
+    browserBackend: {
+      mode: normalizedConfig.browserBackend.mode,
+      url: normalizedConfig.browserBackend.url,
+    },
     connectors: {
       twitch: {
         enabled: twitch.enabled,
@@ -320,8 +360,35 @@ const normalizeString = (value, fallback) => {
 
 const normalizeTheme = (value) => (value === 'dark' ? 'dark' : 'light');
 
+const normalizeBrowserBackendConfig = (config = {}) => ({
+  mode: normalizeBrowserBackendMode(config.mode),
+  url: normalizeHttpUrl(config.url, DEFAULT_BROWSER_BACKEND_URL),
+  ingestToken: normalizeString(config.ingestToken, ''),
+});
+
+const normalizeBrowserBackendMode = (value) => (value === 'external' ? 'external' : 'embedded');
+
+const normalizeHttpUrl = (value, fallback) => {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+
+  try {
+    const url = new URL(value.trim());
+
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return fallback;
+    }
+
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return fallback;
+  }
+};
+
 module.exports = {
   DEFAULT_APP_CONFIG,
+  DEFAULT_BROWSER_BACKEND_URL,
   DEFAULT_KICK_CLIENT_ID,
   DEFAULT_KICK_OAUTH_BROKER_URL,
   ENV_OVERRIDE_KEYS,

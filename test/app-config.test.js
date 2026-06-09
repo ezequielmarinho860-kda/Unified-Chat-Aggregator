@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  DEFAULT_BROWSER_BACKEND_URL,
   DEFAULT_KICK_CLIENT_ID,
   DEFAULT_KICK_OAUTH_BROKER_URL,
   applyEnvironmentOverrides,
@@ -29,12 +30,22 @@ test('normalizes missing app config with defaults', () => {
     { enabled: false, liveUrl: '' },
     { enabled: false, liveUrl: '' },
   ]);
+  assert.deepEqual(config.browserBackend, {
+    mode: 'embedded',
+    url: DEFAULT_BROWSER_BACKEND_URL,
+    ingestToken: '',
+  });
   assert.equal(config.ui.theme, 'light');
 });
 
 test('normalizes user connector settings', () => {
   const config = normalizeAppConfig({
     ui: { theme: 'dark' },
+    browserBackend: {
+      mode: 'external',
+      url: '  http://127.0.0.1:47899/  ',
+      ingestToken: '  ingest-token  ',
+    },
     connectors: {
       twitch: {
         enabled: true,
@@ -93,6 +104,11 @@ test('normalizes user connector settings', () => {
   assert.equal(config.connectors.x.liveUrl, 'https://x.com/live');
   assert.equal(config.connectors.x.sources[1].liveUrl, '@second');
   assert.equal(config.connectors.x.showBrowser, true);
+  assert.deepEqual(config.browserBackend, {
+    mode: 'external',
+    url: 'http://127.0.0.1:47899',
+    ingestToken: 'ingest-token',
+  });
   assert.equal(config.ui.theme, 'dark');
 });
 
@@ -108,6 +124,8 @@ test('applies environment connector overrides', () => {
     TWITCH_ACCESS_TOKEN: 'token',
     X_LIVE_URL: 'https://x.com/live',
     X_SHOW_BROWSER: 'true',
+    BROWSER_BACKEND_URL: 'http://127.0.0.1:47899',
+    APP_INGEST_TOKEN: 'app-token',
   });
 
   assert.equal(runtimeConfig.connectors.kick.enabled, false);
@@ -120,6 +138,11 @@ test('applies environment connector overrides', () => {
   assert.equal(runtimeConfig.connectors.x.liveUrl, 'https://x.com/live');
   assert.equal(runtimeConfig.connectors.x.sources[0].liveUrl, 'https://x.com/live');
   assert.equal(runtimeConfig.connectors.x.showBrowser, true);
+  assert.deepEqual(runtimeConfig.browserBackend, {
+    mode: 'external',
+    url: 'http://127.0.0.1:47899',
+    ingestToken: 'app-token',
+  });
   assert.deepEqual(overrides, [
     'CONNECTORS',
     'TWITCH_CHANNEL',
@@ -127,7 +150,19 @@ test('applies environment connector overrides', () => {
     'TWITCH_CLIENT_ID',
     'X_LIVE_URL',
     'X_SHOW_BROWSER',
+    'BROWSER_BACKEND_URL',
+    'APP_INGEST_TOKEN',
   ]);
+});
+
+test('keeps browser backend mode embedded when only the token is configured', () => {
+  const { runtimeConfig, overrides } = applyEnvironmentOverrides(normalizeAppConfig(), {
+    APP_INGEST_TOKEN: 'app-token',
+  });
+
+  assert.equal(runtimeConfig.browserBackend.mode, 'embedded');
+  assert.equal(runtimeConfig.browserBackend.ingestToken, 'app-token');
+  assert.deepEqual(overrides, ['APP_INGEST_TOKEN']);
 });
 
 test('keeps CONNECTORS as the source of enabled platforms', () => {
@@ -169,6 +204,53 @@ test('can build runtime config without environment overrides', () => {
   assert.deepEqual(overrides, []);
 });
 
+test('keeps browser backend environment overrides when connector overrides are disabled', () => {
+  const { runtimeConfig, overrides } = createRuntimeAppConfig(
+    {
+      browserBackend: {
+        mode: 'embedded',
+        url: 'http://127.0.0.1:47831',
+        ingestToken: '',
+      },
+      connectors: {
+        twitch: { enabled: true, channel: 'saved-twitch' },
+      },
+    },
+    {
+      allowEnvironmentOverrides: false,
+      env: {
+        BROWSER_BACKEND_URL: 'http://127.0.0.1:47899',
+        APP_INGEST_TOKEN: 'app-token',
+        TWITCH_CHANNEL: 'env-twitch',
+      },
+    },
+  );
+
+  assert.equal(runtimeConfig.connectors.twitch.channel, 'saved-twitch');
+  assert.deepEqual(runtimeConfig.browserBackend, {
+    mode: 'external',
+    url: 'http://127.0.0.1:47899',
+    ingestToken: 'app-token',
+  });
+  assert.deepEqual(overrides, ['BROWSER_BACKEND_URL', 'APP_INGEST_TOKEN']);
+});
+
+test('supports explicit embedded browser backend mode from environment', () => {
+  const { runtimeConfig } = createRuntimeAppConfig(normalizeAppConfig(), {
+    env: {
+      BROWSER_BACKEND_MODE: 'embedded',
+      BROWSER_BACKEND_URL: 'http://127.0.0.1:47899',
+      APP_INGEST_TOKEN: 'app-token',
+    },
+  });
+
+  assert.deepEqual(runtimeConfig.browserBackend, {
+    mode: 'embedded',
+    url: 'http://127.0.0.1:47899',
+    ingestToken: 'app-token',
+  });
+});
+
 test('clears environment overrides from the provided env object', () => {
   const env = {
     CONNECTORS: 'x',
@@ -179,12 +261,21 @@ test('clears environment overrides from the provided env object', () => {
     TWITCH_CLIENT_ID: 'client-1',
     X_LIVE_URL: 'https://x.com/live',
     X_SHOW_BROWSER: 'true',
+    BROWSER_BACKEND_MODE: 'external',
+    BROWSER_BACKEND_URL: 'http://127.0.0.1:47899',
+    APP_INGEST_TOKEN: 'app-token',
     OTHER_ENV: 'kept',
   };
 
   clearEnvironmentOverrides(env);
 
-  assert.deepEqual(env, { OTHER_ENV: 'kept', TWITCH_CLIENT_ID: 'client-1' });
+  assert.deepEqual(env, {
+    APP_INGEST_TOKEN: 'app-token',
+    BROWSER_BACKEND_MODE: 'external',
+    BROWSER_BACKEND_URL: 'http://127.0.0.1:47899',
+    OTHER_ENV: 'kept',
+    TWITCH_CLIENT_ID: 'client-1',
+  });
 });
 
 test('creates a public app config without exposing access tokens', () => {
@@ -214,6 +305,11 @@ test('creates a public app config without exposing access tokens', () => {
         displayName: 'Kick Sender',
       },
     },
+    browserBackend: {
+      mode: 'external',
+      url: 'http://127.0.0.1:47899',
+      ingestToken: 'secret-ingest-token',
+    },
   });
 
   assert.equal(publicConfig.connectors.twitch.accessToken, undefined);
@@ -227,6 +323,11 @@ test('creates a public app config without exposing access tokens', () => {
   assert.equal(publicConfig.connectors.kick.refreshToken, undefined);
   assert.equal(publicConfig.connectors.kick.clientId, undefined);
   assert.equal(publicConfig.connectors.kick.oauthBrokerUrl, undefined);
+  assert.deepEqual(publicConfig.browserBackend, {
+    mode: 'external',
+    url: 'http://127.0.0.1:47899',
+  });
+  assert.equal(publicConfig.browserBackend.ingestToken, undefined);
   assert.equal(publicConfig.ui.theme, 'light');
   assert.deepEqual(publicConfig.connectors.twitch.auth, {
     connected: true,

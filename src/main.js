@@ -8,15 +8,14 @@ const {
   normalizeAppConfig,
 } = require('./app-config');
 const { createAppConfigStore } = require('./app-config-store');
+const { createBrowserBackendClient } = require('./browser-backend/client');
+const { createBrowserBackendRuntime } = require('./browser-backend/runtime');
 const { createChatHub } = require('./chat-hub');
-const { createHttpGateway, DEFAULT_GATEWAY_PORT } = require('./gateway/http-gateway');
-const { createGoogleOAuthService } = require('./google-oauth');
 const {
   LOCAL_MODERATION_COMMANDS,
   applyModerationCommand,
   requireModerator,
 } = require('./local-chat-moderation');
-const { createLocalChatStore } = require('./local-chat-store');
 const {
   serializePublicChatMessage,
   serializePublicSnapshot,
@@ -65,10 +64,13 @@ let allowEnvironmentOverrides = false;
 let chatHub = createChatHub();
 let googleOAuthService;
 let localChatStore;
+let browserBackendClient;
+let browserBackendEventsConnection;
+let browserBackendRuntime;
+const displayedLocalMessageIds = new Set();
 let unsubscribeHubMessage;
 let unsubscribeHubStatus;
 let viewerMonitor;
-let httpGateway;
 
 const focusWindow = (window) => {
   if (!window || window.isDestroyed()) {
@@ -263,20 +265,82 @@ const createPublicSources = (config = {}) =>
 
 const startHttpGateway = async () => {
   try {
-    httpGateway = createHttpGateway({
+    await stopBrowserBackend();
+
+    if (runtimeConfig.browserBackend.mode === 'external') {
+      if (!runtimeConfig.browserBackend.ingestToken) {
+        throw new Error('External browser backend requires APP_INGEST_TOKEN.');
+      }
+
+      browserBackendClient = createBrowserBackendClient({
+        appIngestToken: runtimeConfig.browserBackend.ingestToken,
+        baseUrl: runtimeConfig.browserBackend.url,
+      });
+      await browserBackendClient.loadSnapshot();
+      browserBackendEventsConnection = browserBackendClient.connectEvents({
+        onError: (error) => console.error(`Browser backend events unavailable: ${error.message}`),
+        onEvent: handleBrowserBackendEvent,
+      });
+      await browserBackendClient.publishAppEvent({
+        data: getPublicRealtimeSnapshot(),
+        type: 'snapshot.replace',
+      });
+      console.log(`Connected to external browser backend at ${runtimeConfig.browserBackend.url}`);
+      return;
+    }
+
+    browserBackendRuntime = createBrowserBackendRuntime({
+      dataDir: app.getPath('userData'),
+      env: process.env,
       getSnapshot: getPublicRealtimeSnapshot,
-      googleOAuthService,
-      localChatStore,
       onLocalChatMessage: (message) => publishLocalChatMessage(message),
       port: process.env.VIEWER_GATEWAY_PORT,
     });
-    const gatewayAddress = await httpGateway.start();
+    googleOAuthService = browserBackendRuntime.googleOAuthService;
+    localChatStore = browserBackendRuntime.localChatStore;
+    const gatewayAddress = await browserBackendRuntime.start();
 
     console.log(`Viewer gateway listening at ${gatewayAddress.snapshotUrl}`);
   } catch (error) {
-    httpGateway = undefined;
+    browserBackendClient = undefined;
+    browserBackendEventsConnection?.close();
+    browserBackendEventsConnection = undefined;
+    browserBackendRuntime = undefined;
+    googleOAuthService = undefined;
+    localChatStore = undefined;
     console.error(`Viewer gateway unavailable: ${error.message}`);
   }
+};
+
+const stopBrowserBackend = async () => {
+  browserBackendEventsConnection?.close();
+  browserBackendEventsConnection = undefined;
+  browserBackendClient = undefined;
+  googleOAuthService = undefined;
+  localChatStore = undefined;
+  await browserBackendRuntime?.stop();
+  browserBackendRuntime = undefined;
+};
+
+const handleBrowserBackendEvent = (event) => {
+  if (event.type === 'chat.message' && event.data?.source?.platform === 'local') {
+    publishBackendLocalChatMessage(event.data);
+  }
+};
+
+const publishBackendLocalChatMessage = (message) => {
+  if (message?.id && displayedLocalMessageIds.has(message.id)) {
+    return;
+  }
+
+  if (message?.id) {
+    displayedLocalMessageIds.add(message.id);
+    if (displayedLocalMessageIds.size > 500) {
+      displayedLocalMessageIds.delete(displayedLocalMessageIds.values().next().value);
+    }
+  }
+
+  publishLocalChatMessage(message);
 };
 
 const publishPublicStatus = (status) => {
@@ -295,12 +359,21 @@ const publishPublicViewers = (snapshot) =>
     serializePublicViewers(snapshot, { sources: createPublicSources(runtimeConfig) }));
 
 const publishPublicRealtime = (type, createData) => {
-  if (!httpGateway) {
+  if (!browserBackendRuntime && !browserBackendClient) {
     return;
   }
 
   try {
-    httpGateway.publish(type, createData());
+    const data = createData();
+
+    if (browserBackendRuntime) {
+      browserBackendRuntime.publish(type, data);
+      return;
+    }
+
+    void browserBackendClient.publishAppEvent({ data, type }).catch((error) => {
+      console.error(`Browser backend app ingestion unavailable: ${error.message}`);
+    });
   } catch (error) {
     console.error(`Viewer gateway event unavailable: ${error.message}`);
   }
@@ -599,6 +672,10 @@ const sendChatMessage = async (payload) => {
 };
 
 const registerLocalChatUser = ({ email, nick } = {}) => {
+  if (browserBackendClient) {
+    return browserBackendClient.registerLocalUser({ email, nick });
+  }
+
   const existingUser = localChatStore.getUserByEmail(email);
   const registeredUser = localChatStore.registerUser({ email, nick });
 
@@ -612,6 +689,10 @@ const registerLocalChatUser = ({ email, nick } = {}) => {
 };
 
 const loginLocalChatUser = ({ email } = {}) => {
+  if (browserBackendClient) {
+    return browserBackendClient.loginLocalUser({ email });
+  }
+
   const { session } = localChatStore.createSession({ email });
 
   return createLocalSessionResponse({
@@ -621,12 +702,23 @@ const loginLocalChatUser = ({ email } = {}) => {
 };
 
 const getLocalChatSession = ({ token } = {}) => {
+  if (browserBackendClient) {
+    return browserBackendClient.getLocalSession(token);
+  }
+
   const user = requireLocalChatUser(token);
 
   return { user: serializeLocalUser(user) };
 };
 
 const sendLocalChatMessage = ({ token, text } = {}) => {
+  if (browserBackendClient) {
+    return browserBackendClient.sendLocalMessage({ text, token }).then((result) => {
+      publishBackendLocalChatMessage(result.message);
+      return result;
+    });
+  }
+
   const message = localChatStore.createMessage({ token, text });
 
   publishLocalChatMessage(message, { publishPublic: true });
@@ -634,18 +726,23 @@ const sendLocalChatMessage = ({ token, text } = {}) => {
 };
 
 const runLocalChatModeration = ({ token, command } = {}) => {
+  if (browserBackendClient) {
+    return browserBackendClient.runLocalModerationCommand({ command, token });
+  }
+
   const user = requireLocalChatUser(token);
 
   requireModerator(user);
   return { moderation: applyModerationCommand(localChatStore, command, user) };
 };
 
-const getLocalChatModerationCommands = () => ({
-  commands: LOCAL_MODERATION_COMMANDS,
-});
+const getLocalChatModerationCommands = () =>
+  browserBackendClient
+    ? browserBackendClient.getLocalModerationCommands()
+    : { commands: LOCAL_MODERATION_COMMANDS };
 
 const getLocalGoogleOAuthStatus = () => ({
-  enabled: Boolean(googleOAuthService?.isConfigured()),
+  enabled: Boolean(!browserBackendClient && googleOAuthService?.isConfigured()),
 });
 
 const startLocalGoogleOAuth = async ({ nick } = {}) => {
@@ -666,7 +763,9 @@ const startLocalGoogleOAuth = async ({ nick } = {}) => {
 };
 
 const completeLocalGoogleOAuth = ({ nick, ticket } = {}) =>
-  completeAppGoogleOAuthResult({ ticket }, { nick });
+  browserBackendClient
+    ? browserBackendClient.completeGoogleOAuth({ nick, ticket })
+    : completeAppGoogleOAuthResult({ ticket }, { nick });
 
 const waitForGoogleOAuthResult = async (resultKey) => {
   const expiresAt = Date.now() + 120_000;
@@ -836,16 +935,6 @@ if (!hasSingleInstanceLock) {
   app.whenReady().then(async () => {
     try {
       configStore = createAppConfigStore(path.join(app.getPath('userData'), 'config.json'));
-      localChatStore = createLocalChatStore({
-        filePath: path.join(app.getPath('userData'), 'local-chat.json'),
-      });
-      googleOAuthService = createGoogleOAuthService({
-        clientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
-        redirectUri:
-          process.env.GOOGLE_OAUTH_REDIRECT_URI ||
-          `http://127.0.0.1:${process.env.VIEWER_GATEWAY_PORT || DEFAULT_GATEWAY_PORT}/api/v1/auth/google/callback`,
-      });
       allowEnvironmentOverrides = !configStore.exists();
       savedConfig = configStore.load();
       applyRuntimeConfig(savedConfig);
@@ -886,7 +975,7 @@ if (!hasSingleInstanceLock) {
 
   app.on('before-quit', async () => {
     viewerMonitor?.stop();
-    await httpGateway?.stop();
+    await stopBrowserBackend();
     await chatHub.stop();
   });
 }
