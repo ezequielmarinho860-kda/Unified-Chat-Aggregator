@@ -404,9 +404,9 @@ npm.cmd test
 
 ### Bloco 8 - External Platform Connectors No Backend
 
-Estado atual: implementado para leitura Twitch/Kick no backend standalone a
-partir da configuracao do `/admin`. X segue limitado ao Electron porque o
-conector atual depende de `BrowserWindow` e captura DOM.
+Estado atual: implementado para leitura Twitch/Kick e X no backend standalone a
+partir da configuracao do `/admin`. X usa um worker persistente de Chrome/Edge
+no backend em vez de `BrowserWindow`.
 
 Objetivo: deixar Twitch/Kick/X independentes do Electron.
 
@@ -414,7 +414,7 @@ Prioridade:
 
 1. Twitch no backend.
 2. Kick no backend.
-3. X somente se houver estrategia viavel sem Electron.
+3. X no backend com profile persistente de browser.
 
 Risco:
 
@@ -430,7 +430,7 @@ npm.cmd test
 
 ## Nao Fazer Agora
 
-- Nao mover X capture para backend sem antes decidir estrategia tecnica.
+- Nao reintroduzir dependencia de Electron no caminho browser-only do X.
 - Nao expor tokens no viewer.
 - Nao depender de "URL escondida" para proteger admin.
 - Nao misturar formulario de configuracao dentro de `/viewer`.

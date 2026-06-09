@@ -202,34 +202,32 @@ Badge note:
 
 ### X
 
-Current X support is browser-capture based.
+Current X support is split:
+
+- embedded Electron mode still uses the legacy capture window;
+- standalone browser backend uses a persistent Chrome/Edge worker.
 
 Read support:
 
 - Accepts an X/Twitter live chat URL, broadcast URL, or handle such as
   `@chooserich`.
 - Converts handles into `https://x.com/<handle>/livechat` for capture.
-- Opens a dedicated Electron capture window for the configured live URL.
-- Can run the capture window hidden or visible, based on the `Show capture
-  window` setting.
-- Uses a persistent browser partition for the X capture session.
-- Provides a `Connect X` button that opens a visible X login window using the
-  same persistent browser partition as the capture session.
-- Shows whether that browser partition currently has an X login cookie.
-- Provides a `Disconnect` action for X that clears the capture browser session
+- In standalone backend mode, launches a persistent browser profile for the
+  configured live URL.
+- Keeps the X login session in that profile instead of the Electron partition.
+- Provides a `Disconnect` action for X that clears the backend browser session
   and restarts only the X connector.
-- Sends captured chat messages from the capture preload back to the main app.
+- Sends captured chat messages from the browser worker back to the main app.
 - Normalizes captured X messages into the shared chat message model.
 - Suppresses the initial captured chat backlog so the feed starts with new
   messages after the capture session begins.
 
 Write support:
 
-- Sends messages by injecting text into the X live chat composer in the capture
-  browser session.
-- Requires the persistent X capture session to be logged into an account that
-  can chat in the live. Use `Connect X` to open the login window for that
-  browser session.
+- Sends messages by injecting text into the X live chat composer in the
+  persistent browser session.
+- Requires the persistent X browser session to be logged into an account that
+  can chat in the live.
 - Treats X write as best-effort because it depends on X's browser DOM and chat
   composer behavior rather than an official public chat API.
 
@@ -363,12 +361,13 @@ Supported variables:
 | `KICK_CHATROOM_ID` | Provides a Kick chatroom ID manually. |
 | `X_LIVE_URL` | Sets the X live URL, live chat URL, or handle and enables X before saved config exists. |
 | `X_SHOW_BROWSER` | Shows the X capture window when set to `true`. |
+| `BROWSER_BACKEND_X_BROWSER_PATH` | Overrides the Chrome/Edge executable used by the standalone X browser worker. |
 | `VIEWER_GATEWAY_PORT` | Overrides the local read-only viewer gateway port. Defaults to `47831`. |
 | `BROWSER_BACKEND_URL` | Connects the app to a standalone browser backend instead of starting the embedded gateway. |
 | `BROWSER_BACKEND_MODE` | Forces `embedded` or `external` browser backend mode. Optional when `BROWSER_BACKEND_URL` is set. |
 | `APP_INGEST_TOKEN` | Bearer token used by the app to publish connector events into the standalone browser backend. |
 | `ADMIN_TOKEN` | Enables demo admin login and creates `HttpOnly` admin sessions for `/admin` and `/api/admin/*`. |
-| `BROWSER_BACKEND_CONNECTORS` | Set to `0` to disable standalone backend Twitch/Kick read connectors. |
+| `BROWSER_BACKEND_CONNECTORS` | Set to `0` to disable standalone backend Twitch/Kick/X read connectors. |
 
 After a saved config file exists, the app prioritizes saved configuration on
 startup so old shell variables do not unexpectedly switch the stream. Browser
@@ -491,9 +490,10 @@ $env:APP_INGEST_TOKEN = "demo-token"
 npm.cmd start
 ```
 
-In external mode, the browser viewer, local chat, and standalone Twitch/Kick
+In external mode, the browser viewer, local chat, and standalone Twitch/Kick/X
 read collection continue while the backend process is running. Closing the
-Electron app still stops Electron-only connector work such as X capture.
+Electron app still stops only embedded Electron connector work; the standalone
+backend keeps its own X browser worker alive.
 
 The standalone backend stores browser-owned state in its data directory. Local
 chat state uses `local-chat.json`, and browser-only admin configuration uses
@@ -502,9 +502,9 @@ derived from that browser-only admin configuration through a public allowlist.
 When `ADMIN_TOKEN` is configured, `/admin` can also manage local chat
 moderators stored in `local-chat.json`.
 
-The standalone backend can run Twitch and Kick read connectors directly from the
-browser-only admin source config. X remains Electron-capture based and is not
-started by the standalone backend.
+The standalone backend can run Twitch, Kick, and X read connectors directly
+from the browser-only admin source config. X uses a persistent Chrome/Edge
+browser worker in the backend instead of Electron.
 
 ## Development Setup
 
