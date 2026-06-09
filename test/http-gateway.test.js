@@ -316,6 +316,108 @@ test('serves local moderation command suggestions', async () => {
   }
 });
 
+test('keeps app ingestion disabled unless a token is configured', async () => {
+  const gateway = createHttpGateway({ getSnapshot: () => ({}), port: 0 });
+
+  try {
+    const address = await gateway.start();
+    const response = await postJson(localUrl(address, '/api/v1/app/events'), {
+      data: { sources: [], total: 1 },
+      type: 'viewers.update',
+    });
+
+    assert.equal(response.status, 404);
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('requires a valid token for app ingestion', async () => {
+  const gateway = createHttpGateway({
+    appIngestToken: 'secret-token',
+    getSnapshot: () => ({}),
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const response = await postJson(localUrl(address, '/api/v1/app/events'), {
+      data: { sources: [], total: 1 },
+      type: 'viewers.update',
+    }, 'wrong-token');
+
+    assert.equal(response.status, 403);
+    assert.match((await response.json()).error, /token is invalid/);
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('accepts app ingestion events and publishes them over realtime', async () => {
+  let snapshot = {
+    generatedAt: '2026-06-08T12:00:00.000Z',
+    manifest: { sources: [], title: 'Test' },
+    protocolVersion: '1',
+    statuses: [],
+    viewers: { sources: [], total: 0 },
+  };
+  const gateway = createHttpGateway({
+    appIngestToken: 'secret-token',
+    getSnapshot: () => snapshot,
+    onAppEvent: (event) => {
+      snapshot = { ...snapshot, viewers: event.data };
+    },
+    port: 0,
+  });
+  let client;
+
+  try {
+    const address = await gateway.start();
+
+    client = new WebSocket(address.eventsUrl);
+    await once(client, 'message');
+    const nextMessage = once(client, 'message');
+    const response = await postJson(localUrl(address, '/api/v1/app/events'), {
+      data: { sources: [], total: 5 },
+      type: 'viewers.update',
+    }, 'secret-token');
+    const body = await response.json();
+    const [eventPayload] = await nextMessage;
+    const event = JSON.parse(eventPayload.toString());
+    const snapshotResponse = await fetch(address.snapshotUrl);
+
+    assert.equal(response.status, 202);
+    assert.deepEqual(body, { accepted: true, published: 1 });
+    assert.equal(event.type, 'viewers.update');
+    assert.deepEqual(event.data, { sources: [], total: 5 });
+    assert.deepEqual((await snapshotResponse.json()).viewers, { sources: [], total: 5 });
+  } finally {
+    client?.close();
+    await gateway.stop();
+  }
+});
+
+test('rejects invalid app ingestion event types', async () => {
+  const gateway = createHttpGateway({
+    appIngestToken: 'secret-token',
+    getSnapshot: () => ({}),
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const response = await postJson(localUrl(address, '/api/v1/app/events'), {
+      data: {},
+      type: 'bad.event',
+    }, 'secret-token');
+
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /event type is invalid/);
+  } finally {
+    await gateway.stop();
+  }
+});
+
 test('keeps Google OAuth disabled when it is not configured', async () => {
   const gateway = createHttpGateway({
     getSnapshot: () => ({}),

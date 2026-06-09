@@ -13,6 +13,7 @@ const GATEWAY_HOST = '127.0.0.1';
 const DEFAULT_GATEWAY_PORT = 47831;
 const SNAPSHOT_PATH = '/api/v1/snapshot';
 const EVENTS_PATH = '/api/v1/events';
+const APP_EVENTS_PATH = '/api/v1/app/events';
 const GOOGLE_AUTH_CALLBACK_PATH = '/api/v1/auth/google/callback';
 const GOOGLE_AUTH_COMPLETE_PATH = '/api/v1/auth/google/complete';
 const GOOGLE_AUTH_START_PATH = '/api/v1/auth/google/start';
@@ -26,6 +27,13 @@ const LOCAL_REGISTER_PATH = '/api/v1/local/register';
 const VIEWER_PATH = '/viewer';
 const OVERLAY_PATH = '/overlay';
 const MAX_JSON_BODY_BYTES = 16 * 1024;
+const APP_EVENT_TYPES = new Set([
+  'chat.message',
+  'manifest.update',
+  'snapshot.replace',
+  'source.status',
+  'viewers.update',
+]);
 const VIEWER_ASSETS = new Map([
   [VIEWER_PATH, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
   [`${VIEWER_PATH}/`, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
@@ -50,9 +58,11 @@ const VIEWER_ASSET_DIR = path.join(__dirname, '..', 'viewer');
 const SHARED_ASSET_DIR = path.join(__dirname, '..', 'assets');
 
 const createHttpGateway = ({
+  appIngestToken,
   getSnapshot,
   googleOAuthService,
   localChatStore,
+  onAppEvent,
   onLocalChatMessage,
   port = DEFAULT_GATEWAY_PORT,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
@@ -75,8 +85,10 @@ const createHttpGateway = ({
     server = createServer((request, response) => {
       void handleRequest(request, response, {
         getSnapshot,
+        appIngestToken,
         googleOAuthService,
         localChatStore,
+        onAppEvent,
         onLocalChatMessage,
         publish: (type, data) => (webSocketServer ? broadcastEvent(webSocketServer, createPublicEvent(type, data)) : 0),
       });
@@ -218,6 +230,11 @@ const handleRequest = async (request, response, context) => {
     return;
   }
 
+  if (url.pathname === APP_EVENTS_PATH) {
+    await handleAppEventRequest(request, response, context);
+    return;
+  }
+
   if (isLocalChatPath(url.pathname)) {
     await handleLocalChatRequest(request, response, url.pathname, context);
     return;
@@ -250,6 +267,30 @@ const handleSnapshotRequest = async (request, response, getSnapshot) => {
   }
 };
 
+const handleAppEventRequest = async (
+  request,
+  response,
+  { appIngestToken, onAppEvent, publish },
+) => {
+  if (!appIngestToken) {
+    sendJson(response, 404, { error: 'Not found.' });
+    return;
+  }
+
+  try {
+    requireMethod(request, 'POST');
+    requireBearerToken(request, appIngestToken);
+    const body = await readJsonBody(request);
+    const event = normalizeAppEvent(body);
+
+    onAppEvent?.(event);
+    const published = publish(event.type, event.data);
+    sendJson(response, 202, { accepted: true, published });
+  } catch (error) {
+    sendAppEventError(response, error);
+  }
+};
+
 const handleViewerAssetRequest = async (request, response, pathname) => {
   if (request.method !== 'GET') {
     response.setHeader('Allow', 'GET');
@@ -267,6 +308,50 @@ const handleViewerAssetRequest = async (request, response, pathname) => {
   } catch {
     sendJson(response, 500, { error: 'Viewer asset unavailable.' });
   }
+};
+
+const requireBearerToken = (request, expectedToken) => {
+  if (getBearerToken(request) !== expectedToken) {
+    const error = new Error('App ingestion token is invalid.');
+
+    error.statusCode = 403;
+    throw error;
+  }
+};
+
+const normalizeAppEvent = (event = {}) => {
+  const type = event.type;
+
+  if (!APP_EVENT_TYPES.has(type)) {
+    const error = new Error('App ingestion event type is invalid.');
+
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!Object.hasOwn(event, 'data')) {
+    const error = new Error('App ingestion event data is required.');
+
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return {
+    data: event.data,
+    type,
+  };
+};
+
+const sendAppEventError = (response, error) => {
+  const statusCode = error.statusCode ?? 400;
+
+  if (error.allow) {
+    response.setHeader('Allow', error.allow);
+  }
+
+  sendJson(response, statusCode, {
+    error: statusCode >= 500 ? 'App ingestion failed.' : error.message,
+  });
 };
 
 const isLocalChatPath = (pathname) =>
