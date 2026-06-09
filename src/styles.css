@@ -29,6 +29,7 @@ body {
 
 :root[data-theme='dark'] .eyebrow,
 :root[data-theme='dark'] .summary,
+:root[data-theme='dark'] .backend-status,
 :root[data-theme='dark'] .config-panel__meta,
 :root[data-theme='dark'] .local-chat-panel__meta,
 :root[data-theme='dark'] .local-chat-suggestion span,
@@ -302,6 +303,15 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.backend-status {
+  margin: 0;
+  color: #4e5660;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .auth-actions {
   display: grid;
   gap: 8px;
@@ -435,6 +445,14 @@ h1 {
 .status-card strong.status-card__viewer-count {
   font-size: 0.95rem;
   line-height: 1;
+}
+
+.status-card strong.status-card__viewer-count--status {
+  max-width: min(360px, 48vw);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-card__viewer-count--updated {

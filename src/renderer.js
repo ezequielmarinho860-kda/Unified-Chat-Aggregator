@@ -21,6 +21,7 @@ const kickAuthStatus = document.querySelector('#kick-auth-status');
 const connectX = document.querySelector('#connect-x');
 const disconnectX = document.querySelector('#disconnect-x');
 const xAuthStatus = document.querySelector('#x-auth-status');
+const backendStatus = document.querySelector('#backend-status');
 const messageComposer = document.querySelector('#message-composer');
 const composerMeta = document.querySelector('#composer-meta');
 const localChatAuthForm = document.querySelector('#local-chat-auth-form');
@@ -223,6 +224,13 @@ const viewerStateLabels = {
   available: 'current viewers',
   disabled: 'connector disabled',
   unavailable: 'viewers unavailable',
+};
+
+const browserBackendStateLabels = {
+  connected: 'connected',
+  connecting: 'connecting',
+  error: 'error',
+  stopped: 'stopped',
 };
 
 const formatTimestamp = (timestamp) =>
@@ -1217,6 +1225,7 @@ const readConfigForm = () => ({
 
 const renderConfigSnapshot = (snapshot) => {
   document.documentElement.dataset.theme = snapshot.config.ui?.theme ?? 'light';
+  renderBrowserBackendStatus(snapshot.browserBackend);
   updateLoggedIdentities(snapshot.config);
   renderFeed();
 
@@ -1242,6 +1251,24 @@ const renderConfigSnapshot = (snapshot) => {
     configMeta.textContent = `${overrideText}${pathText}`;
     void refreshXAuthStatus();
   }
+};
+
+const renderBrowserBackendStatus = (status = {}) => {
+  if (!backendStatus) {
+    return;
+  }
+
+  const mode = status.mode === 'external' ? 'External' : 'Embedded';
+  const state = browserBackendStateLabels[status.state] ?? 'stopped';
+  const details = [
+    `${mode} backend ${state}`,
+    status.mode === 'external' && status.url ? status.url : undefined,
+    status.mode === 'external' && !status.ingestConfigured ? 'APP_INGEST_TOKEN missing' : undefined,
+    status.error,
+  ].filter(Boolean);
+
+  backendStatus.textContent = details.join(' · ');
+  backendStatus.dataset.backendState = status.state ?? 'stopped';
 };
 
 const setConfigBusy = (isBusy) => {

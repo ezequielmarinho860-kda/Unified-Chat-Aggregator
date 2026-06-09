@@ -10,6 +10,7 @@ const {
 const { createAppConfigStore } = require('./app-config-store');
 const { createBrowserBackendClient } = require('./browser-backend/client');
 const { createBrowserBackendRuntime } = require('./browser-backend/runtime');
+const { createBrowserBackendStatus } = require('./browser-backend/status');
 const { createChatHub } = require('./chat-hub');
 const {
   LOCAL_MODERATION_COMMANDS,
@@ -67,6 +68,7 @@ let localChatStore;
 let browserBackendClient;
 let browserBackendEventsConnection;
 let browserBackendRuntime;
+let browserBackendStatus = createBrowserBackendStatus();
 const displayedLocalMessageIds = new Set();
 let unsubscribeHubMessage;
 let unsubscribeHubStatus;
@@ -181,6 +183,10 @@ const applyRuntimeConfig = (nextSavedConfig) => {
   });
   runtimeConfig = appliedConfig.runtimeConfig;
   envOverrides = appliedConfig.overrides;
+  browserBackendStatus = createBrowserBackendStatus({
+    config: runtimeConfig.browserBackend,
+    state: browserBackendStatus.state,
+  });
 };
 
 const restartChangedConnectors = async (nextSavedConfig, forcePlatforms = []) => {
@@ -233,6 +239,7 @@ const broadcastToWindows = (channel, payload) => {
 };
 
 const getRuntimeSnapshot = () => ({
+  browserBackend: browserBackendStatus,
   config: createPublicAppConfig(savedConfig),
   runtimeConfig: createPublicAppConfig(runtimeConfig),
   envOverrides,
@@ -266,6 +273,7 @@ const createPublicSources = (config = {}) =>
 const startHttpGateway = async () => {
   try {
     await stopBrowserBackend();
+    updateBrowserBackendStatus('connecting');
 
     if (runtimeConfig.browserBackend.mode === 'external') {
       if (!runtimeConfig.browserBackend.ingestToken) {
@@ -285,6 +293,7 @@ const startHttpGateway = async () => {
         data: getPublicRealtimeSnapshot(),
         type: 'snapshot.replace',
       });
+      updateBrowserBackendStatus('connected');
       console.log(`Connected to external browser backend at ${runtimeConfig.browserBackend.url}`);
       return;
     }
@@ -300,6 +309,7 @@ const startHttpGateway = async () => {
     localChatStore = browserBackendRuntime.localChatStore;
     const gatewayAddress = await browserBackendRuntime.start();
 
+    updateBrowserBackendStatus('connected');
     console.log(`Viewer gateway listening at ${gatewayAddress.snapshotUrl}`);
   } catch (error) {
     browserBackendClient = undefined;
@@ -308,6 +318,7 @@ const startHttpGateway = async () => {
     browserBackendRuntime = undefined;
     googleOAuthService = undefined;
     localChatStore = undefined;
+    updateBrowserBackendStatus('error', error);
     console.error(`Viewer gateway unavailable: ${error.message}`);
   }
 };
@@ -320,6 +331,16 @@ const stopBrowserBackend = async () => {
   localChatStore = undefined;
   await browserBackendRuntime?.stop();
   browserBackendRuntime = undefined;
+  updateBrowserBackendStatus('stopped');
+};
+
+const updateBrowserBackendStatus = (state, error) => {
+  browserBackendStatus = createBrowserBackendStatus({
+    config: runtimeConfig?.browserBackend,
+    error,
+    state,
+  });
+  broadcastToWindows('chat:config', getRuntimeSnapshot());
 };
 
 const handleBrowserBackendEvent = (event) => {
