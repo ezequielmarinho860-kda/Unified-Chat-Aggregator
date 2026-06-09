@@ -35,6 +35,7 @@ const ADMIN_PATH = '/admin';
 const ADMIN_LOGIN_PATH = '/api/admin/login';
 const ADMIN_LOGOUT_PATH = '/api/admin/logout';
 const ADMIN_CONFIG_PATH = '/api/admin/config';
+const ADMIN_MODERATORS_PATH = '/api/admin/moderators';
 const ADMIN_SESSION_PATH = '/api/admin/session';
 const VIEWER_PATH = '/viewer';
 const OVERLAY_PATH = '/overlay';
@@ -295,8 +296,9 @@ const isAdminPath = (pathname) =>
     ADMIN_LOGIN_PATH,
     ADMIN_CONFIG_PATH,
     ADMIN_LOGOUT_PATH,
+    ADMIN_MODERATORS_PATH,
     ADMIN_SESSION_PATH,
-  ].includes(pathname);
+  ].includes(pathname) || pathname.startsWith(`${ADMIN_MODERATORS_PATH}/`);
 
 const handleAdminRequest = async (request, response, pathname, context) => {
   const { adminAuth } = context;
@@ -343,6 +345,11 @@ const handleAdminRequest = async (request, response, pathname, context) => {
       return;
     }
 
+    if (pathname === ADMIN_MODERATORS_PATH || pathname.startsWith(`${ADMIN_MODERATORS_PATH}/`)) {
+      await handleAdminModeratorsRequest(request, response, pathname, context);
+      return;
+    }
+
     if (pathname === ADMIN_SESSION_PATH) {
       requireMethod(request, 'GET');
       const session = adminAuth.getSession(getAdminSessionId(request));
@@ -352,6 +359,62 @@ const handleAdminRequest = async (request, response, pathname, context) => {
         role: session?.role,
       });
     }
+  } catch (error) {
+    sendAdminError(response, error);
+  }
+};
+
+const handleAdminModeratorsRequest = async (
+  request,
+  response,
+  pathname,
+  { adminAuth, localChatStore },
+) => {
+  if (!localChatStore) {
+    sendJson(response, 500, { error: 'Local chat store unavailable.' });
+    return;
+  }
+
+  try {
+    requireAdminSession(request, adminAuth);
+
+    if (pathname === ADMIN_MODERATORS_PATH) {
+      if (request.method === 'GET') {
+        sendJson(response, 200, {
+          moderators: serializeAdminModerators(localChatStore.load().moderators),
+        });
+        return;
+      }
+
+      if (request.method === 'POST') {
+        const body = await readJsonBody(request);
+        const moderator = localChatStore.addModerator({
+          email: optionalBodyString(body.email),
+          nick: optionalBodyString(body.nick),
+        });
+
+        sendJson(response, 201, { moderator: serializeAdminModerator(moderator) });
+        return;
+      }
+
+      response.setHeader('Allow', 'GET, POST');
+      sendJson(response, 405, { error: 'Method not allowed.' });
+      return;
+    }
+
+    if (request.method !== 'DELETE') {
+      response.setHeader('Allow', 'DELETE');
+      sendJson(response, 405, { error: 'Method not allowed.' });
+      return;
+    }
+
+    const id = decodeURIComponent(pathname.slice(`${ADMIN_MODERATORS_PATH}/`.length));
+    const removed = localChatStore.removeModerator(parseAdminModeratorId(id));
+
+    sendJson(response, 200, {
+      moderators: serializeAdminModerators(localChatStore.load().moderators),
+      removed,
+    });
   } catch (error) {
     sendAdminError(response, error);
   }
@@ -812,6 +875,50 @@ const serializeLocalUser = (user) => ({
   nick: user.nick,
   role: user.role,
 });
+
+const serializeAdminModerators = (moderators = []) =>
+  moderators.map(serializeAdminModerator);
+
+const serializeAdminModerator = (moderator) => ({
+  id: createAdminModeratorId(moderator),
+  email: moderator.email,
+  nick: moderator.nick,
+  createdAt: moderator.createdAt,
+});
+
+const createAdminModeratorId = (moderator) => {
+  const params = new URLSearchParams();
+
+  if (moderator.emailKey) {
+    params.set('email', moderator.emailKey);
+  }
+
+  if (moderator.nickKey) {
+    params.set('nick', moderator.nickKey);
+  }
+
+  return params.toString();
+};
+
+const parseAdminModeratorId = (id) => {
+  const params = new URLSearchParams(id);
+  const target = {
+    email: optionalBodyString(params.get('email')),
+    nick: optionalBodyString(params.get('nick')),
+  };
+
+  if (!target.email && !target.nick) {
+    const error = new Error('Admin moderator id is invalid.');
+
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return target;
+};
+
+const optionalBodyString = (value) =>
+  typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 
 const serializeLocalSession = (session) => ({
   token: session.token,

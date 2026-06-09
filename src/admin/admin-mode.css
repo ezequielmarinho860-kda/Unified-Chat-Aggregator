@@ -59,6 +59,7 @@ h3 {
 .admin-layout,
 .login-panel,
 .config-panel,
+.moderators-panel,
 .session-panel,
 .field,
 .inline-fields,
@@ -117,6 +118,7 @@ h3 {
 
 .login-panel,
 .config-panel,
+.moderators-panel,
 .session-panel {
   flex-direction: column;
   gap: 18px;
@@ -133,6 +135,10 @@ h3 {
 }
 
 .session-panel {
+  grid-column: 1;
+}
+
+.moderators-panel {
   grid-column: 1;
 }
 
@@ -198,6 +204,45 @@ select:focus {
   align-items: end;
 }
 
+.moderator-form {
+  display: grid;
+  gap: 12px;
+}
+
+.moderator-list {
+  display: grid;
+  gap: 10px;
+}
+
+.moderator-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #263646;
+  border-radius: 8px;
+  background: #0a0f14;
+}
+
+.moderator-identity {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.moderator-identity strong,
+.moderator-identity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moderator-identity span,
+.empty-list {
+  color: #99a8b8;
+}
+
 .form-actions {
   align-items: center;
   gap: 14px;
@@ -260,6 +305,7 @@ button:hover {
   .session-pill,
   .login-panel,
   .config-panel,
+  .moderators-panel,
   .session-panel {
     width: 100%;
     grid-column: auto;

@@ -140,6 +140,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(html, /data-chat-platform-filter="kick"/);
     assert.match(html, /data-chat-platform-filter="x"/);
     assert.match(html, /data-chat-platform-filter="local"/);
+    assert.match(html, /data-clear-chat/);
     assert.match(html, /data-local-auth-form/);
     assert.match(html, /data-local-google-login/);
     assert.match(html, /data-local-message-form/);
@@ -150,6 +151,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(popoutResponse.headers.get('content-type'), /^text\/html/);
     assert.match(popoutHtml, /Viewer Mode/);
     assert.match(popoutHtml, /data-chat-list/);
+    assert.match(popoutHtml, /data-clear-chat/);
     assert.doesNotMatch(popoutHtml, /window\.chatAggregator/);
     assert.equal(overlayResponse.status, 200);
     assert.match(overlayResponse.headers.get('content-type'), /^text\/html/);
@@ -214,6 +216,8 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(script, /detectViewerMode/);
     assert.match(script, /dataset\.viewerMode/);
     assert.match(script, /\/popout/);
+    assert.match(script, /createViewerCardTooltip/);
+    assert.match(script, /clearChatFeed/);
     assert.match(script, /sendLocalMessage/);
     assert.match(script, /runLocalModerationCommand/);
     assert.match(script, /requestSubmit/);
@@ -233,6 +237,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(style, /\.local-chat-suggestions/);
     assert.match(style, /\.message__badge--local/);
     assert.match(style, /\.viewer-status-grid/);
+    assert.match(style, /\.chat-action-button/);
     assert.match(style, /body\[data-viewer-mode='popout'\]/);
     assert.match(style, /\.chat-filter-control/);
     assert.equal(overlayScriptResponse.status, 200);
@@ -315,17 +320,21 @@ test('serves the admin shell and protects session APIs with a configured admin c
     assert.match(adminShellResponse.headers.get('content-type'), /^text\/html/);
     assert.match(adminShell, /data-login-form/);
     assert.match(adminShell, /data-config-form/);
+    assert.match(adminShell, /data-moderator-form/);
+    assert.match(adminShell, /data-moderator-list/);
     assert.match(adminShell, /admin-mode\.js/);
     assert.match(adminShell, /admin-mode\.css/);
     assert.equal(adminStyleResponse.status, 200);
     assert.match(adminStyleResponse.headers.get('content-type'), /^text\/css/);
     assert.match(adminStyle, /\.admin-shell/);
+    assert.match(adminStyle, /\.moderator-row/);
     assert.equal(adminScriptResponse.status, 200);
     assert.match(adminScriptResponse.headers.get('content-type'), /^text\/javascript/);
     assert.match(adminScript, /\/api\/admin\/session/);
     assert.match(adminScript, /\/api\/admin\/login/);
     assert.match(adminScript, /\/api\/admin\/logout/);
     assert.match(adminScript, /\/api\/admin\/config/);
+    assert.match(adminScript, /\/api\/admin\/moderators/);
     assert.doesNotMatch(adminShell, /demo-admin-token/);
     assert.doesNotMatch(adminScript, /demo-admin-token/);
     assert.deepEqual(await anonymousSessionResponse.json(), { authenticated: false });
@@ -409,6 +418,57 @@ test('protects and persists browser backend admin config', async () => {
     assert.deepEqual(browserConfigStore.load(), savedConfig);
     assert.deepEqual(updatedConfig, savedConfig);
     assert.equal((await snapshotResponse.json()).manifest.title, 'Public Snapshot');
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('protects and manages local chat moderators from admin APIs', async () => {
+  const localChatStore = createTestLocalChatStore();
+  const gateway = createHttpGateway({
+    adminSessionIdFactory: () => 'admin-session-moderators',
+    adminToken: 'demo-admin-token',
+    getSnapshot: () => ({}),
+    localChatStore,
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const blockedResponse = await fetch(localUrl(address, '/api/admin/moderators'));
+    const loginResponse = await postJson(localUrl(address, '/api/admin/login'), {
+      token: 'demo-admin-token',
+    });
+    const sessionCookie = loginResponse.headers.get('set-cookie').split(';')[0];
+    const emptyResponse = await fetch(localUrl(address, '/api/admin/moderators'), {
+      headers: { Cookie: sessionCookie },
+    });
+    const addResponse = await postJson(
+      localUrl(address, '/api/admin/moderators'),
+      { email: 'MOD@example.com', nick: 'ModUser' },
+      undefined,
+      { Cookie: sessionCookie },
+    );
+    const addBody = await addResponse.json();
+    const listResponse = await fetch(localUrl(address, '/api/admin/moderators'), {
+      headers: { Cookie: sessionCookie },
+    });
+    const deleteResponse = await fetch(
+      localUrl(address, `/api/admin/moderators/${encodeURIComponent(addBody.moderator.id)}`),
+      {
+        headers: { Cookie: sessionCookie },
+        method: 'DELETE',
+      },
+    );
+
+    assert.equal(blockedResponse.status, 401);
+    assert.deepEqual(await emptyResponse.json(), { moderators: [] });
+    assert.equal(addResponse.status, 201);
+    assert.equal(addBody.moderator.email, 'MOD@example.com');
+    assert.equal(addBody.moderator.nick, 'ModUser');
+    assert.equal(addBody.moderator.id, 'email=mod%40example.com&nick=moduser');
+    assert.equal((await listResponse.json()).moderators.length, 1);
+    assert.deepEqual(await deleteResponse.json(), { moderators: [], removed: 1 });
   } finally {
     await gateway.stop();
   }

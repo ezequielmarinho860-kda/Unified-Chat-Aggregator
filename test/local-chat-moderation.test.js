@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { applyModerationCommand } = require('../src/local-chat-moderation');
+const { applyModerationCommand, requireModerator } = require('../src/local-chat-moderation');
 const { createLocalChatStore } = require('../src/local-chat-store');
 
 const createTestStore = () => {
@@ -33,4 +33,11 @@ test('unmods a user by nick even when the moderator rule was stored by email', (
   assert.equal(result.action, 'unmod');
   assert.equal(result.removed, 1);
   assert.equal(store.getUserByNick('ModUser').role, 'user');
+});
+
+test('allows admin, host, and moderator roles to run moderation APIs', () => {
+  assert.doesNotThrow(() => requireModerator({ role: 'admin' }));
+  assert.doesNotThrow(() => requireModerator({ role: 'host' }));
+  assert.doesNotThrow(() => requireModerator({ role: 'moderator' }));
+  assert.throws(() => requireModerator({ role: 'user' }), /permission is required/);
 });

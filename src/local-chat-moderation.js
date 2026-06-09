@@ -10,7 +10,7 @@ const LOCAL_MODERATION_COMMANDS = Object.freeze([
 ]);
 
 const requireModerator = (user) => {
-  if (!['host', 'moderator'].includes(user?.role)) {
+  if (!['admin', 'host', 'moderator'].includes(user?.role)) {
     const error = new Error('Local chat moderator permission is required.');
 
     error.statusCode = 403;

@@ -270,7 +270,7 @@ const normalizeUser = (user = {}) => ({
   emailKey: normalizeEmail(user.emailKey || user.email),
   nick: requireNick(user.nick),
   nickKey: normalizeNick(user.nickKey || user.nick),
-  role: user.role === 'moderator' || user.role === 'host' ? user.role : 'user',
+  role: ['admin', 'host', 'moderator'].includes(user.role) ? user.role : 'user',
   createdAt: optionalString(user.createdAt) || new Date(0).toISOString(),
   updatedAt: optionalString(user.updatedAt) || new Date(0).toISOString(),
 });
@@ -362,8 +362,8 @@ const findUserByNick = (state, nick) =>
   state.users.find((user) => user.nickKey === normalizeNick(nick));
 
 const getConfiguredRole = (state, user) => {
-  if (user.role === 'host') {
-    return 'host';
+  if (user.role === 'admin' || user.role === 'host') {
+    return user.role;
   }
 
   return state.moderators.some((moderator) => matchesIdentity(user, moderator))
@@ -387,8 +387,8 @@ const sameRestrictionTarget = (left, right) =>
   );
 
 const createAuthorBadges = (user) =>
-  user.role === 'moderator' || user.role === 'host'
-    ? [{ id: user.role, label: user.role === 'host' ? 'Host' : 'Mod' }]
+  ['admin', 'host', 'moderator'].includes(user.role)
+    ? [{ id: user.role, label: user.role === 'admin' ? 'Admin' : user.role === 'host' ? 'Host' : 'Mod' }]
     : [];
 
 const normalizeMessageText = (text) => {

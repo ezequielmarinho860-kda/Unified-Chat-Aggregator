@@ -5,6 +5,10 @@
     form: document.querySelector('[data-login-form]'),
     loginMessage: document.querySelector('[data-login-message]'),
     logoutButton: document.querySelector('[data-logout-button]'),
+    moderatorForm: document.querySelector('[data-moderator-form]'),
+    moderatorList: document.querySelector('[data-moderator-list]'),
+    moderatorsMessage: document.querySelector('[data-moderators-message]'),
+    moderatorsPanel: document.querySelector('[data-moderators-panel]'),
     sessionLabel: document.querySelector('[data-session-label]'),
     sessionPanel: document.querySelector('[data-session-panel]'),
     sessionState: document.querySelector('[data-session-state]'),
@@ -25,11 +29,13 @@
 
     elements.form.hidden = authenticated;
     elements.configForm.hidden = !authenticated;
+    elements.moderatorsPanel.hidden = !authenticated;
     elements.sessionPanel.hidden = !authenticated;
     setSessionState(authenticated ? 'authenticated' : 'anonymous', authenticated ? 'Signed in' : 'Signed out');
 
     if (authenticated) {
       void loadConfig();
+      void loadModerators();
     }
   };
 
@@ -69,6 +75,10 @@
 
   const showConfigMessage = (message = '') => {
     elements.configMessage.textContent = message;
+  };
+
+  const showModeratorsMessage = (message = '') => {
+    elements.moderatorsMessage.textContent = message;
   };
 
   const loadConfig = async () => {
@@ -144,6 +154,57 @@
     }
   };
 
+  const loadModerators = async () => {
+    showModeratorsMessage('');
+
+    try {
+      renderModerators((await requestJson('/api/admin/moderators')).moderators ?? []);
+    } catch (error) {
+      showModeratorsMessage(error.message);
+    }
+  };
+
+  const renderModerators = (moderators) => {
+    if (!elements.moderatorList) {
+      return;
+    }
+
+    if (moderators.length === 0) {
+      elements.moderatorList.replaceChildren(createEmptyModeratorElement());
+      return;
+    }
+
+    elements.moderatorList.replaceChildren(...moderators.map(createModeratorElement));
+  };
+
+  const createEmptyModeratorElement = () => {
+    const empty = document.createElement('p');
+
+    empty.className = 'empty-list';
+    empty.textContent = 'No moderators configured yet.';
+    return empty;
+  };
+
+  const createModeratorElement = (moderator) => {
+    const row = document.createElement('div');
+    const identity = document.createElement('div');
+    const label = document.createElement('strong');
+    const detail = document.createElement('span');
+    const removeButton = document.createElement('button');
+
+    row.className = 'moderator-row';
+    identity.className = 'moderator-identity';
+    label.textContent = moderator.nick || moderator.email || 'Moderator';
+    detail.textContent = [moderator.email, moderator.nick].filter(Boolean).join(' / ');
+    removeButton.className = 'secondary-button';
+    removeButton.type = 'button';
+    removeButton.dataset.removeModerator = moderator.id;
+    removeButton.textContent = 'Remove';
+    identity.append(label, detail);
+    row.append(identity, removeButton);
+    return row;
+  };
+
   const getField = (name) => elements.configForm.elements[name]?.value.trim() ?? '';
 
   const setField = (name, value) => {
@@ -201,6 +262,54 @@
       showConfigMessage('Saved.');
     } catch (error) {
       showConfigMessage(error.message);
+    }
+  });
+
+  elements.moderatorForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    showModeratorsMessage('');
+
+    const email = elements.moderatorForm.elements.email.value.trim();
+    const nick = elements.moderatorForm.elements.nick.value.trim();
+
+    try {
+      if (!email && !nick) {
+        throw new Error('Moderator needs an email or nick.');
+      }
+
+      await requestJson('/api/admin/moderators', {
+        body: { email, nick },
+        method: 'POST',
+      });
+      elements.moderatorForm.reset();
+      await loadModerators();
+      showModeratorsMessage('Moderator saved.');
+    } catch (error) {
+      showModeratorsMessage(error.message);
+    }
+  });
+
+  elements.moderatorList?.addEventListener('click', async (event) => {
+    const target = typeof event.target?.closest === 'function'
+      ? event.target
+      : event.target?.parentElement;
+    const button = target?.closest('[data-remove-moderator]');
+
+    if (!button) {
+      return;
+    }
+
+    showModeratorsMessage('');
+
+    try {
+      const result = await requestJson(`/api/admin/moderators/${encodeURIComponent(button.dataset.removeModerator)}`, {
+        method: 'DELETE',
+      });
+
+      renderModerators(result.moderators ?? []);
+      showModeratorsMessage(result.removed > 0 ? 'Moderator removed.' : 'Moderator was already removed.');
+    } catch (error) {
+      showModeratorsMessage(error.message);
     }
   });
 

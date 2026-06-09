@@ -87,6 +87,21 @@ test('marks configured moderators by email and nick', () => {
   assert.equal(users.find((user) => user.nickKey === 'nickmod').role, 'moderator');
 });
 
+test('preserves admin local chat role and badge', () => {
+  const store = createTestStore();
+  const user = store.registerUser({ email: 'admin@example.com', nick: 'admin_user' });
+  const state = store.load();
+
+  state.users.find((entry) => entry.id === user.id).role = 'admin';
+  store.save(state);
+
+  const { session } = store.createSession({ email: 'admin@example.com' });
+  const message = store.createMessage({ token: session.token, text: 'admin message' });
+
+  assert.equal(store.getSessionUser(session.token).role, 'admin');
+  assert.deepEqual(message.author.badges, [{ id: 'admin', label: 'Admin' }]);
+});
+
 test('applies moderator rules when users register after the rule exists', () => {
   const store = createTestStore();
 

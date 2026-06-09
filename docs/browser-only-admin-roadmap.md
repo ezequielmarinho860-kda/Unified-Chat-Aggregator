@@ -376,6 +376,10 @@ npm.cmd test
 
 ### Bloco 7 - Moderacao Browser-Only
 
+Estado atual: implementado com gerenciamento de moderadores no `/admin`,
+APIs protegidas em `/api/admin/moderators` e comandos de moderacao no chat
+local validados por role.
+
 Objetivo: moderadores operarem pelo browser.
 
 Mudancas:

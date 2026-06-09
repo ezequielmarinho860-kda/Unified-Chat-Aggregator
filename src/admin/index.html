@@ -44,6 +44,26 @@
           <button class="secondary-button" type="button" data-logout-button>Sign out</button>
         </section>
 
+        <section class="moderators-panel" data-moderators-panel hidden>
+          <div>
+            <p class="admin-kicker">Moderation</p>
+            <h2>Moderators</h2>
+          </div>
+          <form class="moderator-form" data-moderator-form>
+            <label class="field">
+              <span>Email</span>
+              <input name="email" type="email" autocomplete="off">
+            </label>
+            <label class="field">
+              <span>Nick</span>
+              <input name="nick" type="text" autocomplete="off">
+            </label>
+            <button type="submit">Add mod</button>
+          </form>
+          <div class="moderator-list" data-moderator-list></div>
+          <p class="form-message" data-moderators-message role="status"></p>
+        </section>
+
         <form class="config-panel" data-config-form hidden>
           <div>
             <p class="admin-kicker">Viewer</p>
