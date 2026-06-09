@@ -406,7 +406,8 @@ npm.cmd test
 
 Estado atual: implementado para leitura Twitch/Kick e X no backend standalone a
 partir da configuracao do `/admin`. X usa um worker persistente de Chrome/Edge
-no backend em vez de `BrowserWindow`.
+no backend em vez de `BrowserWindow`, e o `/admin` tem uma acao protegida
+`Connect X` para abrir Chrome/Edge normal no profile correto antes da captura.
 
 Objetivo: deixar Twitch/Kick/X independentes do Electron.
 

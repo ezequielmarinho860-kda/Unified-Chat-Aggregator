@@ -215,6 +215,9 @@ Read support:
 - In standalone backend mode, launches a persistent browser profile for the
   configured live URL.
 - Keeps the X login session in that profile instead of the Electron partition.
+- Provides a protected admin `Connect X` action that opens normal Chrome/Edge
+  with the same dedicated profile so the streamer can sign in without
+  Playwright/Google login blocks.
 - Provides a `Disconnect` action for X that clears the backend browser session
   and restarts only the X connector.
 - Sends captured chat messages from the browser worker back to the main app.
@@ -227,7 +230,8 @@ Write support:
 - Sends messages by injecting text into the X live chat composer in the
   persistent browser session.
 - Requires the persistent X browser session to be logged into an account that
-  can chat in the live.
+  can chat in the live. In the browser-only admin, use `Connect X`, sign in,
+  close that Chrome/Edge window, then start or save the source.
 - Treats X write as best-effort because it depends on X's browser DOM and chat
   composer behavior rather than an official public chat API.
 
