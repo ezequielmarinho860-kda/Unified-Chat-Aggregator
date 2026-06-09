@@ -68,6 +68,7 @@
     messageCount: document.querySelector('[data-message-count]'),
     chatList: document.querySelector('[data-chat-list]'),
     chatFilterButtons: document.querySelectorAll('[data-chat-platform-filter]'),
+    clearChat: document.querySelector('[data-clear-chat]'),
     localAuthForm: document.querySelector('[data-local-auth-form]'),
     localChatStatus: document.querySelector('[data-local-chat-status]'),
     localChatSuggestions: document.querySelector('[data-local-chat-suggestions]'),
@@ -93,8 +94,6 @@
   const CHAT_SCROLL_DEBUG_LIMIT = 80;
 
   document.body.dataset.viewerMode = state.viewerMode;
-
-  const isPopoutMode = () => state.viewerMode === 'popout';
 
   const getChatScrollMetrics = () => {
     if (!elements.chatList) {
@@ -227,13 +226,11 @@
 
   const start = async () => {
     try {
-      if (!isPopoutMode()) {
-        restoreLocalSession();
-        consumeGoogleOAuthRedirect();
-        await verifyLocalSession();
-        await refreshGoogleOAuthStatus();
-        await refreshLocalModerationCommands();
-      }
+      restoreLocalSession();
+      consumeGoogleOAuthRedirect();
+      await verifyLocalSession();
+      await refreshGoogleOAuthStatus();
+      await refreshLocalModerationCommands();
 
       await loadSnapshot();
       connectEvents();
@@ -484,7 +481,7 @@
     const platformRows = new Map(
       ['twitch', 'kick', 'x'].map((platform) => [
         platform,
-        { count: 0, state: 'unavailable' },
+        { count: 0, sources: [], state: 'unavailable' },
       ]),
     );
 
@@ -496,6 +493,8 @@
         continue;
       }
 
+      row.sources.push(viewer);
+
       if (viewer.state === 'available') {
         row.state = 'available';
         row.count += viewer.count ?? 0;
@@ -505,18 +504,30 @@
     }
 
     for (const [platform, row] of platformRows) {
-      updateViewerCard(platform, row.state, row.state === 'available' ? formatNumber(row.count) : '--');
+      updateViewerCard(
+        platform,
+        row.state,
+        row.state === 'available' ? formatNumber(row.count) : '--',
+        createViewerCardTooltip(platform, row, viewers),
+      );
     }
 
-    updateViewerCard('total', 'available', formatNumber(viewers.total ?? 0));
+    updateViewerCard(
+      'total',
+      'available',
+      formatNumber(viewers.total ?? 0),
+      createViewerCardTooltip('total', { count: viewers.total ?? 0, sources: viewers.sources ?? [], state: 'available' }),
+    );
   };
 
-  const updateViewerCard = (platform, viewerState, count) => {
+  const updateViewerCard = (platform, viewerState, count, title) => {
     const card = viewerCards.get(platform);
     const countElement = viewerCountElements.get(platform);
 
     if (card) {
       card.dataset.viewerState = viewerState;
+      card.title = title ?? '';
+      card.setAttribute('aria-label', title ?? '');
     }
 
     if (countElement) {
@@ -1436,6 +1447,43 @@
   const formatViewerSourceUpdated = (viewer) =>
     viewer?.updatedAt ? `Updated ${formatDateTime(viewer.updatedAt)}` : 'No viewer update yet.';
 
+  const createViewerCardTooltip = (platform, row, viewers = {}) => {
+    const platformLabel = platform === 'total' ? 'Total viewers' : `${formatPlatform(platform)} viewers`;
+    const breakdown = (row.sources ?? [])
+      .map((viewer) => {
+        const sourceLabel = formatSourceLabel(viewer.source);
+        const display = getViewerDisplay(viewer);
+        const sourceCount = display.state === 'available' ? formatNumber(viewer.count ?? 0) : display.label;
+
+        return `${sourceLabel}: ${sourceCount}`;
+      })
+      .filter(Boolean);
+
+    if (platform === 'total') {
+      const platformBreakdown = new Map();
+
+      for (const viewer of viewers.sources ?? []) {
+        const sourcePlatform = viewer.source?.platform;
+        if (!sourcePlatform) {
+          continue;
+        }
+
+        const current = platformBreakdown.get(sourcePlatform) ?? 0;
+        platformBreakdown.set(sourcePlatform, current + (viewer.state === 'available' ? viewer.count ?? 0 : 0));
+      }
+
+      const totalBreakdown = [...platformBreakdown.entries()].map(
+        ([sourcePlatform, count]) => `${formatPlatform(sourcePlatform)}: ${formatNumber(count)}`,
+      );
+
+      return [platformLabel, ...totalBreakdown].join('\n');
+    }
+
+    return breakdown.length > 0
+      ? [platformLabel, ...breakdown].join('\n')
+      : `${platformLabel}: ${row.state === 'available' ? row.count : 'unavailable'}`;
+  };
+
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
 
@@ -1459,6 +1507,17 @@
   const getCurrentViewerReturnTo = () =>
     `${isPopoutPathname(window.location.pathname) ? '/popout' : '/viewer'}${window.location.search}`;
 
+  const clearChatFeed = () => {
+    state.messageCount = 0;
+    state.messages = [];
+    state.messageKeys = new Set();
+    state.unseenMessageCount = 0;
+    setChatPinnedToBottom(true, 'clear_chat');
+    clearLocalChatSuggestions();
+    cancelScheduledRender();
+    render({ stickToBottom: true, forceChatRender: true });
+  };
+
   elements.resumeChat?.addEventListener('click', () => {
     chatScrollDebug.log('resume_click');
     setChatPinnedToBottom(true, 'resume_click');
@@ -1466,6 +1525,8 @@
     flushScheduledRender({ stickToBottom: true, forceChatRender: true });
     updateResumeChatControl();
   });
+
+  elements.clearChat?.addEventListener('click', clearChatFeed);
 
   for (const button of elements.chatFilterButtons ?? []) {
     button.addEventListener('click', () => {
