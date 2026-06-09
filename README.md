@@ -402,6 +402,18 @@ The OBS-friendly read-only chat overlay is served locally at:
 http://127.0.0.1:47831/overlay
 ```
 
+The streamer popout chat window is served locally at:
+
+```text
+http://127.0.0.1:47831/popout
+```
+
+The same compact mode can also be opened with:
+
+```text
+http://127.0.0.1:47831/viewer?mode=popout
+```
+
 The page consumes only the public gateway contract. It bootstraps from the
 snapshot endpoint, reconnects to the realtime WebSocket when needed, and renders
 new combined chat messages as a read-only feed with platform, source, author,
@@ -443,6 +455,10 @@ The overlay is a separate transparent browser page for OBS Browser Source. It
 uses the same public transport as Viewer Mode, renders only recent combined chat
 messages, accepts a bounded `maxMessages` query parameter, and exposes no chat
 sending or moderation controls.
+
+The popout uses the Viewer Mode shell in a compact chat-only layout. It keeps the
+platform filters visible, hides the player and local chat controls, and does not
+expose admin configuration.
 
 The gateway binds only to the local loopback address, accepts only `GET` on the
 versioned snapshot, Viewer Mode, and overlay routes, and serializes realtime

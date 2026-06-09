@@ -6,6 +6,19 @@
   const reconnectMaxMs = 10_000;
   const transport = window.ViewerTransports.createDefaultViewerTransportClient();
   const filterPlatforms = ['twitch', 'kick', 'x', 'local'];
+  function isPopoutPathname(pathname) {
+    return pathname === '/popout' || pathname === '/popout/';
+  }
+
+  function detectViewerMode() {
+    const params = new URLSearchParams(window.location.search);
+
+    return isPopoutPathname(window.location.pathname) || params.get('mode') === 'popout'
+      ? 'popout'
+      : 'full';
+  }
+
+  const viewerMode = detectViewerMode();
   const state = {
     eventConnection: undefined,
     snapshot: undefined,
@@ -26,6 +39,7 @@
     localModerationCommands: [],
     pendingGoogleOAuth: undefined,
     pendingLocalRegistrationEmail: undefined,
+    viewerMode,
   };
   const platformLabels = {
     twitch: 'Twitch',
@@ -77,6 +91,10 @@
     ]),
   );
   const CHAT_SCROLL_DEBUG_LIMIT = 80;
+
+  document.body.dataset.viewerMode = state.viewerMode;
+
+  const isPopoutMode = () => state.viewerMode === 'popout';
 
   const getChatScrollMetrics = () => {
     if (!elements.chatList) {
@@ -209,11 +227,14 @@
 
   const start = async () => {
     try {
-      restoreLocalSession();
-      consumeGoogleOAuthRedirect();
-      await verifyLocalSession();
-      await refreshGoogleOAuthStatus();
-      await refreshLocalModerationCommands();
+      if (!isPopoutMode()) {
+        restoreLocalSession();
+        consumeGoogleOAuthRedirect();
+        await verifyLocalSession();
+        await refreshGoogleOAuthStatus();
+        await refreshLocalModerationCommands();
+      }
+
       await loadSnapshot();
       connectEvents();
     } catch (error) {
@@ -1435,6 +1456,9 @@
   const getFormFieldValue = (form, name) =>
     form?.elements.namedItem(name)?.value.trim() ?? '';
 
+  const getCurrentViewerReturnTo = () =>
+    `${isPopoutPathname(window.location.pathname) ? '/popout' : '/viewer'}${window.location.search}`;
+
   elements.resumeChat?.addEventListener('click', () => {
     chatScrollDebug.log('resume_click');
     setChatPinnedToBottom(true, 'resume_click');
@@ -1523,7 +1547,7 @@
       return;
     }
 
-    window.location.href = transport.createGoogleOAuthStartUrl({ returnTo: '/viewer' });
+    window.location.href = transport.createGoogleOAuthStartUrl({ returnTo: getCurrentViewerReturnTo() });
   });
 
   elements.localLogout?.addEventListener('click', () => {

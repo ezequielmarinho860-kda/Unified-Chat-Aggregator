@@ -74,6 +74,7 @@ Essas rotas podem ser acessadas por usuarios do chat/local/OBS:
 
 ```text
 GET /viewer
+GET /popout
 GET /overlay
 GET /api/v1/snapshot
 GET /api/v1/events
@@ -352,6 +353,9 @@ npm.cmd test
 ```
 
 ### Bloco 6 - Viewer Popout
+
+Estado atual: implementado como `/viewer?mode=popout` e alias publico
+`/popout`, reutilizando o contrato publico do viewer.
 
 Objetivo: streamer usar janela popout na live.
 

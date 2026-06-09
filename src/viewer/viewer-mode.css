@@ -953,3 +953,82 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
+
+body[data-viewer-mode='popout'] {
+  overflow: hidden;
+  min-height: 100dvh;
+  background: #090d14;
+}
+
+body[data-viewer-mode='popout'] .viewer-shell {
+  display: flex;
+  width: 100%;
+  height: 100dvh;
+  padding: 8px;
+  overflow: hidden;
+}
+
+body[data-viewer-mode='popout'] .topbar,
+body[data-viewer-mode='popout'] .player-panel,
+body[data-viewer-mode='popout'] .local-chat-controls,
+body[data-viewer-mode='popout'] .chat-heading-copy {
+  display: none;
+}
+
+body[data-viewer-mode='popout'] .layout-grid {
+  display: block;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body[data-viewer-mode='popout'] .chat-panel {
+  height: 100%;
+  padding: 10px;
+  border-radius: 12px;
+}
+
+body[data-viewer-mode='popout'] .panel-heading {
+  display: block;
+  margin-bottom: 8px;
+}
+
+body[data-viewer-mode='popout'] .chat-filter-control {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border-radius: 8px;
+}
+
+body[data-viewer-mode='popout'] .chat-filter-button {
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 6px;
+  overflow: hidden;
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body[data-viewer-mode='popout'] .chat-list {
+  gap: 6px;
+  padding-right: 2px;
+}
+
+body[data-viewer-mode='popout'] .message {
+  gap: 4px;
+  padding: 8px;
+}
+
+body[data-viewer-mode='popout'] .message__metadata {
+  gap: 5px;
+}
+
+body[data-viewer-mode='popout'] .message__source,
+body[data-viewer-mode='popout'] .message__time {
+  font-size: 0.68rem;
+}
+
+body[data-viewer-mode='popout'] .message__text {
+  font-size: 0.92rem;
+}

@@ -106,6 +106,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
   try {
     const address = await gateway.start();
     const viewerResponse = await fetch(address.viewerUrl);
+    const popoutResponse = await fetch(address.popoutUrl);
     const overlayResponse = await fetch(address.overlayUrl);
     const transportResponse = await fetch(`http://${address.host}:${address.port}/viewer/viewer-transport.js`);
     const scriptResponse = await fetch(`http://${address.host}:${address.port}/viewer/viewer-mode.js`);
@@ -116,6 +117,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
       `http://${address.host}:${address.port}/viewer/assets/twitch-glitch.svg`,
     );
     const html = await viewerResponse.text();
+    const popoutHtml = await popoutResponse.text();
     const overlayHtml = await overlayResponse.text();
     const transportScript = await transportResponse.text();
     const script = await scriptResponse.text();
@@ -144,6 +146,11 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(html, /data-local-chat-suggestions/);
     assert.match(html, /data-resume-chat/);
     assert.doesNotMatch(html, /window\.chatAggregator/);
+    assert.equal(popoutResponse.status, 200);
+    assert.match(popoutResponse.headers.get('content-type'), /^text\/html/);
+    assert.match(popoutHtml, /Viewer Mode/);
+    assert.match(popoutHtml, /data-chat-list/);
+    assert.doesNotMatch(popoutHtml, /window\.chatAggregator/);
     assert.equal(overlayResponse.status, 200);
     assert.match(overlayResponse.headers.get('content-type'), /^text\/html/);
     assert.match(overlayHtml, /Chat Overlay/);
@@ -204,6 +211,9 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(script, /consumeGoogleOAuthRedirect/);
     assert.match(script, /completeGoogleOAuth/);
     assert.match(script, /createGoogleOAuthStartUrl/);
+    assert.match(script, /detectViewerMode/);
+    assert.match(script, /dataset\.viewerMode/);
+    assert.match(script, /\/popout/);
     assert.match(script, /sendLocalMessage/);
     assert.match(script, /runLocalModerationCommand/);
     assert.match(script, /requestSubmit/);
@@ -223,6 +233,8 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(style, /\.local-chat-suggestions/);
     assert.match(style, /\.message__badge--local/);
     assert.match(style, /\.viewer-status-grid/);
+    assert.match(style, /body\[data-viewer-mode='popout'\]/);
+    assert.match(style, /\.chat-filter-control/);
     assert.equal(overlayScriptResponse.status, 200);
     assert.match(overlayScriptResponse.headers.get('content-type'), /^text\/javascript/);
     assert.match(overlayScript, /createDefaultViewerTransportClient/);
@@ -409,6 +421,7 @@ test('rejects write methods and unknown routes', async () => {
     const address = await gateway.start();
     const writeResponse = await fetch(address.snapshotUrl, { method: 'POST' });
     const viewerWriteResponse = await fetch(address.viewerUrl, { method: 'POST' });
+    const popoutWriteResponse = await fetch(address.popoutUrl, { method: 'POST' });
     const overlayWriteResponse = await fetch(address.overlayUrl, { method: 'POST' });
     const missingResponse = await fetch(`http://${address.host}:${address.port}/api/v1/missing`);
 
@@ -416,6 +429,8 @@ test('rejects write methods and unknown routes', async () => {
     assert.equal(writeResponse.headers.get('allow'), 'GET');
     assert.equal(viewerWriteResponse.status, 405);
     assert.equal(viewerWriteResponse.headers.get('allow'), 'GET');
+    assert.equal(popoutWriteResponse.status, 405);
+    assert.equal(popoutWriteResponse.headers.get('allow'), 'GET');
     assert.equal(overlayWriteResponse.status, 405);
     assert.equal(overlayWriteResponse.headers.get('allow'), 'GET');
     assert.equal(missingResponse.status, 404);
@@ -469,6 +484,17 @@ test('reports Google OAuth status and redirects authorization starts', async () 
     assert.deepEqual(authorizationOptions, {
       resultKey: 'result-1',
       returnTo: '/viewer?debugChat=1',
+    });
+
+    const popoutStartResponse = await fetch(
+      localUrl(address, '/api/v1/auth/google/start?returnTo=/popout&resultKey=result-2'),
+      { redirect: 'manual' },
+    );
+
+    assert.equal(popoutStartResponse.status, 302);
+    assert.deepEqual(authorizationOptions, {
+      resultKey: 'result-2',
+      returnTo: '/popout',
     });
   } finally {
     await gateway.stop();

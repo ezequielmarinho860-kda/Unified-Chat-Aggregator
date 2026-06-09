@@ -38,6 +38,7 @@ const ADMIN_CONFIG_PATH = '/api/admin/config';
 const ADMIN_SESSION_PATH = '/api/admin/session';
 const VIEWER_PATH = '/viewer';
 const OVERLAY_PATH = '/overlay';
+const POPOUT_PATH = '/popout';
 const MAX_JSON_BODY_BYTES = 16 * 1024;
 const APP_EVENT_TYPES = new Set([
   'chat.message',
@@ -49,6 +50,8 @@ const APP_EVENT_TYPES = new Set([
 const VIEWER_ASSETS = new Map([
   [VIEWER_PATH, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
   [`${VIEWER_PATH}/`, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
+  [POPOUT_PATH, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
+  [`${POPOUT_PATH}/`, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
   [`${VIEWER_PATH}/viewer-mode.css`, { file: 'viewer-mode.css', contentType: 'text/css; charset=utf-8' }],
   [`${VIEWER_PATH}/viewer-transport.js`, {
     file: 'viewer-transport.js',
@@ -654,7 +657,14 @@ const sanitizeGoogleAuthReturnTo = (returnTo) => {
   try {
     const parsed = new URL(returnTo, `http://${GATEWAY_HOST}`);
 
-    if (parsed.origin === `http://${GATEWAY_HOST}` && parsed.pathname.startsWith(VIEWER_PATH)) {
+    if (
+      parsed.origin === `http://${GATEWAY_HOST}` &&
+      (
+        parsed.pathname.startsWith(VIEWER_PATH) ||
+        parsed.pathname === POPOUT_PATH ||
+        parsed.pathname === `${POPOUT_PATH}/`
+      )
+    ) {
       return `${parsed.pathname}${parsed.search}`;
     }
   } catch {
@@ -884,6 +894,9 @@ const getAddress = (server) => {
     overlayUrl: `http://${GATEWAY_HOST}:${
       typeof address === 'object' && address ? address.port : DEFAULT_GATEWAY_PORT
     }${OVERLAY_PATH}`,
+    popoutUrl: `http://${GATEWAY_HOST}:${
+      typeof address === 'object' && address ? address.port : DEFAULT_GATEWAY_PORT
+    }${POPOUT_PATH}`,
     eventsUrl: `ws://${GATEWAY_HOST}:${
       typeof address === 'object' && address ? address.port : DEFAULT_GATEWAY_PORT
     }${EVENTS_PATH}`,
@@ -905,6 +918,7 @@ module.exports = {
   EVENTS_PATH,
   GATEWAY_HOST,
   OVERLAY_PATH,
+  POPOUT_PATH,
   SNAPSHOT_PATH,
   VIEWER_PATH,
   createHttpGateway,
