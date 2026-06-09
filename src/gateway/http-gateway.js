@@ -3,6 +3,12 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { WebSocketServer, WebSocket } = require('ws');
 const {
+  createAdminAuth,
+  createAdminSessionCookie,
+  createExpiredAdminSessionCookie,
+  getAdminSessionId,
+} = require('./admin-auth');
+const {
   LOCAL_MODERATION_COMMANDS,
   applyModerationCommand,
   requireModerator,
@@ -24,6 +30,10 @@ const LOCAL_MESSAGES_PATH = '/api/v1/local/messages';
 const LOCAL_MODERATION_COMMANDS_PATH = '/api/v1/local/moderation-commands';
 const LOCAL_MODERATION_PATH = '/api/v1/local/moderation';
 const LOCAL_REGISTER_PATH = '/api/v1/local/register';
+const ADMIN_PATH = '/admin';
+const ADMIN_LOGIN_PATH = '/api/admin/login';
+const ADMIN_LOGOUT_PATH = '/api/admin/logout';
+const ADMIN_SESSION_PATH = '/api/admin/session';
 const VIEWER_PATH = '/viewer';
 const OVERLAY_PATH = '/overlay';
 const MAX_JSON_BODY_BYTES = 16 * 1024;
@@ -53,11 +63,20 @@ const VIEWER_ASSETS = new Map([
     directory: 'assets',
   }],
 ]);
+const ADMIN_ASSETS = new Map([
+  [ADMIN_PATH, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
+  [`${ADMIN_PATH}/`, { file: 'index.html', contentType: 'text/html; charset=utf-8' }],
+  [`${ADMIN_PATH}/admin-mode.css`, { file: 'admin-mode.css', contentType: 'text/css; charset=utf-8' }],
+  [`${ADMIN_PATH}/admin-mode.js`, { file: 'admin-mode.js', contentType: 'text/javascript; charset=utf-8' }],
+]);
 const DEFAULT_HEARTBEAT_MS = 30_000;
 const VIEWER_ASSET_DIR = path.join(__dirname, '..', 'viewer');
+const ADMIN_ASSET_DIR = path.join(__dirname, '..', 'admin');
 const SHARED_ASSET_DIR = path.join(__dirname, '..', 'assets');
 
 const createHttpGateway = ({
+  adminSessionIdFactory,
+  adminToken,
   appIngestToken,
   getSnapshot,
   googleOAuthService,
@@ -73,6 +92,7 @@ const createHttpGateway = ({
   }
 
   const normalizedPort = normalizePort(port);
+  const adminAuth = createAdminAuth({ adminSessionIdFactory, adminToken });
   let server;
   let webSocketServer;
   let heartbeatTimer;
@@ -85,6 +105,7 @@ const createHttpGateway = ({
     server = createServer((request, response) => {
       void handleRequest(request, response, {
         getSnapshot,
+        adminAuth,
         appIngestToken,
         googleOAuthService,
         localChatStore,
@@ -235,6 +256,11 @@ const handleRequest = async (request, response, context) => {
     return;
   }
 
+  if (isAdminPath(url.pathname) || ADMIN_ASSETS.has(url.pathname)) {
+    await handleAdminRequest(request, response, url.pathname, context.adminAuth);
+    return;
+  }
+
   if (isLocalChatPath(url.pathname)) {
     await handleLocalChatRequest(request, response, url.pathname, context);
     return;
@@ -251,6 +277,97 @@ const handleRequest = async (request, response, context) => {
   }
 
   sendJson(response, 404, { error: 'Not found.' });
+};
+
+const isAdminPath = (pathname) =>
+  [
+    ADMIN_PATH,
+    `${ADMIN_PATH}/`,
+    ADMIN_LOGIN_PATH,
+    ADMIN_LOGOUT_PATH,
+    ADMIN_SESSION_PATH,
+  ].includes(pathname);
+
+const handleAdminRequest = async (request, response, pathname, adminAuth) => {
+  try {
+    if (!adminAuth.isConfigured()) {
+      sendJson(response, 404, { error: 'Not found.' });
+      return;
+    }
+
+    if (ADMIN_ASSETS.has(pathname)) {
+      await handleAdminAssetRequest(request, response, pathname);
+      return;
+    }
+
+    if (pathname === ADMIN_LOGIN_PATH) {
+      requireMethod(request, 'POST');
+      const body = await readJsonBody(request);
+      const session = adminAuth.createSession(body.token);
+
+      sendJson(
+        response,
+        200,
+        { authenticated: true, role: session.role },
+        { 'Set-Cookie': createAdminSessionCookie(session.id) },
+      );
+      return;
+    }
+
+    if (pathname === ADMIN_LOGOUT_PATH) {
+      requireMethod(request, 'POST');
+      adminAuth.deleteSession(getAdminSessionId(request));
+      sendJson(
+        response,
+        200,
+        { authenticated: false },
+        { 'Set-Cookie': createExpiredAdminSessionCookie() },
+      );
+      return;
+    }
+
+    if (pathname === ADMIN_SESSION_PATH) {
+      requireMethod(request, 'GET');
+      const session = adminAuth.getSession(getAdminSessionId(request));
+
+      sendJson(response, 200, {
+        authenticated: Boolean(session),
+        role: session?.role,
+      });
+    }
+  } catch (error) {
+    sendAdminError(response, error);
+  }
+};
+
+const sendAdminError = (response, error) => {
+  const statusCode = error.statusCode ?? 400;
+
+  if (error.allow) {
+    response.setHeader('Allow', error.allow);
+  }
+
+  sendJson(response, statusCode, {
+    error: statusCode >= 500 ? 'Admin request failed.' : error.message,
+  });
+};
+
+const handleAdminAssetRequest = async (request, response, pathname) => {
+  if (request.method !== 'GET') {
+    response.setHeader('Allow', 'GET');
+    sendJson(response, 405, { error: 'Method not allowed.' });
+    return;
+  }
+
+  const asset = ADMIN_ASSETS.get(pathname);
+
+  try {
+    const body = await fs.readFile(path.join(ADMIN_ASSET_DIR, asset.file));
+
+    sendResponse(response, 200, body, asset.contentType);
+  } catch {
+    sendJson(response, 500, { error: 'Admin asset unavailable.' });
+  }
 };
 
 const handleSnapshotRequest = async (request, response, getSnapshot) => {
@@ -654,14 +771,14 @@ const sendLocalChatError = (response, error) => {
   });
 };
 
-const sendJson = (response, statusCode, body) => {
+const sendJson = (response, statusCode, body, headers) => {
   const payload = JSON.stringify(body);
 
-  sendResponse(response, statusCode, payload, 'application/json; charset=utf-8');
+  sendResponse(response, statusCode, payload, 'application/json; charset=utf-8', headers);
 };
 
-const sendHtml = (response, statusCode, body) => {
-  sendResponse(response, statusCode, body, 'text/html; charset=utf-8');
+const sendHtml = (response, statusCode, body, headers) => {
+  sendResponse(response, statusCode, body, 'text/html; charset=utf-8', headers);
 };
 
 const sendRedirect = (response, location) => {
@@ -673,12 +790,13 @@ const sendRedirect = (response, location) => {
   response.end();
 };
 
-const sendResponse = (response, statusCode, body, contentType) => {
+const sendResponse = (response, statusCode, body, contentType, headers = {}) => {
   response.writeHead(statusCode, {
     'Cache-Control': 'no-store',
     'Content-Type': contentType,
     'Content-Length': Buffer.byteLength(body),
     'X-Content-Type-Options': 'nosniff',
+    ...headers,
   });
   response.end(body);
 };

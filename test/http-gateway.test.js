@@ -23,12 +23,13 @@ const createTestLocalChatStore = () => {
 
 const localUrl = (address, path) => `http://${address.host}:${address.port}${path}`;
 
-const postJson = (url, body, token) =>
+const postJson = (url, body, token, headers = {}) =>
   fetch(url, {
     body: JSON.stringify(body),
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...headers,
     },
     method: 'POST',
   });
@@ -216,6 +217,95 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.equal(twitchIconResponse.status, 200);
     assert.match(twitchIconResponse.headers.get('content-type'), /^image\/svg\+xml/);
     assert.match(twitchIcon, /aria-label="Twitch"/);
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('hides admin routes when ADMIN_TOKEN is not configured', async () => {
+  const gateway = createHttpGateway({ getSnapshot: () => ({}), port: 0 });
+
+  try {
+    const address = await gateway.start();
+    const adminResponse = await fetch(localUrl(address, '/admin'));
+    const adminScriptResponse = await fetch(localUrl(address, '/admin/admin-mode.js'));
+    const sessionResponse = await fetch(localUrl(address, '/api/admin/session'));
+
+    assert.equal(adminResponse.status, 404);
+    assert.equal(adminScriptResponse.status, 404);
+    assert.equal(sessionResponse.status, 404);
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('serves the admin shell and protects session APIs with a configured admin cookie', async () => {
+  const gateway = createHttpGateway({
+    adminSessionIdFactory: () => 'admin-session-1',
+    adminToken: 'demo-admin-token',
+    getSnapshot: () => ({}),
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const adminShellResponse = await fetch(localUrl(address, '/admin'));
+    const adminStyleResponse = await fetch(localUrl(address, '/admin/admin-mode.css'));
+    const adminScriptResponse = await fetch(localUrl(address, '/admin/admin-mode.js'));
+    const adminShell = await adminShellResponse.text();
+    const adminStyle = await adminStyleResponse.text();
+    const adminScript = await adminScriptResponse.text();
+    const anonymousSessionResponse = await fetch(localUrl(address, '/api/admin/session'));
+    const queryTokenResponse = await postJson(
+      localUrl(address, '/api/admin/login?token=demo-admin-token'),
+      {},
+    );
+    const loginResponse = await postJson(localUrl(address, '/api/admin/login'), {
+      token: 'demo-admin-token',
+    });
+    const loginBody = await loginResponse.json();
+    const setCookie = loginResponse.headers.get('set-cookie');
+    const sessionCookie = setCookie.split(';')[0];
+    const sessionResponse = await fetch(localUrl(address, '/api/admin/session'), {
+      headers: { Cookie: sessionCookie },
+    });
+    const logoutResponse = await postJson(
+      localUrl(address, '/api/admin/logout'),
+      {},
+      undefined,
+      { Cookie: sessionCookie },
+    );
+    const expiredCookie = logoutResponse.headers.get('set-cookie');
+    const loggedOutSessionResponse = await fetch(localUrl(address, '/api/admin/session'), {
+      headers: { Cookie: sessionCookie },
+    });
+
+    assert.equal(adminShellResponse.status, 200);
+    assert.match(adminShellResponse.headers.get('content-type'), /^text\/html/);
+    assert.match(adminShell, /data-login-form/);
+    assert.match(adminShell, /admin-mode\.js/);
+    assert.match(adminShell, /admin-mode\.css/);
+    assert.equal(adminStyleResponse.status, 200);
+    assert.match(adminStyleResponse.headers.get('content-type'), /^text\/css/);
+    assert.match(adminStyle, /\.admin-shell/);
+    assert.equal(adminScriptResponse.status, 200);
+    assert.match(adminScriptResponse.headers.get('content-type'), /^text\/javascript/);
+    assert.match(adminScript, /\/api\/admin\/session/);
+    assert.match(adminScript, /\/api\/admin\/login/);
+    assert.match(adminScript, /\/api\/admin\/logout/);
+    assert.doesNotMatch(adminShell, /demo-admin-token/);
+    assert.doesNotMatch(adminScript, /demo-admin-token/);
+    assert.deepEqual(await anonymousSessionResponse.json(), { authenticated: false });
+    assert.equal(queryTokenResponse.status, 401);
+    assert.equal(loginResponse.status, 200);
+    assert.deepEqual(loginBody, { authenticated: true, role: 'admin' });
+    assert.match(setCookie, /uca_admin_session=admin-session-1/);
+    assert.match(setCookie, /HttpOnly/);
+    assert.match(setCookie, /SameSite=Lax/);
+    assert.deepEqual(await sessionResponse.json(), { authenticated: true, role: 'admin' });
+    assert.equal(logoutResponse.status, 200);
+    assert.match(expiredCookie, /Max-Age=0/);
+    assert.deepEqual(await loggedOutSessionResponse.json(), { authenticated: false });
   } finally {
     await gateway.stop();
   }

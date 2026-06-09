@@ -6,6 +6,7 @@ const { createLocalChatStore } = require('../local-chat-store');
 const createBrowserBackendRuntime = ({
   dataDir,
   env = process.env,
+  adminToken = env.ADMIN_TOKEN,
   appIngestToken = env.APP_INGEST_TOKEN,
   getSnapshot,
   localChatFileName = 'local-chat.json',
@@ -41,6 +42,7 @@ const createBrowserBackendRuntime = ({
     }
 
     gateway = createHttpGateway({
+      adminToken,
       appIngestToken,
       getSnapshot,
       googleOAuthService,

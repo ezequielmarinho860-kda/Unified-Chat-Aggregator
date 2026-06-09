@@ -14,7 +14,7 @@ test('starts a browser backend runtime without Electron', async () => {
   const snapshot = { protocolVersion: '1', statuses: [], viewers: { sources: [], total: 0 } };
   const runtime = createBrowserBackendRuntime({
     dataDir: createTempDataDir(),
-    env: {},
+    env: { ADMIN_TOKEN: 'runtime-admin-token' },
     getSnapshot: () => snapshot,
     port: 0,
   });
@@ -23,9 +23,11 @@ test('starts a browser backend runtime without Electron', async () => {
     const address = await runtime.start();
     const response = await fetch(address.snapshotUrl);
     const oauthStatus = await fetch(`http://${address.host}:${address.port}/api/v1/auth/google/status`);
+    const adminSession = await fetch(`http://${address.host}:${address.port}/api/admin/session`);
 
     assert.deepEqual(await response.json(), snapshot);
     assert.deepEqual(await oauthStatus.json(), { enabled: false });
+    assert.deepEqual(await adminSession.json(), { authenticated: false });
     assert.equal(runtime.address, address);
     assert.equal(typeof runtime.localChatStore.registerUser, 'function');
     assert.equal(runtime.googleOAuthService.isConfigured(), false);
