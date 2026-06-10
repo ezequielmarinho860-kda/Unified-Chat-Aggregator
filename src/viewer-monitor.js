@@ -22,6 +22,7 @@ const createViewerMonitor = ({
   let running = false;
   let refreshPromise;
   let nextTwitchPollAt = 0;
+  let sourceIdentities = new Map();
   let sourceSnapshots = new Map();
 
   const publish = () => {
@@ -51,7 +52,7 @@ const createViewerMonitor = ({
   const refreshConfiguredPlatforms = async ({ force }) => {
     const config = getConfig?.();
     const connectors = config?.connectors ?? {};
-    const configuredSources = createViewerSourceEntries(connectors);
+    const configuredSources = createViewerSourceEntries(connectors).map(applyKnownSourceIdentity);
     const shouldRefreshTwitch =
       connectors.twitch?.enabled && (force || Date.now() >= nextTwitchPollAt);
 
@@ -104,6 +105,10 @@ const createViewerMonitor = ({
   };
 
   const updateExternalCount = (target, count) => {
+    if (target && typeof target === 'object') {
+      rememberSourceIdentity(target);
+    }
+
     const entries = resolveExternalSourceEntries(target);
     const normalizedCount = normalizeViewerCount(count);
 
@@ -119,9 +124,12 @@ const createViewerMonitor = ({
     return publish();
   };
 
+  const updateSourceIdentity = (source) =>
+    rememberSourceIdentity(source) ? publish() : createSnapshot(sourceSnapshots);
+
   const resolveExternalSourceEntries = (target) => {
     const connectors = getConfig?.()?.connectors ?? {};
-    const configuredSources = createViewerSourceEntries(connectors);
+    const configuredSources = createViewerSourceEntries(connectors).map(applyKnownSourceIdentity);
 
     if (typeof target === 'string') {
       return configuredSources.filter((entry) => entry.platform === target);
@@ -131,8 +139,40 @@ const createViewerMonitor = ({
     const matchingEntry = configuredSources.find((entry) => entry.source.sourceId === sourceId);
 
     return matchingEntry
-      ? [matchingEntry]
+      ? [{ ...matchingEntry, source: mergeSourceIdentity(matchingEntry.source, target) }]
       : [{ platform: target?.platform, source: target, connectorConfig: {}, index: 0 }];
+  };
+
+  const applyKnownSourceIdentity = (entry) => ({
+    ...entry,
+    source: mergeSourceIdentity(entry.source, sourceIdentities.get(entry.source.sourceId)),
+  });
+
+  const rememberSourceIdentity = (source) => {
+    if (!isSourceIdentity(source)) {
+      return false;
+    }
+
+    const currentIdentity = sourceIdentities.get(source.sourceId);
+    const nextIdentity = mergeSourceIdentity(currentIdentity, source);
+    const snapshot = sourceSnapshots.get(source.sourceId);
+    let changed = !areSourceIdentitiesEqual(currentIdentity, nextIdentity);
+
+    sourceIdentities.set(source.sourceId, nextIdentity);
+
+    if (snapshot) {
+      const nextSnapshotSource = mergeSourceIdentity(snapshot.source, nextIdentity);
+
+      if (!areSourceIdentitiesEqual(snapshot.source, nextSnapshotSource)) {
+        sourceSnapshots.set(source.sourceId, {
+          ...snapshot,
+          source: nextSnapshotSource,
+        });
+        changed = true;
+      }
+    }
+
+    return changed;
   };
 
   return {
@@ -149,6 +189,7 @@ const createViewerMonitor = ({
       timer = undefined;
     },
     updateExternalCount,
+    updateSourceIdentity,
   };
 
   function scheduleNextRefresh(startedAt) {
@@ -245,6 +286,42 @@ const createViewerFetchConfig = (entry, platformConfig = {}) => ({
   ...entry.connectorConfig,
   chatroomId: entry.platform === 'kick' && entry.index > 0 ? '' : platformConfig.chatroomId,
 });
+
+const SOURCE_IDENTITY_FIELDS = ['sourceId', 'platform', 'broadcasterName', 'channelLabel'];
+
+const mergeSourceIdentity = (currentSource, patchSource) => {
+  const nextSource = { ...(currentSource ?? {}) };
+
+  for (const field of SOURCE_IDENTITY_FIELDS) {
+    const value = patchSource?.[field];
+
+    if (value !== undefined && value !== null && value !== '') {
+      if (
+        field === 'channelLabel' &&
+        isFallbackXLiveLabel(value) &&
+        currentSource?.channelLabel &&
+        !isFallbackXLiveLabel(currentSource.channelLabel)
+      ) {
+        continue;
+      }
+
+      nextSource[field] = value;
+    }
+  }
+
+  return nextSource;
+};
+
+const isFallbackXLiveLabel = (value) => /^X Live \d+$/i.test(String(value ?? '').trim());
+
+const isSourceIdentity = (source) =>
+  source &&
+  typeof source === 'object' &&
+  typeof source.sourceId === 'string' &&
+  source.sourceId.trim().length > 0;
+
+const areSourceIdentitiesEqual = (left, right) =>
+  SOURCE_IDENTITY_FIELDS.every((field) => left?.[field] === right?.[field]);
 
 const removeStaleSourceSnapshots = (sourceSnapshots, configuredSources) => {
   const configuredSourceIds = new Set(configuredSources.map((entry) => entry.source.sourceId));

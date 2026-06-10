@@ -154,6 +154,10 @@ const wireChatHub = (nextChatHub) => {
   unsubscribeHubStatus?.();
 
   unsubscribeHubMessage = nextChatHub.onMessage((message) => {
+    if (message.source?.platform === 'x') {
+      viewerMonitor?.updateSourceIdentity(message.source);
+    }
+
     broadcastToWindows('chat:message', message);
     publishPublicRealtime('chat.message', () => serializePublicChatMessage(message));
   });

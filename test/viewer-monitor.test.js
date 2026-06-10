@@ -176,3 +176,42 @@ test('collects multiple viewer sources and aggregates platform totals', async ()
     ],
   );
 });
+
+test('keeps discovered X handles on viewer source snapshots', () => {
+  const monitor = createViewerMonitor({
+    getConfig: () => ({
+      connectors: {
+        twitch: { enabled: false },
+        kick: { enabled: false },
+        x: {
+          enabled: true,
+          sources: [
+            { enabled: true, liveUrl: 'https://x.com/i/broadcasts/123' },
+            { enabled: true, liveUrl: 'https://x.com/i/broadcasts/456' },
+          ],
+        },
+      },
+    }),
+  });
+
+  monitor.updateExternalCount({
+    sourceId: 'x:broadcast-123',
+    platform: 'x',
+    channelLabel: 'X Live 1',
+  }, 4);
+  monitor.updateSourceIdentity({
+    sourceId: 'x:broadcast-123',
+    platform: 'x',
+    channelLabel: '@Jugguer_',
+  });
+  monitor.updateExternalCount({
+    sourceId: 'x:broadcast-123',
+    platform: 'x',
+    channelLabel: 'X Live 1',
+  }, 5);
+
+  const x = monitor.getSnapshot().platforms.find(({ platform }) => platform === 'x');
+
+  assert.equal(x.count, 5);
+  assert.equal(x.sources[0].source.channelLabel, '@Jugguer_');
+});
