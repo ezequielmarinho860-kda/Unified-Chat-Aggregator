@@ -88,7 +88,7 @@ const normalizeAppConfig = (config = {}) => {
     browserBackend: normalizeBrowserBackendConfig(config.browserBackend),
     connectors: {
       twitch: {
-        enabled: normalizeBoolean(connectors.twitch?.enabled, true),
+        enabled: hasEnabledSourceValue(twitchSources, 'channel'),
         channel: twitchSources[0].channel,
         sources: twitchSources,
         clientId: normalizeString(connectors.twitch?.clientId, ''),
@@ -98,7 +98,7 @@ const normalizeAppConfig = (config = {}) => {
         displayName: normalizeString(connectors.twitch?.displayName, ''),
       },
       kick: {
-        enabled: normalizeBoolean(connectors.kick?.enabled, true),
+        enabled: hasEnabledSourceValue(kickSources, 'channel'),
         channel: kickSources[0].channel,
         sources: kickSources,
         chatroomId: normalizeString(connectors.kick?.chatroomId, ''),
@@ -116,7 +116,7 @@ const normalizeAppConfig = (config = {}) => {
         displayName: normalizeString(connectors.kick?.displayName, ''),
       },
       x: {
-        enabled: normalizeBoolean(connectors.x?.enabled, false),
+        enabled: hasEnabledSourceValue(xSources, 'liveUrl'),
         liveUrl: xSources[0].liveUrl,
         sources: xSources,
         showBrowser: normalizeBoolean(connectors.x?.showBrowser, false),
@@ -321,15 +321,15 @@ const normalizeFixedSources = ({ fieldName, connectorConfig = {}, defaults }) =>
   return defaults.map((defaultSource, index) => {
     const rawSource = rawSources[index] ?? {};
     const value = normalizeString(rawSource[fieldName], defaultSource[fieldName]);
-    const enabledFallback =
-      index === 0 ? defaultSource.enabled : value.length > 0 || defaultSource.enabled;
-
     return {
-      enabled: normalizeBoolean(rawSource.enabled, enabledFallback),
+      enabled: value.length > 0,
       [fieldName]: value,
     };
   });
 };
+
+const hasEnabledSourceValue = (sources, fieldName) =>
+  sources.some((source) => source.enabled && source[fieldName].length > 0);
 
 const createLegacySources = ({ fieldName, connectorConfig = {} }) => [
   {

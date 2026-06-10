@@ -112,6 +112,46 @@ test('normalizes user connector settings', () => {
   assert.equal(config.ui.theme, 'dark');
 });
 
+test('derives connector enabled state from filled source fields', () => {
+  const config = normalizeAppConfig({
+    connectors: {
+      twitch: {
+        enabled: false,
+        sources: [
+          { enabled: false, channel: '  streamer  ' },
+          { enabled: false, channel: '' },
+        ],
+      },
+      kick: {
+        enabled: true,
+        sources: [
+          { enabled: true, channel: '' },
+          { enabled: false, channel: '' },
+        ],
+      },
+      x: {
+        enabled: false,
+        sources: [
+          { enabled: false, liveUrl: '@chooserich' },
+          { enabled: false, liveUrl: '' },
+        ],
+      },
+    },
+  });
+
+  assert.equal(config.connectors.twitch.enabled, true);
+  assert.deepEqual(config.connectors.twitch.sources, [
+    { enabled: true, channel: 'streamer' },
+    { enabled: false, channel: '' },
+  ]);
+  assert.equal(config.connectors.kick.enabled, false);
+  assert.equal(config.connectors.x.enabled, true);
+  assert.deepEqual(config.connectors.x.sources, [
+    { enabled: true, liveUrl: '@chooserich' },
+    { enabled: false, liveUrl: '' },
+  ]);
+});
+
 test('falls back to light for unsupported themes', () => {
   assert.equal(normalizeAppConfig({ ui: { theme: 'sepia' } }).ui.theme, 'light');
 });

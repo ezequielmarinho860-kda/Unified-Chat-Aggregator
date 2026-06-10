@@ -250,3 +250,28 @@ test('adds platform sources without blocking or disconnecting existing sources',
   assert.equal(received[0].text, 'still live');
   assert.equal(received[0].source.sourceId, 'twitch:streamer-a');
 });
+
+test('replaces same-source platform connectors when requested', async () => {
+  let oldDisconnected = false;
+  const sent = [];
+  const existing = createTestConnector({
+    channel: 'streamer-a',
+    onDisconnect: async () => {
+      oldDisconnected = true;
+    },
+  });
+  const replacement = createTestConnector({
+    channel: 'streamer-a',
+    sendImpl: async (text) => sent.push(text),
+  });
+  const hub = createChatHub({ connectors: [existing] });
+
+  await hub.start();
+  await hub.replacePlatformConnectors('twitch', [replacement], { replaceExisting: true });
+  await hub.sendMessage({ platform: 'twitch', text: 'after config change' });
+
+  assert.equal(oldDisconnected, true);
+  assert.deepEqual(sent, ['after config change']);
+
+  await hub.stop();
+});

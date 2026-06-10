@@ -63,6 +63,7 @@ let runtimeConfig;
 let envOverrides = [];
 let allowEnvironmentOverrides = false;
 let chatHub = createChatHub();
+let activeXConnectors = [];
 let googleOAuthService;
 let localChatStore;
 let browserBackendClient;
@@ -70,6 +71,8 @@ let browserBackendEventsConnection;
 let browserBackendRuntime;
 let browserBackendStatus = createBrowserBackendStatus();
 const displayedLocalMessageIds = new Set();
+const localChatMessageBuffer = [];
+let activeLocalChatSession;
 let unsubscribeHubMessage;
 let unsubscribeHubStatus;
 let viewerMonitor;
@@ -129,11 +132,13 @@ const buildConnectorsForPlatform = (config, platform) => {
   }
 
   if (platform === 'x') {
-    return sourceEntries.map(({ connectorConfig, source }) => attachConnectorSource(createXConnector({
+    activeXConnectors = sourceEntries.map(({ connectorConfig, source }) => attachConnectorSource(createXConnector({
       liveUrl: connectorConfig.liveUrl,
       BrowserWindow,
       show: x.showBrowser,
+      source,
     }), source));
+    return activeXConnectors;
   }
 
   return [];
@@ -207,7 +212,7 @@ const restartChangedConnectors = async (nextSavedConfig, forcePlatforms = []) =>
     await chatHub.replacePlatformConnectors(
       platform,
       buildConnectorsForPlatform(runtimeConfig, platform),
-      { replaceExisting: forcePlatforms.includes(platform) },
+      { replaceExisting: true },
     );
   }
 
@@ -293,6 +298,7 @@ const startHttpGateway = async () => {
         data: getPublicRealtimeSnapshot(),
         type: 'snapshot.replace',
       });
+      await loadLocalChatHistory();
       updateBrowserBackendStatus('connected');
       console.log(`Connected to external browser backend at ${runtimeConfig.browserBackend.url}`);
       return;
@@ -309,6 +315,7 @@ const startHttpGateway = async () => {
     localChatStore = browserBackendRuntime.localChatStore;
     const gatewayAddress = await browserBackendRuntime.start();
 
+    await loadLocalChatHistory();
     updateBrowserBackendStatus('connected');
     console.log(`Viewer gateway listening at ${gatewayAddress.snapshotUrl}`);
   } catch (error) {
@@ -350,18 +357,76 @@ const handleBrowserBackendEvent = (event) => {
 };
 
 const publishBackendLocalChatMessage = (message) => {
-  if (message?.id && displayedLocalMessageIds.has(message.id)) {
+  const normalizedMessage = normalizeBackendChatMessage(message);
+
+  if (!normalizedMessage) {
     return;
   }
 
-  if (message?.id) {
-    displayedLocalMessageIds.add(message.id);
+  if (normalizedMessage.id && displayedLocalMessageIds.has(normalizedMessage.id)) {
+    return;
+  }
+
+  if (normalizedMessage.id) {
+    displayedLocalMessageIds.add(normalizedMessage.id);
     if (displayedLocalMessageIds.size > 500) {
       displayedLocalMessageIds.delete(displayedLocalMessageIds.values().next().value);
     }
   }
 
-  publishLocalChatMessage(message);
+  rememberLocalChatMessage(normalizedMessage);
+  publishLocalChatMessage(normalizedMessage);
+};
+
+const normalizeBackendChatMessage = (message) => {
+  if (!message || typeof message !== 'object') {
+    return undefined;
+  }
+
+  return {
+    ...message,
+    platform: message.platform ?? message.source?.platform,
+  };
+};
+
+const rememberLocalChatMessage = (message) => {
+  if (!message?.id) {
+    return;
+  }
+
+  const existingIndex = localChatMessageBuffer.findIndex((entry) => entry.id === message.id);
+
+  if (existingIndex >= 0) {
+    localChatMessageBuffer[existingIndex] = message;
+  } else {
+    localChatMessageBuffer.push(message);
+  }
+
+  if (localChatMessageBuffer.length > 200) {
+    localChatMessageBuffer.splice(0, localChatMessageBuffer.length - 200);
+  }
+};
+
+const loadLocalChatHistory = async () => {
+  const messages = await getLocalChatHistory();
+
+  for (const message of messages) {
+    publishBackendLocalChatMessage(message);
+  }
+};
+
+const getLocalChatHistory = async () => {
+  if (browserBackendClient) {
+    const result = await browserBackendClient.loadLocalMessages();
+
+    return Array.isArray(result.messages) ? result.messages : [];
+  }
+
+  if (!localChatStore) {
+    return [];
+  }
+
+  return localChatStore.load().messages.map(serializePublicChatMessage);
 };
 
 const publishPublicStatus = (status) => {
@@ -401,10 +466,16 @@ const publishPublicRealtime = (type, createData) => {
 };
 
 const publishLocalChatMessage = (message, { publishPublic = false } = {}) => {
-  broadcastToWindows('chat:message', message);
+  const normalizedMessage = normalizeBackendChatMessage(message) ?? message;
+
+  if (normalizedMessage?.platform === 'local') {
+    rememberLocalChatMessage(normalizedMessage);
+  }
+
+  broadcastToWindows('chat:message', normalizedMessage);
 
   if (publishPublic) {
-    publishPublicRealtime('chat.message', () => serializePublicChatMessage(message));
+    publishPublicRealtime('chat.message', () => serializePublicChatMessage(normalizedMessage));
   }
 };
 
@@ -665,6 +736,34 @@ const openXLoginWindow = async () => {
 
 const getXAuthStatus = () => getXSessionAuthStatus(session.fromPartition(X_CAPTURE_PARTITION));
 
+const debugXCaptureContext = async () => {
+  const connectors = activeXConnectors.filter(
+    (connector) => typeof connector.debugCaptureContext === 'function',
+  );
+  const captures = [];
+
+  for (const connector of connectors) {
+    try {
+      if (typeof connector.connect === 'function') {
+        await connector.connect();
+      }
+
+      captures.push(await connector.debugCaptureContext());
+    } catch (error) {
+      captures.push({
+        connected: false,
+        error: error.message,
+        source: connector.source,
+      });
+    }
+  }
+
+  return {
+    connectorCount: connectors.length,
+    captures,
+  };
+};
+
 const disconnectXSession = async () => {
   await clearXSessionAuth(session.fromPartition(X_CAPTURE_PARTITION));
   await restartChangedConnectors(savedConfig, ['x']);
@@ -694,7 +793,7 @@ const sendChatMessage = async (payload) => {
 
 const registerLocalChatUser = ({ email, nick } = {}) => {
   if (browserBackendClient) {
-    return browserBackendClient.registerLocalUser({ email, nick });
+    return browserBackendClient.registerPrivilegedLocalUser({ email, nick });
   }
 
   const existingUser = localChatStore.getUserByEmail(email);
@@ -707,6 +806,31 @@ const registerLocalChatUser = ({ email, nick } = {}) => {
   return createLocalSessionResponse(
     localChatStore.createSession({ email: registeredUser.email }),
   );
+};
+
+const syncLocalChatSession = async ({ token } = {}) => {
+  const { user } = await getLocalChatSession({ token });
+
+  return setActiveLocalChatSession({ token, user });
+};
+
+const setActiveLocalChatSession = ({ session, token, user } = {}) => {
+  const nextToken = token ?? session?.token;
+
+  activeLocalChatSession = nextToken && user
+    ? {
+        token: nextToken,
+        user,
+      }
+    : undefined;
+  broadcastToWindows('local-chat:session', activeLocalChatSession);
+  return activeLocalChatSession;
+};
+
+const clearActiveLocalChatSession = () => {
+  activeLocalChatSession = undefined;
+  broadcastToWindows('local-chat:session', undefined);
+  return { ok: true };
 };
 
 const loginLocalChatUser = ({ email } = {}) => {
@@ -887,6 +1011,14 @@ const createRendererWindow = ({ view, windowOptions }) => {
     rendererWindow.webContents.send('chat:config', snapshot);
     rendererWindow.webContents.send('chat:statuses', snapshot.statuses);
     rendererWindow.webContents.send('viewers:update', snapshot.viewers);
+
+    if (activeLocalChatSession) {
+      rendererWindow.webContents.send('local-chat:session', activeLocalChatSession);
+    }
+
+    for (const message of localChatMessageBuffer) {
+      rendererWindow.webContents.send('chat:message', message);
+    }
   });
 
   rendererWindow.on('closed', () => {
@@ -1038,15 +1170,43 @@ ipcMain.handle('dashboard:open', () => {
 });
 
 ipcMain.handle('chat:send', async (_event, payload) => sendChatMessage(payload));
-ipcMain.handle('local-chat:register', (_event, payload) => registerLocalChatUser(payload));
-ipcMain.handle('local-chat:login', (_event, payload) => loginLocalChatUser(payload));
+ipcMain.handle('local-chat:register', async (_event, payload) => {
+  const result = await registerLocalChatUser(payload);
+
+  setActiveLocalChatSession(result);
+  return result;
+});
+ipcMain.handle('local-chat:login', async (_event, payload) => {
+  const result = await loginLocalChatUser(payload);
+
+  setActiveLocalChatSession(result);
+  return result;
+});
 ipcMain.handle('local-chat:me', (_event, payload) => getLocalChatSession(payload));
+ipcMain.handle('local-chat:sync-session', (_event, payload) => syncLocalChatSession(payload));
+ipcMain.handle('local-chat:logout', () => clearActiveLocalChatSession());
 ipcMain.handle('local-chat:send-message', (_event, payload) => sendLocalChatMessage(payload));
 ipcMain.handle('local-chat:moderation', (_event, payload) => runLocalChatModeration(payload));
 ipcMain.handle('local-chat:moderation-commands', () => getLocalChatModerationCommands());
 ipcMain.handle('local-chat:google-status', () => getLocalGoogleOAuthStatus());
-ipcMain.handle('local-chat:google-start', (_event, payload) => startLocalGoogleOAuth(payload));
-ipcMain.handle('local-chat:google-complete', (_event, payload) => completeLocalGoogleOAuth(payload));
+ipcMain.handle('local-chat:google-start', async (_event, payload) => {
+  const result = await startLocalGoogleOAuth(payload);
+
+  if (result?.session && result.user) {
+    setActiveLocalChatSession(result);
+  }
+
+  return result;
+});
+ipcMain.handle('local-chat:google-complete', async (_event, payload) => {
+  const result = await completeLocalGoogleOAuth(payload);
+
+  if (result?.session && result.user) {
+    setActiveLocalChatSession(result);
+  }
+
+  return result;
+});
 
 ipcMain.handle('twitch:connect', async () => {
   const clientId =
@@ -1178,4 +1338,5 @@ ipcMain.handle('kick:clear-auth-session', async () => {
 
 ipcMain.handle('x:connect', async () => openXLoginWindow());
 ipcMain.handle('x:auth-status', async () => getXAuthStatus());
+ipcMain.handle('x:debug-capture', async () => debugXCaptureContext());
 ipcMain.handle('x:disconnect', async () => disconnectXSession());

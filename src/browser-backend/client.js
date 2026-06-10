@@ -12,6 +12,7 @@ const LOCAL_MODERATION_PATH = '/api/v1/local/moderation';
 const LOCAL_REGISTER_PATH = '/api/v1/local/register';
 const SNAPSHOT_PATH = '/api/v1/snapshot';
 const APP_EVENTS_PATH = '/api/v1/app/events';
+const APP_LOCAL_REGISTER_PATH = '/api/v1/app/local/register';
 
 const createBrowserBackendClient = ({
   appIngestToken = '',
@@ -81,6 +82,10 @@ const createBrowserBackendClient = ({
       return requestJson(fetchImpl, normalizedBaseUrl, SNAPSHOT_PATH);
     },
 
+    async loadLocalMessages() {
+      return requestJson(fetchImpl, normalizedBaseUrl, LOCAL_MESSAGES_PATH);
+    },
+
     async loginLocalUser({ email }) {
       return requestJson(fetchImpl, normalizedBaseUrl, LOCAL_LOGIN_PATH, {
         body: { email },
@@ -99,6 +104,14 @@ const createBrowserBackendClient = ({
     async registerLocalUser({ email, nick }) {
       return requestJson(fetchImpl, normalizedBaseUrl, LOCAL_REGISTER_PATH, {
         body: { email, nick },
+        method: 'POST',
+      });
+    },
+
+    async registerPrivilegedLocalUser({ email, nick }) {
+      return requestJson(fetchImpl, normalizedBaseUrl, APP_LOCAL_REGISTER_PATH, {
+        body: { email, nick },
+        headers: createBearerHeaders(appIngestToken),
         method: 'POST',
       });
     },

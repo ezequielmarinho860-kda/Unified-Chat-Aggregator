@@ -25,6 +25,14 @@ const normalizeChatMessage = (message) => {
     }
   }
 
+  if (message.reply !== undefined && message.reply !== null) {
+    const reply = normalizeReply(message.reply);
+
+    if (reply) {
+      normalized.reply = reply;
+    }
+  }
+
   return normalized;
 };
 
@@ -77,6 +85,20 @@ const normalizeBadge = (badge) => {
     version: optionalString(badge.version),
     imageUrl: optionalString(badge.imageUrl),
   };
+};
+
+const normalizeReply = (reply) => {
+  if (!reply || typeof reply !== 'object') {
+    throw new TypeError('Chat message reply must be an object.');
+  }
+
+  const normalized = {
+    authorName: optionalString(reply.authorName),
+    text: optionalString(reply.text),
+    username: optionalString(reply.username)?.replace(/^@+/, ''),
+  };
+
+  return normalized.authorName || normalized.text || normalized.username ? normalized : undefined;
 };
 
 const normalizeFragments = (fragments) => {

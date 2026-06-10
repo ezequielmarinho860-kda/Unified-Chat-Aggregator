@@ -40,6 +40,7 @@ test('loads snapshots and uses local chat endpoints through the backend client',
       text: 'hello @ModUser',
       token: registerResult.session.token,
     });
+    const messagesResult = await client.loadLocalMessages();
     const moderationResult = await client.runLocalModerationCommand({
       command: '/mod ModUser',
       token: registerResult.session.token,
@@ -54,6 +55,10 @@ test('loads snapshots and uses local chat endpoints through the backend client',
       { type: 'text', text: 'hello ' },
       { type: 'mention', text: '@ModUser' },
     ]);
+    assert.deepEqual(
+      messagesResult.messages.map((message) => message.text),
+      ['hello @ModUser'],
+    );
     assert.equal(moderationResult.moderation.action, 'mod');
   } finally {
     await runtime.stop();
@@ -155,12 +160,17 @@ test('builds backend client OAuth and app ingestion requests', async () => {
   );
 
   await client.publishAppEvent({ type: 'chat.message', data: { id: 'message-1' } });
+  await client.registerPrivilegedLocalUser({ email: 'mod@example.com', nick: 'ModUser' });
 
   assert.equal(requests[0].url, 'http://127.0.0.1:47831/api/v1/app/events');
   assert.equal(requests[0].options.method, 'POST');
   assert.equal(requests[0].options.headers.Authorization, 'Bearer app-token');
   assert.equal(requests[0].options.headers['Content-Type'], 'application/json');
   assert.equal(requests[0].options.body, JSON.stringify({ type: 'chat.message', data: { id: 'message-1' } }));
+  assert.equal(requests[1].url, 'http://127.0.0.1:47831/api/v1/app/local/register');
+  assert.equal(requests[1].options.method, 'POST');
+  assert.equal(requests[1].options.headers.Authorization, 'Bearer app-token');
+  assert.equal(requests[1].options.body, JSON.stringify({ email: 'mod@example.com', nick: 'ModUser' }));
 });
 
 test('surfaces backend client JSON errors', async () => {

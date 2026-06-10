@@ -51,6 +51,11 @@ test('serializes chat messages by allowlist', () => {
       badges: [{ id: 'mod', label: 'Mod', secret: 'badge-secret' }],
       secret: 'author-secret',
     },
+    reply: {
+      authorName: 'Frosen',
+      text: 'ello llama',
+      username: 'Frosen',
+    },
     text: 'Hello',
     timestamp: '2026-06-06T20:00:00.000Z',
     raw: { accessToken: 'raw-secret' },
@@ -68,6 +73,11 @@ test('serializes chat messages by allowlist', () => {
       id: 'author-1',
       name: 'Ana',
       badges: [{ id: 'mod', label: 'Mod' }],
+    },
+    reply: {
+      authorName: 'Frosen',
+      text: 'ello llama',
+      username: 'Frosen',
     },
     text: 'Hello',
     timestamp: '2026-06-06T20:00:00.000Z',

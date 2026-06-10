@@ -39,6 +39,7 @@ const serializePublicChatMessage = (message) => {
     text: requireString(message.text, 'message.text'),
     timestamp: requireString(message.timestamp, 'message.timestamp'),
     avatarUrl: optionalString(message.avatarUrl),
+    reply: serializePublicReply(message.reply),
     fragments: serializePublicFragments(message.fragments),
   });
 };
@@ -152,6 +153,20 @@ const serializePublicBadge = (badge) =>
     version: optionalString(badge?.version),
     imageUrl: optionalString(badge?.imageUrl),
   });
+
+const serializePublicReply = (reply) => {
+  if (!reply || typeof reply !== 'object') {
+    return undefined;
+  }
+
+  const serialized = compactObject({
+    authorName: optionalString(reply.authorName),
+    text: optionalString(reply.text),
+    username: optionalString(reply.username)?.replace(/^@+/, ''),
+  });
+
+  return Object.keys(serialized).length > 0 ? serialized : undefined;
+};
 
 const serializePublicFragments = (fragments) => {
   if (!Array.isArray(fragments)) {

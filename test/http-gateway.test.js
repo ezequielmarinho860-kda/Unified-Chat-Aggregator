@@ -95,6 +95,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     const twitchIconResponse = await fetch(
       `http://${address.host}:${address.port}/viewer/assets/twitch-glitch.svg`,
     );
+    const xIconResponse = await fetch(`http://${address.host}:${address.port}/viewer/assets/x-logo.svg`);
     const html = await viewerResponse.text();
     const overlayHtml = await overlayResponse.text();
     const transportScript = await transportResponse.text();
@@ -103,6 +104,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     const overlayScript = await overlayScriptResponse.text();
     const overlayStyle = await overlayStyleResponse.text();
     const twitchIcon = await twitchIconResponse.text();
+    const xIcon = await xIconResponse.text();
 
     assert.equal(viewerResponse.status, 200);
     assert.match(viewerResponse.headers.get('content-type'), /^text\/html/);
@@ -170,7 +172,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(script, /chatScrollDebug/);
     assert.match(script, /pinned_change/);
     assert.match(script, /CHAT_BOTTOM_TOLERANCE_PX/);
-    assert.match(script, /MAX_MESSAGES/);
+    assert.match(script, /message__reply/);
     assert.match(script, /message__badge/);
     assert.match(script, /shouldRenderAuthorAvatar/);
     assert.match(script, /\/viewer\/assets\/twitch-glitch\.svg/);
@@ -207,7 +209,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(overlayScriptResponse.headers.get('content-type'), /^text\/javascript/);
     assert.match(overlayScript, /createDefaultViewerTransportClient/);
     assert.match(overlayScript, /chat\.message/);
-    assert.match(overlayScript, /maxMessages/);
+    assert.match(overlayScript, /overlay-reply/);
     assert.doesNotMatch(overlayScript, /window\.chatAggregator/);
     assert.equal(overlayStyleResponse.status, 200);
     assert.match(overlayStyleResponse.headers.get('content-type'), /^text\/css/);
@@ -216,6 +218,9 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.equal(twitchIconResponse.status, 200);
     assert.match(twitchIconResponse.headers.get('content-type'), /^image\/svg\+xml/);
     assert.match(twitchIcon, /aria-label="Twitch"/);
+    assert.equal(xIconResponse.status, 200);
+    assert.match(xIconResponse.headers.get('content-type'), /^image\/svg\+xml/);
+    assert.match(xIcon, /aria-label="X"/);
   } finally {
     await gateway.stop();
   }
@@ -560,6 +565,45 @@ test('registers, logs in, and resolves local chat users', async () => {
   }
 });
 
+test('keeps public local registration normal and app registration privileged', async () => {
+  const gateway = createHttpGateway({
+    appIngestToken: 'secret-token',
+    getSnapshot: () => ({}),
+    localChatStore: createTestLocalChatStore(),
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const publicResponse = await postJson(localUrl(address, '/api/v1/local/register'), {
+      email: 'viewer@example.com',
+      nick: 'viewer',
+    });
+    const publicBody = await publicResponse.json();
+    const blockedResponse = await postJson(localUrl(address, '/api/v1/app/local/register'), {
+      email: 'blocked@example.com',
+      nick: 'blocked',
+    });
+    const appResponse = await postJson(
+      localUrl(address, '/api/v1/app/local/register'),
+      {
+        email: 'mod@example.com',
+        nick: 'mod_user',
+      },
+      'secret-token',
+    );
+    const appBody = await appResponse.json();
+
+    assert.equal(publicResponse.status, 201);
+    assert.equal(publicBody.user.role, 'user');
+    assert.equal(blockedResponse.status, 403);
+    assert.equal(appResponse.status, 201);
+    assert.equal(appBody.user.role, 'moderator');
+  } finally {
+    await gateway.stop();
+  }
+});
+
 test('publishes local chat messages over realtime', async () => {
   const localChatStore = createTestLocalChatStore();
   const appMessages = [];
@@ -601,6 +645,41 @@ test('publishes local chat messages over realtime', async () => {
     assert.equal(appMessages[0].text, 'hello local');
   } finally {
     client?.close();
+    await gateway.stop();
+  }
+});
+
+test('returns persisted local chat messages', async () => {
+  const localChatStore = createTestLocalChatStore();
+  const gateway = createHttpGateway({
+    getSnapshot: () => ({}),
+    localChatStore,
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const registerResponse = await postJson(localUrl(address, '/api/v1/local/register'), {
+      email: 'ana@example.com',
+      nick: 'ana',
+    });
+    const { session } = await registerResponse.json();
+
+    await postJson(
+      localUrl(address, '/api/v1/local/messages'),
+      { text: 'persisted local' },
+      session.token,
+    );
+
+    const response = await fetch(localUrl(address, '/api/v1/local/messages'));
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(
+      body.messages.map((message) => [message.source.platform, message.text]),
+      [['local', 'persisted local']],
+    );
+  } finally {
     await gateway.stop();
   }
 });
@@ -765,6 +844,29 @@ test('rejects browser websocket connections from external origins', async () => 
 
     assert.match(error.message, /Unexpected server response: 403/);
   } finally {
+    await gateway.stop();
+  }
+});
+
+test('allows browser websocket connections from the same origin host', async () => {
+  const snapshot = { protocolVersion: '1', statuses: [], viewers: { sources: [], total: 0 } };
+  const gateway = createHttpGateway({ getSnapshot: () => snapshot, port: 0 });
+  let client;
+
+  try {
+    const address = await gateway.start();
+    client = new WebSocket(address.eventsUrl, {
+      headers: { Host: 'example.com' },
+      origin: 'https://example.com',
+    });
+
+    const [initialPayload] = await once(client, 'message');
+    const initialEvent = JSON.parse(initialPayload.toString());
+
+    assert.equal(initialEvent.type, 'snapshot.replace');
+    assert.deepEqual(initialEvent.data, snapshot);
+  } finally {
+    client?.close();
     await gateway.stop();
   }
 });

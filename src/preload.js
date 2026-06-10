@@ -54,6 +54,15 @@ contextBridge.exposeInMainWorld('chatAggregator', {
       ipcRenderer.off('chat:config', listener);
     };
   },
+  onLocalChatSessionChanged: (callback) => {
+    const listener = (_event, session) => callback(session);
+
+    ipcRenderer.on('local-chat:session', listener);
+
+    return () => {
+      ipcRenderer.off('local-chat:session', listener);
+    };
+  },
   onViewerCounts: (callback) => {
     const listener = (_event, snapshot) => callback(snapshot);
 
@@ -72,6 +81,8 @@ contextBridge.exposeInMainWorld('chatAggregator', {
   localChatRegister: (payload) => ipcRenderer.invoke('local-chat:register', payload),
   localChatLogin: (payload) => ipcRenderer.invoke('local-chat:login', payload),
   localChatMe: (payload) => ipcRenderer.invoke('local-chat:me', payload),
+  localChatSyncSession: (payload) => ipcRenderer.invoke('local-chat:sync-session', payload),
+  localChatLogout: () => ipcRenderer.invoke('local-chat:logout'),
   localChatSendMessage: (payload) => ipcRenderer.invoke('local-chat:send-message', payload),
   localChatModeration: (payload) => ipcRenderer.invoke('local-chat:moderation', payload),
   localChatModerationCommands: () => ipcRenderer.invoke('local-chat:moderation-commands'),
@@ -86,5 +97,6 @@ contextBridge.exposeInMainWorld('chatAggregator', {
   clearKickSession: () => ipcRenderer.invoke('kick:clear-auth-session'),
   connectX: () => ipcRenderer.invoke('x:connect'),
   disconnectX: () => ipcRenderer.invoke('x:disconnect'),
+  debugXCapture: () => ipcRenderer.invoke('x:debug-capture'),
   getXAuthStatus: () => ipcRenderer.invoke('x:auth-status'),
 });

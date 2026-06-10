@@ -14,6 +14,7 @@ const DEFAULT_GATEWAY_PORT = 47831;
 const SNAPSHOT_PATH = '/api/v1/snapshot';
 const EVENTS_PATH = '/api/v1/events';
 const APP_EVENTS_PATH = '/api/v1/app/events';
+const APP_LOCAL_REGISTER_PATH = '/api/v1/app/local/register';
 const GOOGLE_AUTH_CALLBACK_PATH = '/api/v1/auth/google/callback';
 const GOOGLE_AUTH_COMPLETE_PATH = '/api/v1/auth/google/complete';
 const GOOGLE_AUTH_START_PATH = '/api/v1/auth/google/start';
@@ -49,6 +50,11 @@ const VIEWER_ASSETS = new Map([
   [`${OVERLAY_PATH}/overlay.js`, { file: 'overlay.js', contentType: 'text/javascript; charset=utf-8' }],
   [`${VIEWER_PATH}/assets/twitch-glitch.svg`, {
     file: 'twitch-glitch.svg',
+    contentType: 'image/svg+xml; charset=utf-8',
+    directory: 'assets',
+  }],
+  [`${VIEWER_PATH}/assets/x-logo.svg`, {
+    file: 'x-logo.svg',
     contentType: 'image/svg+xml; charset=utf-8',
     directory: 'assets',
   }],
@@ -146,8 +152,9 @@ const createWebSocketServer = (server, getSnapshot) => {
 
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url ?? '/', `http://${GATEWAY_HOST}`);
+    const host = request.headers.host ?? '';
 
-    if (url.pathname !== EVENTS_PATH || !isAllowedWebSocketOrigin(request.headers.origin)) {
+    if (url.pathname !== EVENTS_PATH || !isAllowedWebSocketOrigin(request.headers.origin, host)) {
       socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
@@ -168,15 +175,20 @@ const createWebSocketServer = (server, getSnapshot) => {
   return webSocketServer;
 };
 
-const isAllowedWebSocketOrigin = (origin) => {
+const isAllowedWebSocketOrigin = (origin, hostHeader = '') => {
   if (!origin) {
     return true;
   }
 
   try {
     const parsedOrigin = new URL(origin);
+    const parsedHost = hostHeader ? new URL(`http://${hostHeader}`) : undefined;
 
-    return ['127.0.0.1', 'localhost'].includes(parsedOrigin.hostname);
+    if (['127.0.0.1', 'localhost'].includes(parsedOrigin.hostname)) {
+      return true;
+    }
+
+    return Boolean(parsedHost && parsedOrigin.hostname === parsedHost.hostname);
   } catch {
     return false;
   }
@@ -235,6 +247,11 @@ const handleRequest = async (request, response, context) => {
     return;
   }
 
+  if (url.pathname === APP_LOCAL_REGISTER_PATH) {
+    await handleAppLocalRegisterRequest(request, response, context);
+    return;
+  }
+
   if (isLocalChatPath(url.pathname)) {
     await handleLocalChatRequest(request, response, url.pathname, context);
     return;
@@ -288,6 +305,34 @@ const handleAppEventRequest = async (
     sendJson(response, 202, { accepted: true, published });
   } catch (error) {
     sendAppEventError(response, error);
+  }
+};
+
+const handleAppLocalRegisterRequest = async (
+  request,
+  response,
+  { appIngestToken, localChatStore },
+) => {
+  if (!appIngestToken || !localChatStore) {
+    sendJson(response, 404, { error: 'Not found.' });
+    return;
+  }
+
+  try {
+    requireMethod(request, 'POST');
+    requireBearerToken(request, appIngestToken);
+    const body = await readJsonBody(request);
+    const user = localChatStore.registerUser(body);
+
+    localChatStore.addModerator({ email: user.email });
+    const sessionResult = localChatStore.createSession({ email: user.email });
+
+    sendJson(response, 201, {
+      session: serializeLocalSession(sessionResult.session),
+      user: serializeLocalUser(sessionResult.user),
+    });
+  } catch (error) {
+    sendLocalChatError(response, error);
   }
 };
 
@@ -533,6 +578,13 @@ const handleLocalChatRequest = async (
     if (pathname === LOCAL_MODERATION_COMMANDS_PATH) {
       requireMethod(request, 'GET');
       sendJson(response, 200, { commands: LOCAL_MODERATION_COMMANDS });
+      return;
+    }
+
+    if (pathname === LOCAL_MESSAGES_PATH && request.method === 'GET') {
+      const messages = localChatStore.load().messages.map(serializePublicChatMessage);
+
+      sendJson(response, 200, { messages });
       return;
     }
 
