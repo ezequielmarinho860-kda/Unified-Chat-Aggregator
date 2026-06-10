@@ -50,6 +50,24 @@ test('creates stable source identity from an X broadcast URL without inventing a
   assert.deepEqual(broadcastSource, chatSource);
 });
 
+test('adds display labels to configured X broadcast sources', () => {
+  const sources = createConfiguredConnectorSources('x', {
+    enabled: true,
+    sources: [
+      { enabled: true, liveUrl: 'https://x.com/i/broadcasts/123' },
+      { enabled: true, liveUrl: 'https://x.com/i/broadcasts/456' },
+    ],
+  });
+
+  assert.deepEqual(
+    sources.map(({ index, source }) => [index, source.sourceId, source.channelLabel]),
+    [
+      [0, 'x:broadcast-123', 'X Live 1'],
+      [1, 'x:broadcast-456', 'X Live 2'],
+    ],
+  );
+});
+
 test('returns no source when a connector has no channel or live URL', () => {
   assert.equal(createConnectorSource({ platform: 'twitch' }), undefined);
 });

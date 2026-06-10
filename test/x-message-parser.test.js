@@ -8,6 +8,17 @@ test('normalizes X capture payloads into canonical chat messages', () => {
     username: '@ana',
     text: 'hello x',
     avatarUrl: 'https://example.com/avatar.jpg',
+    reply: {
+      authorName: 'Frosen',
+      username: '@Frosen',
+      text: 'ello llama',
+    },
+    source: {
+      sourceId: 'x:broadcast-1',
+      platform: 'x',
+      broadcasterName: 'Grave',
+      channelLabel: 'X Live 1',
+    },
     timestamp: '2026-06-04T20:00:00.000Z',
   });
 
@@ -16,6 +27,17 @@ test('normalizes X capture payloads into canonical chat messages', () => {
   assert.equal(message.author.name, 'Ana');
   assert.equal(message.author.avatarUrl, 'https://example.com/avatar.jpg');
   assert.equal(message.text, 'hello x');
+  assert.deepEqual(message.reply, {
+    authorName: 'Frosen',
+    text: 'ello llama',
+    username: 'Frosen',
+  });
+  assert.deepEqual(message.source, {
+    sourceId: 'x:broadcast-1',
+    platform: 'x',
+    broadcasterName: 'Grave',
+    channelLabel: 'X Live 1',
+  });
   assert.equal(message.timestamp, '2026-06-04T20:00:00.000Z');
 });
 

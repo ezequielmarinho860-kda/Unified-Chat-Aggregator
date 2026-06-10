@@ -115,6 +115,20 @@ const getAvatarContainer = (element) => {
 const getAvatarContainers = (root) =>
   root?.querySelectorAll ? [...root.querySelectorAll("[data-testid^='UserAvatar-Container-']")] : [];
 
+const getRowCandidates = (root) =>
+  root?.querySelectorAll
+    ? [
+        ...root.querySelectorAll(
+          [
+            'article',
+            '[data-testid="cellInnerDiv"]',
+            '[role="article"]',
+            '[role="listitem"]',
+          ].join(', '),
+        ),
+      ]
+    : [];
+
 const getChatComposer = (root = document) => {
   if (!root?.querySelector) {
     return undefined;
@@ -134,7 +148,11 @@ const getDisplayNameElement = (row) => {
     return getLegacyDisplayNameElement(row);
   }
 
-  const candidates = row.querySelectorAll("a[href^='/'] span");
+  const candidates = [
+    ...row.querySelectorAll("a[href^='/'] span"),
+    ...row.querySelectorAll("a[role='link'] span"),
+    ...row.querySelectorAll("span"),
+  ];
 
   for (const candidate of candidates) {
     const text = normalizeText(candidate.textContent);
@@ -224,9 +242,10 @@ const getMessageContentNode = (row) => {
 const isLikelyMessageRow = (row) =>
   Boolean(
     row?.querySelectorAll &&
-      getAvatarContainers(row).length === 1 &&
-      getDisplayNameElement(row) &&
-      getMessageContentNode(row),
+      (row.matches?.('article, [data-testid="cellInnerDiv"], [role="article"], [role="listitem"]') ||
+        getAvatarContainers(row).length >= 1 ||
+        Boolean(getDisplayNameElement(row))) &&
+      getMessageText(row),
   );
 
 const isLikelyLegacyMessageRow = (row) =>
@@ -236,6 +255,10 @@ const findLegacyMessageRow = (element) => {
   let current = element;
 
   while (isElement(current) && current !== document.body) {
+    if (isLikelyMessageRow(current)) {
+      return current;
+    }
+
     if (isLikelyLegacyMessageRow(current)) {
       return current;
     }
@@ -251,6 +274,10 @@ const findLegacyMessageRow = (element) => {
 };
 
 const findMessageRow = (element) => {
+  if (isLikelyMessageRow(element)) {
+    return element;
+  }
+
   const avatar = getAvatarContainer(element);
 
   if (!avatar) {
@@ -287,7 +314,9 @@ const findMessageRow = (element) => {
 
 const getAuthorName = (row) => {
   const nameElement = getDisplayNameElement(row);
-  return normalizeText(nameElement?.textContent).split(':')[0] || '';
+  const fallback = extractMessagePartsFromText(row)?.authorName;
+
+  return normalizeText(nameElement?.textContent).split(':')[0] || fallback || '';
 };
 
 const getUsername = (row) => {
@@ -308,7 +337,7 @@ const getUsername = (row) => {
     return testId.replace('UserAvatar-Container-', '');
   }
 
-  return '';
+  return extractMessagePartsFromText(row)?.username || '';
 };
 
 const isTimeLabel = (value) => /^\d{1,2}:\d{2}\s?(am|pm)?$/i.test(normalizeText(value));
@@ -317,18 +346,55 @@ const getMessageText = (row) => {
   const contentText = getNodeText(getMessageContentNode(row));
 
   if (!isTimeLabel(contentText)) {
-    return contentText;
+    return contentText || extractMessagePartsFromText(row)?.text || '';
   }
 
-  return '';
+  return extractMessagePartsFromText(row)?.text || '';
+};
+
+const extractMessagePartsFromText = (row) => {
+  const rawText = normalizeText(row?.innerText || row?.textContent || '');
+
+  if (!rawText) {
+    return undefined;
+  }
+
+  const handleMatch = rawText.match(/@([A-Za-z0-9_]{1,15})\b/);
+  const username = handleMatch?.[1];
+
+  if (!username) {
+    return { authorName: rawText, text: '' };
+  }
+
+  const beforeHandle = normalizeText(rawText.slice(0, handleMatch.index));
+  const afterHandle = normalizeText(rawText.slice(handleMatch.index + handleMatch[0].length));
+
+  return {
+    authorName: beforeHandle,
+    text: afterHandle,
+    username,
+  };
 };
 
 const getAvatarUrl = (row) => {
-  const image = row.querySelector(
-    "[data-testid^='UserAvatar-Container-'] img[src], a[href] img[alt][src]",
-  );
+  const selectors = [
+    "[data-testid^='UserAvatar-Container-'] img[src]",
+    "a[href] img[alt][src]",
+    "img[src*='profile_images']",
+    "img[src*='pbs.twimg.com']",
+    "img[src*='twimg.com']",
+    "img[alt][src]",
+  ];
 
-  return image?.src || '';
+  for (const selector of selectors) {
+    const image = row.querySelector(selector);
+
+    if (image?.currentSrc || image?.src) {
+      return image.currentSrc || image.src || '';
+    }
+  }
+
+  return '';
 };
 
 const queueCandidateRetry = (row) => {
@@ -365,6 +431,10 @@ const processCandidate = (element) => {
   const avatarKey = getAvatarContainer(row)?.getAttribute('data-testid') || '';
   const key = [avatarKey, username, authorName, text].join('|').toLowerCase();
 
+  if (suppressBacklog) {
+    return;
+  }
+
   if (row.dataset.unifiedChatCapturedKey === key) {
     return;
   }
@@ -377,10 +447,6 @@ const processCandidate = (element) => {
   row.dataset.unifiedChatCapturedKey = key;
   messageRetryCounts.delete(row);
 
-  if (suppressBacklog) {
-    return;
-  }
-
   sendIpc('x-capture:message', {
     authorName,
     username,
@@ -391,6 +457,10 @@ const processCandidate = (element) => {
 };
 
 const processKnownMessages = (container) => {
+  for (const row of getRowCandidates(container)) {
+    processCandidate(row);
+  }
+
   for (const avatar of getAvatarContainers(container)) {
     processCandidate(avatar);
   }
@@ -425,6 +495,10 @@ const collectMessageRows = (node, rows) => {
     if (row) {
       rows.add(row);
     }
+  }
+
+  for (const row of getRowCandidates(node)) {
+    rows.add(row);
   }
 };
 
@@ -565,6 +639,7 @@ const observeContainer = (container) => {
   sendStatus({ state: 'observing', capture: 'syncing-initial-chat' });
   setTimeout(() => {
     if (container === observedContainer) {
+      processKnownMessages(container);
       sendStatus({ state: 'observing', capture: 'observing' });
     }
   }, INITIAL_BACKLOG_SUPPRESSION_MS);

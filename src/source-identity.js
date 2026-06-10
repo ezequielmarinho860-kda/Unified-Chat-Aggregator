@@ -99,17 +99,29 @@ const createConfiguredConnectorSources = (platform, connectorConfig = {}) => {
         platform,
       };
       const source = createConnectorSource(connectorInput);
+      const displaySource = addConfiguredSourceLabel(platform, source, index);
 
-      return source
+      return displaySource
         ? {
             index,
             platform,
-            source,
+            source: displaySource,
             connectorConfig: sourceConfig,
           }
         : undefined;
     })
     .filter(Boolean);
+};
+
+const addConfiguredSourceLabel = (platform, source, index) => {
+  if (!source || source.channelLabel || platform !== 'x') {
+    return source;
+  }
+
+  return {
+    ...source,
+    channelLabel: `X Live ${index + 1}`,
+  };
 };
 
 const getConnectorSourceInputs = (platform, connectorConfig = {}) => {

@@ -17,6 +17,8 @@ const normalizeXMessage = (payload) => {
       name: authorName,
       avatarUrl: normalizeOptionalString(payload.avatarUrl),
     },
+    reply: normalizeReply(payload.reply),
+    source: payload.source,
     text,
     timestamp: normalizeTimestamp(payload.timestamp),
     raw: payload,
@@ -84,6 +86,20 @@ const normalizeOptionalUsername = (value) => {
   }
 
   return normalized.replace(/^@+/, '');
+};
+
+const normalizeReply = (reply) => {
+  if (!reply || typeof reply !== 'object') {
+    return undefined;
+  }
+
+  const normalized = {
+    authorName: normalizeOptionalString(reply.authorName),
+    text: normalizeOptionalString(reply.text),
+    username: normalizeOptionalUsername(reply.username),
+  };
+
+  return normalized.authorName || normalized.text || normalized.username ? normalized : undefined;
 };
 
 module.exports = {

@@ -2,13 +2,17 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { EventEmitter } = require('node:events');
 const {
+  attachXNetworkCapture,
   createXCaptureUrl,
   createXConnector,
+  createXDebugCaptureContextScript,
   createXLiveChatUrlFromHandle,
   createXSendMessageScript,
   isXComposerUnavailableError,
   normalizeXLiveUrl,
   normalizeXSendText,
+  rankXHandleCandidates,
+  scoreXHandleCandidate,
   X_COMPOSER_UNAVAILABLE_CODE,
   X_COMPOSER_UNAVAILABLE_MESSAGE,
   X_CAPTURE_OFFSCREEN_POSITION,
@@ -29,6 +33,7 @@ class FakeIpcMain extends EventEmitter {
 class FakeWebContents {
   constructor(id) {
     this.id = id;
+    this.debugger = new FakeDebugger();
     this.executedScripts = [];
     this.executeResult = { ok: true };
   }
@@ -36,6 +41,39 @@ class FakeWebContents {
   async executeJavaScript(script) {
     this.executedScripts.push(script);
     return this.executeResult;
+  }
+}
+
+class FakeDebugger extends EventEmitter {
+  constructor() {
+    super();
+    this.attached = false;
+    this.commands = [];
+    this.responseBodies = new Map();
+  }
+
+  attach(version) {
+    this.attached = true;
+    this.version = version;
+  }
+
+  detach() {
+    this.attached = false;
+  }
+
+  isAttached() {
+    return this.attached;
+  }
+
+  sendCommand(method, params, callback) {
+    this.commands.push({ method, params });
+
+    if (method === 'Network.getResponseBody') {
+      callback?.(undefined, this.responseBodies.get(params.requestId) ?? { body: '{}' });
+      return;
+    }
+
+    callback?.(undefined, {});
   }
 }
 
@@ -107,6 +145,8 @@ const createFailingBrowserWindowClass = () => {
   return FailingBrowserWindow;
 };
 
+const waitForMicrotasks = () => new Promise((resolve) => setImmediate(resolve));
+
 test('normalizes valid X live URLs and handles', () => {
   assert.equal(normalizeXLiveUrl(' https://x.com/i/broadcasts/1 '), 'https://x.com/i/broadcasts/1');
   assert.equal(normalizeXLiveUrl('https://twitter.com/user/status/1'), 'https://twitter.com/user/status/1');
@@ -123,11 +163,11 @@ test('creates X live chat URLs from handles', () => {
 test('uses the broadcast chat URL for X capture windows', () => {
   assert.equal(
     createXCaptureUrl('https://x.com/i/broadcasts/1'),
-    'https://x.com/i/broadcasts/1/chat',
+    'https://x.com/i/broadcasts/1',
   );
   assert.equal(
     createXCaptureUrl('https://x.com/i/broadcasts/1/chat'),
-    'https://x.com/i/broadcasts/1/chat',
+    'https://x.com/i/broadcasts/1',
   );
   assert.equal(createXCaptureUrl('@chooserich'), 'https://x.com/chooserich/livechat');
 });
@@ -146,6 +186,65 @@ test('builds an X send script with escaped message text', () => {
 
   assert.match(script, /hello \\"x\\"/);
   assert.match(script, /X chat composer/);
+});
+
+test('builds an X capture debug script for visible handle candidates', () => {
+  const script = createXDebugCaptureContextScript();
+
+  assert.match(script, /UserCell/);
+  assert.match(script, /candidates/);
+  assert.match(script, /getBoundingClientRect/);
+  assert.match(script, /href/);
+});
+
+test('prefers the streamer handle over sidebar navigation handles', () => {
+  const sidebarHandle = {
+    handle: '@home',
+    href: '/home',
+    inArticle: false,
+    inChatPanel: false,
+    inListItem: false,
+    isVisible: true,
+    rect: {
+      height: 50,
+      left: 19,
+      top: 58,
+      width: 50,
+    },
+    tag: 'a',
+    text: '',
+    userCell: false,
+    userName: false,
+    viewport: {
+      height: 853,
+      width: 1264,
+    },
+  };
+  const streamerHandle = {
+    handle: '@Jugguer_',
+    href: '/Jugguer_',
+    inArticle: true,
+    inChatPanel: false,
+    inListItem: false,
+    isVisible: true,
+    rect: {
+      height: 21,
+      left: 149,
+      top: 517,
+      width: 71,
+    },
+    tag: 'a',
+    text: '@Jugguer_',
+    userCell: true,
+    userName: false,
+    viewport: {
+      height: 853,
+      width: 1264,
+    },
+  };
+
+  assert.ok(scoreXHandleCandidate(streamerHandle) > scoreXHandleCandidate(sidebarHandle));
+  assert.equal(rankXHandleCandidates([sidebarHandle, streamerHandle]), '@Jugguer_');
 });
 
 test('loads the X capture window and emits IPC messages', async () => {
@@ -169,10 +268,11 @@ test('loads the X capture window and emits IPC messages', async () => {
     text: 'hello x',
     timestamp: '2026-06-04T20:00:00.000Z',
   });
+  await waitForMicrotasks();
 
   assert.equal(connector.liveUrl, 'https://x.com/i/broadcasts/1');
-  assert.equal(connector.captureUrl, 'https://x.com/i/broadcasts/1/chat');
-  assert.equal(captureWindow.loadedUrl, 'https://x.com/i/broadcasts/1/chat');
+  assert.equal(connector.captureUrl, 'https://x.com/i/broadcasts/1');
+  assert.equal(captureWindow.loadedUrl, 'https://x.com/i/broadcasts/1');
   assert.equal(captureWindow.options.width, X_CAPTURE_WINDOW_WIDTH);
   assert.equal(captureWindow.options.height, X_CAPTURE_WINDOW_HEIGHT);
   assert.equal(captureWindow.options.x, X_CAPTURE_OFFSCREEN_POSITION);
@@ -188,6 +288,133 @@ test('loads the X capture window and emits IPC messages', async () => {
 
   unsubscribe();
   await connector.disconnect();
+});
+
+test('enriches X network messages with avatars from the capture page DOM', async () => {
+  const BrowserWindow = createFakeBrowserWindowClass();
+  const connector = createXConnector({
+    liveUrl: 'https://x.com/i/broadcasts/1',
+    BrowserWindow,
+    ipcMainImpl: new FakeIpcMain(),
+    source: {
+      sourceId: 'x:broadcast-1',
+      platform: 'x',
+      channelLabel: 'X Live 1',
+    },
+  });
+  const received = [];
+
+  connector.onMessage((message) => received.push(message));
+  await connector.connect();
+  const captureWindow = BrowserWindow.instances[0];
+
+  captureWindow.webContents.executeResult = {
+    avatarUrl: 'https://example.com/ana.jpg',
+    broadcasterName: 'Grave',
+    channelLabel: '@Jugger_',
+  };
+  captureWindow.webContents.debugger.emit('message', {}, 'Network.webSocketFrameReceived', {
+    response: {
+      payloadData: JSON.stringify({
+        id: 'network-message-1',
+        message: { text: 'from network' },
+        sender: { displayName: 'Ana', username: '@ana' },
+      }),
+      url: 'https://chatman-replay.pscp.tv/chatapi/v1/chatnow',
+    },
+  });
+  await waitForMicrotasks();
+
+  assert.equal(received.length, 1);
+  assert.equal(received[0].author.avatarUrl, 'https://example.com/ana.jpg');
+  assert.deepEqual(received[0].source, {
+    sourceId: 'x:broadcast-1',
+    platform: 'x',
+    broadcasterName: 'Grave',
+    channelLabel: '@Jugger_',
+  });
+  assert.match(captureWindow.webContents.executedScripts.at(-1), /targetUsername/);
+
+  await connector.disconnect();
+});
+
+test('captures X messages and viewers from network payloads', async () => {
+  const webContents = new FakeWebContents(1);
+  const messages = [];
+  const statuses = [];
+  const detach = attachXNetworkCapture(webContents, {
+    onMessage: (message) => messages.push(message),
+    onStatus: (status) => statuses.push(status),
+  });
+
+  webContents.debugger.emit('message', {}, 'Network.webSocketFrameReceived', {
+    response: {
+      payloadData: JSON.stringify({
+        id: 'network-message-1',
+        message: { text: 'from network' },
+        sender: { displayName: 'Ana', username: '@ana' },
+      }),
+    },
+  });
+
+  webContents.debugger.responseBodies.set('request-1', {
+    body: JSON.stringify({ room: { participant_count: 321 } }),
+  });
+  webContents.debugger.emit('message', {}, 'Network.responseReceived', {
+    requestId: 'request-1',
+    response: {
+      type: 'XHR',
+      url: 'https://chatman-replay.pscp.tv/chatapi/v1/chatnow',
+    },
+  });
+  webContents.debugger.emit('message', {}, 'Network.loadingFinished', {
+    requestId: 'request-1',
+  });
+  await Promise.resolve();
+
+  assert.equal(webContents.debugger.attached, true);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].text, 'from network');
+  assert.deepEqual(statuses.at(-1), {
+    capture: 'network-observing',
+    state: 'observing',
+    viewerCount: 321,
+  });
+
+  detach();
+  assert.equal(webContents.debugger.attached, false);
+});
+
+test('maps X websocket URLs before parsing broadcast frames', async () => {
+  const webContents = new FakeWebContents(1);
+  const messages = [];
+  const detach = attachXNetworkCapture(webContents, {
+    onMessage: (message) => messages.push(message),
+  });
+
+  webContents.debugger.emit('message', {}, 'Network.webSocketCreated', {
+    requestId: 'socket-1',
+    url: 'wss://chatman-replay.pscp.tv/chatapi/v1/chatnow',
+  });
+  webContents.debugger.emit('message', {}, 'Network.webSocketFrameReceived', {
+    requestId: 'socket-1',
+    response: {
+      payloadData: JSON.stringify({
+        payload: JSON.stringify({
+          body: 'from broadcast ws',
+          participant: {
+            display_name: 'Ana',
+            username: '@ana',
+          },
+        }),
+      }),
+    },
+  });
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].text, 'from broadcast ws');
+
+  detach();
 });
 
 test('shows the X capture window normally when requested', async () => {
