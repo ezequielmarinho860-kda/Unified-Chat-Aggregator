@@ -423,6 +423,8 @@ compact message visual language as the app dashboard. It pauses autoscroll when
 the user scrolls up, keeps buffering incoming messages, shows a new-message
 button to return to the live edge, and batches realtime renders so a browser tab
 returning from the background does not re-render once per queued event.
+The Viewer Mode keeps only the 1,000 most recent messages loaded per browser tab
+while its message counter continues accumulating for the lifetime of the tab.
 
 The local chat is writable through the browser backend. Local users can register
 or log in, send local chat messages, and use moderation commands when their role

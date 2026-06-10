@@ -1,5 +1,6 @@
 (() => {
   const CHAT_BOTTOM_TOLERANCE_PX = 120;
+  const MAX_LOADED_CHAT_MESSAGES = 1_000;
   const LOCAL_SESSION_STORAGE_KEY = 'uca.localChatSession';
   const reconnectBaseMs = 1_000;
   const reconnectMaxMs = 10_000;
@@ -306,6 +307,7 @@
 
     state.messageKeys.add(messageKey);
     state.messages.push(message);
+    trimLoadedChatMessages();
     state.messageCount += 1;
     state.chatDomDirty = true;
 
@@ -321,6 +323,20 @@
     }
 
     scheduleRender({ stickToBottom: shouldStickToBottom });
+  };
+
+  const trimLoadedChatMessages = () => {
+    const overflow = state.messages.length - MAX_LOADED_CHAT_MESSAGES;
+
+    if (overflow <= 0) {
+      return;
+    }
+
+    const removedMessages = state.messages.splice(0, overflow);
+
+    for (const removedMessage of removedMessages) {
+      state.messageKeys.delete(getMessageKey(removedMessage));
+    }
   };
 
   const getMessageKey = (message) =>

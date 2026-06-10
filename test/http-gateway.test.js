@@ -183,6 +183,9 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(script, /\/viewer\/assets\/twitch-glitch\.svg/);
     assert.match(script, /unseenMessageCount/);
     assert.match(script, /updateResumeChatControl/);
+    assert.match(script, /MAX_LOADED_CHAT_MESSAGES = 1_000/);
+    assert.match(script, /trimLoadedChatMessages/);
+    assert.match(script, /state\.messageCount \+= 1/);
     assert.match(script, /activeChatPlatforms/);
     assert.match(script, /getVisibleChatMessages/);
     assert.match(script, /LOCAL_SESSION_STORAGE_KEY/);
