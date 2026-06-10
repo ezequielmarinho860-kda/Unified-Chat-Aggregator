@@ -44,6 +44,10 @@ const VIEWER_ASSETS = new Map([
     contentType: 'text/javascript; charset=utf-8',
   }],
   [`${VIEWER_PATH}/viewer-mode.js`, { file: 'viewer-mode.js', contentType: 'text/javascript; charset=utf-8' }],
+  [`${VIEWER_PATH}/market-bubble-theme.js`, {
+    file: 'market-bubble-theme.js',
+    contentType: 'text/javascript; charset=utf-8',
+  }],
   [OVERLAY_PATH, { file: 'overlay.html', contentType: 'text/html; charset=utf-8' }],
   [`${OVERLAY_PATH}/`, { file: 'overlay.html', contentType: 'text/html; charset=utf-8' }],
   [`${OVERLAY_PATH}/overlay.css`, { file: 'overlay.css', contentType: 'text/css; charset=utf-8' }],
@@ -55,6 +59,11 @@ const VIEWER_ASSETS = new Map([
   }],
   [`${VIEWER_PATH}/assets/x-logo.svg`, {
     file: 'x-logo.svg',
+    contentType: 'image/svg+xml; charset=utf-8',
+    directory: 'assets',
+  }],
+  [`${VIEWER_PATH}/assets/kick-logo.svg`, {
+    file: 'kick-logo.svg',
     contentType: 'image/svg+xml; charset=utf-8',
     directory: 'assets',
   }],

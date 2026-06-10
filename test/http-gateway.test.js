@@ -108,7 +108,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
 
     assert.equal(viewerResponse.status, 200);
     assert.match(viewerResponse.headers.get('content-type'), /^text\/html/);
-    assert.match(html, /Viewer Mode/);
+    assert.match(html, /Market Bubble — Combined Stream/);
     assert.match(html, /player\.twitch\.tv/);
     assert.match(html, /viewer-transport\.js/);
     assert.match(html, /data-player-panel/);
