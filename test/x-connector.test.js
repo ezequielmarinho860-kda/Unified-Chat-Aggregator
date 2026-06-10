@@ -78,7 +78,7 @@ class FakeDebugger extends EventEmitter {
   }
 }
 
-const createFakeBrowserWindowClass = () => {
+const createFakeBrowserWindowClass = ({ executeResult } = {}) => {
   let nextId = 1;
   const instances = [];
 
@@ -87,6 +87,9 @@ const createFakeBrowserWindowClass = () => {
       super();
       this.options = options;
       this.webContents = new FakeWebContents(nextId);
+      if (executeResult !== undefined) {
+        this.webContents.executeResult = executeResult;
+      }
       nextId += 1;
       this.loadedUrl = undefined;
       this.closed = false;
@@ -262,14 +265,26 @@ test('prefers the streamer handle over sidebar navigation handles', () => {
 
 test('loads the X capture window and emits IPC messages', async () => {
   const ipcMainImpl = new FakeIpcMain();
-  const BrowserWindow = createFakeBrowserWindowClass();
+  const BrowserWindow = createFakeBrowserWindowClass({
+    executeResult: {
+      broadcasterName: 'Blockspace',
+      channelLabel: '@blockspace',
+    },
+  });
   const connector = createXConnector({
     liveUrl: 'https://x.com/i/broadcasts/1',
     BrowserWindow,
     ipcMainImpl,
+    source: {
+      sourceId: 'x:broadcast-1',
+      platform: 'x',
+      channelLabel: 'X Live 1',
+    },
   });
   const received = [];
+  const statuses = [];
   const unsubscribe = connector.onMessage((message) => received.push(message));
+  connector.onStatus((status) => statuses.push(status));
 
   await connector.connect();
   const captureWindow = BrowserWindow.instances[0];
@@ -295,6 +310,8 @@ test('loads the X capture window and emits IPC messages', async () => {
   assert.equal(captureWindow.options.focusable, false);
   assert.equal(captureWindow.options.webPreferences.backgroundThrottling, false);
   assert.equal(captureWindow.shownInactive, true);
+  assert.equal(statuses.at(-1).source.channelLabel, '@blockspace');
+  assert.equal(statuses.at(-1).source.broadcasterName, 'Blockspace');
   assert.equal(received.length, 1);
   assert.equal(received[0].platform, 'x');
   assert.equal(received[0].text, 'hello x');
@@ -390,6 +407,52 @@ test('preserves an X channel label when later enrichment only returns a broadcas
     platform: 'x',
     broadcasterName: 'Grave',
     channelLabel: '@Jugguer_',
+  });
+
+  await connector.disconnect();
+});
+
+test('refreshes a fallback X live label when a handle is later resolved', async () => {
+  const BrowserWindow = createFakeBrowserWindowClass();
+  const connector = createXConnector({
+    liveUrl: 'https://x.com/i/broadcasts/1',
+    BrowserWindow,
+    ipcMainImpl: new FakeIpcMain(),
+    source: {
+      sourceId: 'x:broadcast-1',
+      platform: 'x',
+      broadcasterName: 'Blockspace',
+      channelLabel: 'X Live 2',
+    },
+  });
+  const received = [];
+
+  connector.onMessage((message) => received.push(message));
+  await connector.connect();
+  const captureWindow = BrowserWindow.instances[0];
+
+  captureWindow.webContents.executeResult = {
+    broadcasterName: 'Blockspace',
+    channelLabel: '@blockspace',
+  };
+  captureWindow.webContents.debugger.emit('message', {}, 'Network.webSocketFrameReceived', {
+    response: {
+      payloadData: JSON.stringify({
+        id: 'network-message-3',
+        message: { text: 'from network 3' },
+        sender: { displayName: 'Ana', username: '@ana' },
+      }),
+      url: 'https://chatman-replay.pscp.tv/chatapi/v1/chatnow',
+    },
+  });
+  await waitForMicrotasks();
+
+  assert.equal(received.length, 1);
+  assert.deepEqual(received[0].source, {
+    sourceId: 'x:broadcast-1',
+    platform: 'x',
+    broadcasterName: 'Blockspace',
+    channelLabel: '@blockspace',
   });
 
   await connector.disconnect();
@@ -510,8 +573,8 @@ test('sends X chat messages through the capture composer', async () => {
 
   const captureWindow = BrowserWindow.instances[0];
 
-  assert.equal(captureWindow.webContents.executedScripts.length, 1);
-  assert.match(captureWindow.webContents.executedScripts[0], /hello x/);
+  assert.ok(captureWindow.webContents.executedScripts.length >= 2);
+  assert.match(captureWindow.webContents.executedScripts.at(-1), /hello x/);
 
   await connector.disconnect();
 });

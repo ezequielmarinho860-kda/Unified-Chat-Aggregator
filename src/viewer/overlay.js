@@ -1,7 +1,7 @@
 (() => {
   const reconnectBaseMs = 1_000;
   const reconnectMaxMs = 10_000;
-  const transport = window.ViewerTransports.createDefaultViewerTransportClient();
+  const transport = window.ViewerTransports.createDefaultViewerTransportClient({ clientType: 'overlay' });
   const chatElement = document.querySelector('[data-overlay-chat]');
   const state = {
     eventConnection: undefined,

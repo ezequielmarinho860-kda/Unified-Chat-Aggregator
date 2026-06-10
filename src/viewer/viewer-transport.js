@@ -23,6 +23,7 @@
     fetchImpl = window.fetch.bind(window),
     locationImpl = window.location,
     WebSocketImpl = window.WebSocket,
+    clientType = 'overlay',
   } = {}) => ({
     async loadSnapshot() {
       const response = await fetchImpl(SNAPSHOT_PATH, { cache: 'no-store' });
@@ -93,7 +94,7 @@
     },
 
     connectEvents({ onClose, onError, onEvent, onOpen } = {}) {
-      const socket = new WebSocketImpl(createEventsUrl(locationImpl));
+      const socket = new WebSocketImpl(createEventsUrl(locationImpl, clientType));
 
       socket.addEventListener('open', () => {
         onOpen?.();
@@ -221,10 +222,13 @@
     },
   });
 
-  const createEventsUrl = (locationImpl) => {
+  const createEventsUrl = (locationImpl, clientType) => {
     const url = new URL(EVENTS_PATH, locationImpl.href);
 
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    if (clientType) {
+      url.searchParams.set('client', clientType);
+    }
     return url;
   };
 

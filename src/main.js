@@ -162,6 +162,10 @@ const wireChatHub = (nextChatHub) => {
     publishPublicRealtime('chat.message', () => serializePublicChatMessage(message));
   });
   unsubscribeHubStatus = nextChatHub.onStatus((status) => {
+    if (status.platform === 'x' && status.source && !Object.hasOwn(status.details ?? {}, 'viewerCount')) {
+      viewerMonitor?.updateSourceIdentity(status.source);
+    }
+
     if (status.platform === 'x' && Object.hasOwn(status.details ?? {}, 'viewerCount')) {
       viewerMonitor?.updateExternalCount(status.source ?? 'x', status.details.viewerCount);
     }

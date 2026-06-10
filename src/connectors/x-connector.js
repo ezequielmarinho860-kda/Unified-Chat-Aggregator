@@ -28,7 +28,46 @@ const createXConnector = ({
   let discoveredSource = source;
   let captureWindow;
   let detachNetworkCapture;
+  let lastDomViewerDebug;
+  let lastNetworkViewerDebug;
   let unsubscribeIpc;
+
+  const emitStatusPayload = (status = {}) => {
+    rememberViewerDebug(status.viewerCountDebug);
+    const statusSource = discoveredSource?.sourceId ? discoveredSource : status.source;
+
+    events.emit(
+      'status',
+      stripViewerDebug({
+        ...status,
+        ...(statusSource?.sourceId ? { source: statusSource } : {}),
+      }),
+    );
+  };
+
+  const rememberViewerDebug = (debug) => {
+    if (!debug || typeof debug !== 'object') {
+      return;
+    }
+
+    const nextDebug = {
+      ...debug,
+      observedAt: new Date().toISOString(),
+    };
+
+    if (debug.source === 'network') {
+      lastNetworkViewerDebug = nextDebug;
+    } else {
+      lastDomViewerDebug = nextDebug;
+    }
+  };
+
+  const stripViewerDebug = (status = {}) => {
+    const publicStatus = { ...status };
+
+    delete publicStatus.viewerCountDebug;
+    return publicStatus;
+  };
 
   const emitMessagePayload = async (payload) => {
     try {
@@ -40,7 +79,12 @@ const createXConnector = ({
       const nextSource = mergeXSource(discoveredSource, enrichedPayload.source);
 
       if (nextSource?.sourceId) {
+        const sourceChanged = hasXSourceIdentityChanged(discoveredSource, nextSource);
         discoveredSource = nextSource;
+
+        if (sourceChanged) {
+          emitStatusPayload({ state: 'connected' });
+        }
       }
 
       rememberXAvatar(enrichedPayload, avatarUrlsByUser);
@@ -89,7 +133,8 @@ const createXConnector = ({
       onMessage: (payload) => {
         void emitMessagePayload(payload);
       },
-      onStatus: (status) => events.emit('status', status),
+      onStatus: emitStatusPayload,
+      onViewerDebug: rememberViewerDebug,
     });
 
     const senderId = captureWindow.webContents.id;
@@ -104,7 +149,7 @@ const createXConnector = ({
 
     const onStatus = (event, status) => {
       if (event.sender.id === senderId) {
-        events.emit('status', status);
+        emitStatusPayload(status);
       }
     };
 
@@ -125,6 +170,7 @@ const createXConnector = ({
 
     try {
       await captureWindow.loadURL(captureUrl);
+      await refreshDiscoveredSource();
     } catch (error) {
       events.emit('connector-error', error);
     }
@@ -165,6 +211,33 @@ const createXConnector = ({
     send,
   };
 
+  async function refreshDiscoveredSource() {
+    if (!captureWindow || captureWindow.isDestroyed()) {
+      return undefined;
+    }
+
+    try {
+      const resolvedSource = await captureWindow.webContents.executeJavaScript(
+        createXResolveMessageContextScript(),
+        true,
+      );
+      const nextSource = resolveDiscoveredSource(discoveredSource, resolvedSource);
+
+      if (!nextSource?.sourceId) {
+        return undefined;
+      }
+
+      if (hasXSourceIdentityChanged(discoveredSource, nextSource)) {
+        discoveredSource = nextSource;
+        emitStatusPayload({ state: 'connected' });
+      }
+
+      return discoveredSource;
+    } catch {
+      return undefined;
+    }
+  }
+
   async function debugCaptureContext() {
     if (!captureWindow || captureWindow.isDestroyed()) {
       return {
@@ -183,6 +256,10 @@ const createXConnector = ({
       captureUrl,
       connected: true,
       context,
+      viewerDebug: {
+        dom: lastDomViewerDebug,
+        network: lastNetworkViewerDebug,
+      },
       source: discoveredSource,
     };
   }
@@ -241,7 +318,7 @@ const createXCaptureUrl = (liveUrl) => {
   return parsedUrl.toString();
 };
 
-const attachXNetworkCapture = (webContents, { onMessage, onStatus } = {}) => {
+const attachXNetworkCapture = (webContents, { onMessage, onStatus, onViewerDebug } = {}) => {
   const debuggerApi = webContents?.debugger;
 
   if (!debuggerApi || typeof debuggerApi.attach !== 'function') {
@@ -268,10 +345,22 @@ const attachXNetworkCapture = (webContents, { onMessage, onStatus } = {}) => {
   }
 
   const handlePayload = (payload, url) => {
-    const { messages, viewerCount } = extractXNetworkEvents(payload, { url });
+    const { messages, viewerCount, viewerCountDebug } = extractXNetworkEvents(payload, { url });
+    const debug = viewerCountDebug
+      ? {
+          ...viewerCountDebug,
+          payload: createPayloadDebugSample(payload),
+          source: 'network',
+          url,
+        }
+      : undefined;
 
     for (const message of messages) {
       onMessage?.(message);
+    }
+
+    if (debug) {
+      onViewerDebug?.(debug);
     }
 
     if (viewerCount !== undefined) {
@@ -342,6 +431,18 @@ const attachXNetworkCapture = (webContents, { onMessage, onStatus } = {}) => {
   };
 };
 
+const createPayloadDebugSample = (payload) => {
+  if (typeof payload === 'string') {
+    return payload.slice(0, 700);
+  }
+
+  try {
+    return JSON.stringify(payload).slice(0, 700);
+  } catch {
+    return String(payload).slice(0, 700);
+  }
+};
+
 const isXInspectableResponse = (response = {}) =>
   /^(Fetch|XHR)$/i.test(response.type || '') &&
   /(^|\/\/)([^/]+\.)?(x|twitter)\.com\/|(^|\/\/)([^/]+\.)?(pscp|periscope)\.(tv|com)\/|\/(graphql|i\/api|live|broadcast|chat|timeline|chatapi)\b/i.test(
@@ -356,7 +457,7 @@ const enrichXPayloadFromCaptureWindow = async (payload, captureWindow) => {
   const username = normalizeOptionalPayloadString(payload.username);
   const authorName = normalizeOptionalPayloadString(payload.authorName);
   const needsAvatar = !payload.avatarUrl && (username || authorName);
-  const needsSourceName = !payload.source?.broadcasterName;
+  const needsSourceName = !payload.source?.channelLabel || isFallbackXLiveLabel(payload.source.channelLabel);
 
   if (!needsAvatar && !needsSourceName) {
     return payload;
@@ -384,8 +485,32 @@ const enrichXPayloadFromCaptureWindow = async (payload, captureWindow) => {
   }
 };
 
+const resolveDiscoveredSource = (currentSource, resolvedSource = {}) => {
+  const broadcasterName = normalizeOptionalPayloadString(resolvedSource?.broadcasterName);
+  const channelLabel = normalizeOptionalPayloadString(resolvedSource?.channelLabel);
+
+  if (!broadcasterName && !channelLabel) {
+    return undefined;
+  }
+
+  return mergeXSource(currentSource, {
+    broadcasterName,
+    channelLabel,
+    platform: 'x',
+  });
+};
+
 const normalizeOptionalPayloadString = (value) =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+
+const isFallbackXLiveLabel = (value) => /^X Live \d+$/i.test(String(value ?? '').trim());
+
+const hasXSourceIdentityChanged = (currentSource, nextSource) =>
+  Boolean(nextSource) &&
+  (currentSource?.sourceId !== nextSource.sourceId ||
+    currentSource?.platform !== nextSource.platform ||
+    currentSource?.channelLabel !== nextSource.channelLabel ||
+    currentSource?.broadcasterName !== nextSource.broadcasterName);
 
 const applyCachedXAvatar = (payload, avatarUrlsByUser) => {
   if (!payload || typeof payload !== 'object' || payload.avatarUrl) {

@@ -3,7 +3,7 @@
   const LOCAL_SESSION_STORAGE_KEY = 'uca.localChatSession';
   const reconnectBaseMs = 1_000;
   const reconnectMaxMs = 10_000;
-  const transport = window.ViewerTransports.createDefaultViewerTransportClient();
+  const transport = window.ViewerTransports.createDefaultViewerTransportClient({ clientType: 'viewer' });
   const filterPlatforms = ['twitch', 'kick', 'x', 'local'];
   const state = {
     eventConnection: undefined,
@@ -40,6 +40,11 @@
   };
   const platformIconUrls = {
     twitch: '/viewer/assets/twitch-glitch.svg',
+  };
+  const viewerStateLabels = {
+    available: 'current viewers',
+    disabled: 'connector disabled',
+    unavailable: 'viewers unavailable',
   };
   const elements = {
     title: document.querySelector('[data-viewer-title]'),
@@ -280,6 +285,9 @@
     } else if (event.type === 'viewers.update') {
       state.snapshot = { ...state.snapshot, viewers: event.data };
       scheduleRender();
+    } else if (event.type === 'presence.update') {
+      state.snapshot = { ...state.snapshot, presence: event.data };
+      scheduleRender();
     } else if (event.type === 'manifest.update') {
       state.snapshot = { ...state.snapshot, manifest: event.data };
       scheduleRender();
@@ -319,10 +327,12 @@
     message?.source?.sourceId && message?.id ? `${message.source.sourceId}:${message.id}` : undefined;
 
   const applySnapshot = (snapshot) => {
+    const currentPresence = state.snapshot?.presence ?? { browserChatUsers: 0 };
     state.snapshot = {
       protocolVersion: snapshot?.protocolVersion,
       generatedAt: snapshot?.generatedAt,
       manifest: snapshot?.manifest ?? {},
+      presence: snapshot?.presence ?? currentPresence,
       statuses: Array.isArray(snapshot?.statuses) ? snapshot.statuses : [],
       viewers: snapshot?.viewers ?? { sources: [], total: 0 },
     };
@@ -352,7 +362,8 @@
     const snapshot = state.snapshot ?? {};
     const previousChatScrollTop = elements.chatList.scrollTop;
     const shouldStickToBottom = stickToBottom && shouldAutoscrollChat();
-    const shouldRenderChat = forceChatRender || shouldStickToBottom || !state.hasRenderedChat;
+    const shouldRenderChat =
+      forceChatRender || state.chatDomDirty || shouldStickToBottom || !state.hasRenderedChat;
 
     if (elements.title) {
       elements.title.textContent = snapshot.manifest?.title ?? 'Unified Chat Aggregator';
@@ -367,12 +378,13 @@
     }
 
     elements.messageCount.textContent = formatNumber(state.messageCount);
-    renderPlayer(snapshot.manifest);
-    renderViewerCards(snapshot.viewers);
+    renderViewerCards(snapshot.viewers, snapshot.presence);
 
     if (elements.sourceList) {
       elements.sourceList.replaceChildren(...createSourceElements(snapshot));
     }
+
+    renderPlayerSafely(snapshot.manifest);
 
     if (shouldRenderChat) {
       elements.chatList.replaceChildren(...createChatElements());
@@ -450,11 +462,11 @@
     return rows.size > 0 ? [...rows.values()].map(createSourceElement) : [createEmptySourceElement()];
   };
 
-  const renderViewerCards = (viewers = {}) => {
+  const renderViewerCards = (viewers = {}, presence = {}) => {
     const platformRows = new Map(
       ['twitch', 'kick', 'x'].map((platform) => [
         platform,
-        { count: 0, state: 'unavailable' },
+        { count: 0, sources: [], state: 'unavailable' },
       ]),
     );
 
@@ -472,26 +484,71 @@
       } else if (row.state !== 'available') {
         row.state = viewer.state ?? 'unavailable';
       }
+
+      row.sources.push(viewer);
     }
 
     for (const [platform, row] of platformRows) {
-      updateViewerCard(platform, row.state, row.state === 'available' ? formatNumber(row.count) : '--');
+      updateViewerCard(
+        platform,
+        row.state,
+        row.state === 'available' ? formatNumber(row.count) : '--',
+        formatViewerSourcesTooltip(platform, row.sources),
+      );
     }
 
     updateViewerCard('total', 'available', formatNumber(viewers.total ?? 0));
+    updateViewerCard('chat', 'available', formatNumber(presence.browserChatUsers ?? 0));
   };
 
-  const updateViewerCard = (platform, viewerState, count) => {
+  const updateViewerCard = (platform, viewerState, count, tooltip) => {
     const card = viewerCards.get(platform);
     const countElement = viewerCountElements.get(platform);
 
     if (card) {
       card.dataset.viewerState = viewerState;
+      card.removeAttribute('title');
+
+      if (tooltip) {
+        card.dataset.viewerTooltip = tooltip;
+        card.setAttribute('aria-label', tooltip);
+      } else {
+        delete card.dataset.viewerTooltip;
+        card.removeAttribute('aria-label');
+      }
     }
 
     if (countElement) {
       countElement.textContent = count;
     }
+  };
+
+  const renderPlayerSafely = (manifest) => {
+    try {
+      renderPlayer(manifest);
+    } catch (error) {
+      state.renderedPlayerKey = undefined;
+      console.error('Viewer player render failed.', error);
+    }
+  };
+
+  const formatViewerSourcesTooltip = (platform, sources = []) => {
+    if (sources.length < 2) {
+      return undefined;
+    }
+
+    const platformLabel = platformLabels[platform] ?? platform ?? 'Platform';
+
+    return [
+      platformLabel,
+      ...sources.map((source) => {
+        const label = source.source?.channelLabel ?? source.source?.sourceId ?? 'source';
+        const count = source.count === undefined ? '--' : formatNumber(source.count);
+        const state = source.error || viewerStateLabels[source.state] || source.state;
+
+        return `${label}: ${count} (${state})`;
+      }),
+    ].join('\n');
   };
 
   const renderPlayer = (manifest = {}) => {

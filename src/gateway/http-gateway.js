@@ -79,6 +79,7 @@ const createHttpGateway = ({
   }
 
   const normalizedPort = normalizePort(port);
+  const browserPresence = { browserChatUsers: 0 };
   let server;
   let webSocketServer;
   let heartbeatTimer;
@@ -99,7 +100,7 @@ const createHttpGateway = ({
         publish: (type, data) => (webSocketServer ? broadcastEvent(webSocketServer, createPublicEvent(type, data)) : 0),
       });
     });
-    webSocketServer = createWebSocketServer(server, getSnapshot);
+    webSocketServer = createWebSocketServer(server, getSnapshot, browserPresence);
     heartbeatTimer = setInterval(() => heartbeatClients(webSocketServer), heartbeatMs);
 
     try {
@@ -147,7 +148,7 @@ const createHttpGateway = ({
   };
 };
 
-const createWebSocketServer = (server, getSnapshot) => {
+const createWebSocketServer = (server, getSnapshot, browserPresence) => {
   const webSocketServer = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', (request, socket, head) => {
@@ -161,6 +162,7 @@ const createWebSocketServer = (server, getSnapshot) => {
     }
 
     webSocketServer.handleUpgrade(request, socket, head, (client) => {
+      client.browserClientType = url.searchParams.get('client') || 'overlay';
       webSocketServer.emit('connection', client);
     });
   });
@@ -169,7 +171,24 @@ const createWebSocketServer = (server, getSnapshot) => {
     client.on('pong', () => {
       client.isAlive = true;
     });
-    void sendInitialSnapshot(client, getSnapshot);
+    if (client.browserClientType === 'viewer') {
+      browserPresence.browserChatUsers += 1;
+    }
+
+    void sendInitialSnapshot(client, getSnapshot, browserPresence);
+
+    if (client.browserClientType === 'viewer') {
+      broadcastBrowserPresence(webSocketServer, browserPresence);
+    }
+
+    client.once('close', () => {
+      if (client.browserClientType !== 'viewer') {
+        return;
+      }
+
+      browserPresence.browserChatUsers = Math.max(0, browserPresence.browserChatUsers - 1);
+      broadcastBrowserPresence(webSocketServer, browserPresence);
+    });
   });
 
   return webSocketServer;
@@ -194,12 +213,31 @@ const isAllowedWebSocketOrigin = (origin, hostHeader = '') => {
   }
 };
 
-const sendInitialSnapshot = async (client, getSnapshot) => {
+const sendInitialSnapshot = async (client, getSnapshot, browserPresence) => {
   try {
-    client.send(JSON.stringify(createPublicEvent('snapshot.replace', await getSnapshot())));
+    const snapshot = await getSnapshot();
+    const nextSnapshot =
+      client.browserClientType === 'viewer'
+        ? createSnapshotWithPresence(snapshot, browserPresence)
+        : snapshot;
+
+    client.send(
+      JSON.stringify(
+        createPublicEvent('snapshot.replace', nextSnapshot),
+      ),
+    );
   } catch {
     client.close(1011, 'Snapshot unavailable.');
   }
+};
+
+const broadcastBrowserPresence = (webSocketServer, browserPresence) => {
+  broadcastEvent(
+    webSocketServer,
+    createPublicEvent('presence.update', {
+      browserChatUsers: browserPresence.browserChatUsers,
+    }),
+  );
 };
 
 const broadcastEvent = (webSocketServer, event) => {
@@ -233,6 +271,14 @@ const closeWebSocketClients = (webSocketServer) => {
     client.close(1001, 'Gateway stopping.');
   }
 };
+
+const createSnapshotWithPresence = (snapshot, browserPresence) => ({
+  ...(snapshot ?? {}),
+  presence: {
+    ...(snapshot?.presence ?? {}),
+    browserChatUsers: browserPresence.browserChatUsers,
+  },
+});
 
 const handleRequest = async (request, response, context) => {
   const url = new URL(request.url ?? '/', `http://${GATEWAY_HOST}`);

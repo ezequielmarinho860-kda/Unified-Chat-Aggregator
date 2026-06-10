@@ -11,17 +11,20 @@ const createChatHub = ({ connectors = [] } = {}) => {
   const connectorKeysByPlatform = new Map();
 
   const setConnectorStatus = (connectorKey, connector, patch) => {
-    const source = resolveConnectorSource(connector);
+    const connectorSource = resolveConnectorSource(connector);
     const previousStatus = connectorStatuses.get(connectorKey) ?? {
       key: connectorKey,
       platform: connector.platform,
-      source,
+      source: connectorSource,
       state: 'disabled',
       messageCount: 0,
       lastMessageAt: undefined,
       error: undefined,
       details: {},
     };
+    const source = patch.source
+      ? { ...previousStatus.source, ...connectorSource, ...patch.source }
+      : previousStatus.source ?? connectorSource;
     const nextStatus = {
       ...previousStatus,
       ...patch,
@@ -92,6 +95,7 @@ const createChatHub = ({ connectors = [] } = {}) => {
         connector.onStatus((status) => {
           setConnectorStatus(connectorKey, connector, {
             state: status.state ?? 'connected',
+            source: status.source,
             details: {
               ...getConnectorDetails(connector),
               ...status,

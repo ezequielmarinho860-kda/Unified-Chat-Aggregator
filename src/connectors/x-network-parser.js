@@ -41,6 +41,7 @@ const extractXNetworkEvents = (payload, { url = '' } = {}) => {
   return {
     messages: extractXNetworkMessages(parsed),
     viewerCount: extractXNetworkViewerCount(parsed),
+    viewerCountDebug: extractXNetworkViewerCountMatch(parsed),
   };
 };
 
@@ -97,24 +98,44 @@ const extractXNetworkMessages = (root) => {
 };
 
 const extractXNetworkViewerCount = (root) => {
-  let viewerCount;
+  const match = extractXNetworkViewerCountMatch(root);
+
+  return match?.count;
+};
+
+const extractXNetworkViewerCountMatch = (root) => {
+  let viewerCountMatch;
 
   traverse(root, (node, key) => {
-    if (viewerCount !== undefined) {
+    if (viewerCountMatch !== undefined) {
       return;
     }
 
     if (typeof node === 'number' && isViewerCountKey(key)) {
-      viewerCount = node;
+      viewerCountMatch = {
+        count: node,
+        key: String(key || ''),
+        source: 'network-number',
+        value: node,
+      };
       return;
     }
 
     if (typeof node === 'string' && (isViewerCountKey(key) || /viewer|watching/i.test(node))) {
-      viewerCount = parseViewerCountText(node);
+      const count = parseViewerCountText(node);
+
+      if (count !== undefined) {
+        viewerCountMatch = {
+          count,
+          key: String(key || ''),
+          source: 'network-string',
+          value: node.slice(0, 500),
+        };
+      }
     }
   });
 
-  return viewerCount;
+  return viewerCountMatch;
 };
 
 const parseNetworkPayload = (payload) => {
@@ -349,7 +370,8 @@ const isValidMessageText = (value) => {
 
 const isViewerCountKey = (key) =>
   /viewer|watching|audience|participant|watcher|live[_-]?view/i.test(String(key || '')) &&
-  /(count|total|number|viewers|watching|audience|participant|watcher|n_)/i.test(String(key || ''));
+  /(count|total|number|viewers|watching|audience|participant|watcher|n_)/i.test(String(key || '')) &&
+  !/index/i.test(String(key || ''));
 
 const traverse = (root, visit) => {
   const stack = [{ key: undefined, value: root }];
@@ -502,4 +524,5 @@ module.exports = {
   extractXNetworkEvents,
   extractXNetworkMessages,
   extractXNetworkViewerCount,
+  extractXNetworkViewerCountMatch,
 };

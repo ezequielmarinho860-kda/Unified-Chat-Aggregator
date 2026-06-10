@@ -113,6 +113,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(html, /viewer-transport\.js/);
     assert.match(html, /data-player-panel/);
     assert.match(html, /data-viewer-card="twitch"/);
+    assert.match(html, /data-viewer-card="chat"/);
     assert.match(html, /data-viewer-platform-count="total"/);
     assert.match(html, /data-chat-list/);
     assert.match(html, /data-chat-platform-filter="all"/);
@@ -151,6 +152,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.equal(scriptResponse.status, 200);
     assert.match(scriptResponse.headers.get('content-type'), /^text\/javascript/);
     assert.match(script, /createDefaultViewerTransportClient/);
+    assert.match(script, /clientType: 'viewer'/);
     assert.doesNotMatch(script, /new WebSocket/);
     assert.doesNotMatch(script, /fetch\('/);
     assert.match(script, /chat\.message/);
@@ -165,6 +167,9 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.match(script, /pendingRenderFrame/);
     assert.match(script, /forceChatRender/);
     assert.match(script, /chatDomDirty/);
+    assert.match(script, /forceChatRender \|\| state\.chatDomDirty/);
+    assert.match(script, /renderPlayerSafely/);
+    assert.match(script, /const viewerStateLabels/);
     assert.match(script, /chat-emote--extension/);
     assert.match(script, /markLargeExtensionEmote/);
     assert.match(script, /maintainChatBottomAfterMediaLoad/);
@@ -208,6 +213,7 @@ test('serves the browser-native viewer mode shell and assets', async () => {
     assert.equal(overlayScriptResponse.status, 200);
     assert.match(overlayScriptResponse.headers.get('content-type'), /^text\/javascript/);
     assert.match(overlayScript, /createDefaultViewerTransportClient/);
+    assert.match(overlayScript, /clientType: 'overlay'/);
     assert.match(overlayScript, /chat\.message/);
     assert.match(overlayScript, /overlay-reply/);
     assert.doesNotMatch(overlayScript, /window\.chatAggregator/);
@@ -870,3 +876,60 @@ test('allows browser websocket connections from the same origin host', async () 
     await gateway.stop();
   }
 });
+
+test('tracks browser viewer connections as chat presence', async () => {
+  const gateway = createHttpGateway({ getSnapshot: () => ({ protocolVersion: '1', statuses: [], viewers: { sources: [], total: 0 } }), port: 0 });
+  let firstClient;
+  let secondClient;
+  const events = [];
+
+  try {
+    const address = await gateway.start();
+    firstClient = new WebSocket(`${address.eventsUrl}?client=viewer`);
+    firstClient.on('message', (payload) => {
+      events.push(JSON.parse(payload.toString()));
+    });
+
+    await waitForCondition(
+      () => events.some(
+        (event) => event.type === 'snapshot.replace' && event.data?.presence?.browserChatUsers === 1,
+      ),
+    );
+
+    secondClient = new WebSocket(`${address.eventsUrl}?client=viewer`);
+    await waitForCondition(
+      () => events.some(
+        (event) => event.type === 'presence.update' && event.data?.browserChatUsers === 2,
+      ),
+    );
+
+    assert.equal(
+      events.find((event) => event.type === 'snapshot.replace').data.presence.browserChatUsers,
+      1,
+    );
+    assert.equal(
+      events.find(
+        (event) => event.type === 'presence.update' && event.data?.browserChatUsers === 2,
+      ).data.browserChatUsers,
+      2,
+    );
+  } finally {
+    firstClient?.close();
+    secondClient?.close();
+    await gateway.stop();
+  }
+});
+
+const waitForCondition = async (predicate, timeoutMs = 1_000) => {
+  const expiresAt = Date.now() + timeoutMs;
+
+  while (Date.now() < expiresAt) {
+    if (predicate()) {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error('Timed out waiting for condition.');
+};

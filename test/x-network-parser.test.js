@@ -4,6 +4,7 @@ const {
   extractXNetworkEvents,
   extractXNetworkMessages,
   extractXNetworkViewerCount,
+  extractXNetworkViewerCountMatch,
 } = require('../src/connectors/x-network-parser');
 
 test('extracts X messages from GraphQL-style payloads', () => {
@@ -105,6 +106,24 @@ test('extracts X viewer counts from network payloads', () => {
   assert.equal(extractXNetworkViewerCount({ live: { viewer_count: 1234 } }), 1234);
   assert.equal(extractXNetworkViewerCount({ label: '2.5K watching' }), 2500);
   assert.equal(extractXNetworkViewerCount({ room: { participant_count: 87 } }), 87);
+});
+
+test('returns debug metadata for X network viewer count matches', () => {
+  assert.deepEqual(extractXNetworkViewerCountMatch({ live: { viewer_count: 1234 } }), {
+    count: 1234,
+    key: 'viewer_count',
+    source: 'network-number',
+    value: 1234,
+  });
+});
+
+test('ignores X participant index fields as viewer counts', () => {
+  assert.equal(
+    extractXNetworkViewerCount({
+      room: { participant_index: 595731339 },
+    }),
+    undefined,
+  );
 });
 
 test('ignores unrelated non-X payloads by URL', () => {

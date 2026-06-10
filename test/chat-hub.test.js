@@ -28,8 +28,13 @@ const createTestConnector = ({
       events.on('connector-error', listener);
       return () => events.off('connector-error', listener);
     },
+    onStatus: (listener) => {
+      events.on('status', listener);
+      return () => events.off('status', listener);
+    },
     emitMessage: (message) => events.emit('message', message),
     emitError: (error) => events.emit('connector-error', error),
+    emitStatus: (status) => events.emit('status', status),
   };
 };
 
@@ -114,6 +119,26 @@ test('tracks connector errors without throwing', () => {
 
   assert.equal(hub.getStatuses()[0].state, 'error');
   assert.equal(hub.getStatuses()[0].error, 'resolver blocked');
+});
+
+test('keeps a resolved X source from connector status updates', () => {
+  const connector = createTestConnector({ platform: 'x' });
+  const hub = createChatHub({ connectors: [connector] });
+
+  connector.emitStatus({
+    state: 'connected',
+    source: {
+      sourceId: 'x:broadcast-1',
+      platform: 'x',
+      broadcasterName: 'Blockspace',
+      channelLabel: '@blockspace',
+    },
+  });
+
+  connector.emitStatus({ state: 'observing' });
+
+  assert.equal(hub.getStatuses()[0].source.channelLabel, '@blockspace');
+  assert.equal(hub.getStatuses()[0].source.broadcasterName, 'Blockspace');
 });
 
 test('allows duplicate connector platforms with different sources', async () => {

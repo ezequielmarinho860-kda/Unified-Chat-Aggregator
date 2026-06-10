@@ -19,6 +19,7 @@ let lastStatusKey = '';
 let currentStatus = { state: 'connected' };
 let lastViewerCount;
 let lastViewerCountCheckedAt = 0;
+let lastViewerCountDebug;
 
 const normalizeText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 
@@ -28,7 +29,11 @@ const sendIpc = (channel, payload) => {
 
 const sendStatus = (status = {}) => {
   currentStatus = { ...currentStatus, ...status };
-  const payload = { ...currentStatus, viewerCount: getXViewerCount() };
+  const payload = {
+    ...currentStatus,
+    viewerCount: getXViewerCount(),
+    viewerCountDebug: lastViewerCountDebug,
+  };
   const key = JSON.stringify(payload);
 
   if (key === lastStatusKey) {
@@ -45,23 +50,62 @@ const getXViewerCount = () => {
   }
 
   lastViewerCountCheckedAt = Date.now();
+  lastViewerCountDebug = undefined;
   const labeledCandidates = document.querySelectorAll(
     "[aria-label*='viewer' i], [aria-label*='watching' i], [data-testid*='viewer' i]",
   );
 
   for (const candidate of labeledCandidates) {
-    const count = parseViewerCountText(
-      [candidate.getAttribute('aria-label'), candidate.textContent].filter(Boolean).join(' '),
-    );
+    const candidateText = [candidate.getAttribute('aria-label'), candidate.textContent].filter(Boolean).join(' ');
+    const count = parseViewerCountText(candidateText);
 
     if (count !== undefined) {
       lastViewerCount = count;
+      lastViewerCountDebug = createDomViewerCountDebug('dom-candidate', candidate, candidateText, count);
       return lastViewerCount;
     }
   }
 
-  lastViewerCount = parseViewerCountText(document.body?.innerText);
+  const bodyText = document.body?.innerText;
+
+  lastViewerCount = parseViewerCountText(bodyText);
+  if (lastViewerCount !== undefined) {
+    lastViewerCountDebug = createBodyViewerCountDebug(bodyText, lastViewerCount);
+  }
   return lastViewerCount;
+};
+
+const getLastViewerCountDebug = () => lastViewerCountDebug;
+
+const createDomViewerCountDebug = (source, element, text, count) => ({
+  count,
+  source,
+  target: summarizeDebugElement(element, text),
+});
+
+const createBodyViewerCountDebug = (text, count) => ({
+  count,
+  source: 'dom-body',
+  text: normalizeText(text).slice(0, 700),
+});
+
+const summarizeDebugElement = (element, text) => {
+  const rect = element?.getBoundingClientRect?.();
+
+  return {
+    ariaLabel: element?.getAttribute?.('aria-label') || '',
+    dataTestId: element?.getAttribute?.('data-testid') || '',
+    rect: rect
+      ? {
+          height: Math.round(rect.height),
+          left: Math.round(rect.left),
+          top: Math.round(rect.top),
+          width: Math.round(rect.width),
+        }
+      : undefined,
+    tag: element?.tagName?.toLowerCase?.() || '',
+    text: normalizeText(text).slice(0, 500),
+  };
 };
 
 const suppressBacklogUntil = (timestamp) => {
@@ -679,6 +723,7 @@ if (typeof module !== 'undefined' && module.exports) {
       getAuthorName,
       getMessageText,
       getUsername,
+      getLastViewerCountDebug,
       getXViewerCount,
       processCandidate,
       resolveChatContainer,

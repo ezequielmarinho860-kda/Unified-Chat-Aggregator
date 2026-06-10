@@ -1996,6 +1996,8 @@ const formatXCaptureDebugResult = (result = {}) => {
       return;
     }
 
+    lines.push(...formatXViewerDebugLines(capture.viewerDebug));
+
     if (!best) {
       lines.push('best: none');
       return;
@@ -2020,6 +2022,45 @@ const formatXCaptureDebugResult = (result = {}) => {
   });
 
   return lines.join('\n');
+};
+
+const formatXViewerDebugLines = (viewerDebug = {}) => {
+  const lines = [];
+
+  for (const [source, debug] of Object.entries({
+    dom: viewerDebug.dom,
+    network: viewerDebug.network,
+  })) {
+    if (!debug) {
+      lines.push(`${source} viewer: none`);
+      continue;
+    }
+
+    lines.push(
+      `${source} viewer: count=${debug.count ?? 'n/a'} source=${debug.source ?? '-'} key=${debug.key ?? '-'} at=${debug.observedAt ?? '-'}`,
+    );
+
+    if (debug.url) {
+      lines.push(`${source} url: ${debug.url}`);
+    }
+
+    if (debug.target) {
+      lines.push(
+        `${source} target: tag=${debug.target.tag || '-'} testId=${debug.target.dataTestId || '-'} aria=${debug.target.ariaLabel || '-'}`,
+      );
+      lines.push(`${source} text: ${debug.target.text || '-'}`);
+    } else if (debug.value !== undefined) {
+      lines.push(`${source} value: ${String(debug.value).slice(0, 240)}`);
+    } else if (debug.text) {
+      lines.push(`${source} text: ${String(debug.text).slice(0, 240)}`);
+    }
+
+    if (debug.payload) {
+      lines.push(`${source} payload: ${String(debug.payload).slice(0, 240)}`);
+    }
+  }
+
+  return lines;
 };
 
 disconnectKick?.addEventListener('click', async () => {
