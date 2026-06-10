@@ -499,7 +499,12 @@ h1 {
 }
 
 .message__badge--x {
-  background: #24292f;
+  background: #050505;
+}
+
+.message__badge--x .message__badge-symbol--image {
+  width: 12px;
+  height: 12px;
 }
 
 .message__badge--local {
@@ -635,6 +640,21 @@ h1 {
   overflow-wrap: anywhere;
   color: #f4f7fb;
   line-height: 1.35;
+}
+
+.message__reply {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 3px solid rgba(148, 163, 184, 0.55);
+  color: #c7d2e2;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.message__reply-label {
+  color: #eff6ff;
+  font-weight: 800;
 }
 
 .message__mention {

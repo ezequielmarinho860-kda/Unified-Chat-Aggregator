@@ -21,6 +21,8 @@ const clearKickSession = document.querySelector('#clear-kick-session');
 const kickAuthStatus = document.querySelector('#kick-auth-status');
 const connectX = document.querySelector('#connect-x');
 const disconnectX = document.querySelector('#disconnect-x');
+const debugX = document.querySelector('#debug-x');
+const xDebugOutput = document.querySelector('#x-debug-output');
 const xAuthStatus = document.querySelector('#x-auth-status');
 const backendStatus = document.querySelector('#backend-status');
 const messageComposer = document.querySelector('#message-composer');
@@ -209,6 +211,7 @@ const platformSymbols = {
 
 const platformIconUrls = {
   twitch: 'https://upload.wikimedia.org/wikipedia/commons/4/41/Twitch_Glitch_Logo_White.svg',
+  x: './assets/x-logo.svg',
 };
 
 const stateLabels = {
@@ -348,6 +351,7 @@ const renderMessage = (message) => {
   author.textContent = message.author.name;
 
   const badges = renderAuthorBadges(message.author.badges);
+  const reply = renderMessageReply(message.reply);
 
   const time = document.createElement('time');
   time.className = 'message__time';
@@ -364,10 +368,36 @@ const renderMessage = (message) => {
 
   const content = document.createElement('div');
   content.className = 'message__content';
-  content.append(metadata, text);
+  content.append(metadata, ...[reply, text].filter(Boolean));
 
   item.append(...[avatar, content].filter(Boolean));
   return item;
+};
+
+const renderMessageReply = (reply) => {
+  if (!reply) {
+    return undefined;
+  }
+
+  const element = document.createElement('p');
+  const target = reply.username ? `@${reply.username}` : reply.authorName;
+  const label = document.createElement('strong');
+  const hasTarget = Boolean(target);
+
+  element.className = 'message__reply';
+  label.className = 'message__reply-label';
+  label.textContent = hasTarget ? 'Replying to ' : 'Replying ';
+  element.append(label);
+
+  if (hasTarget) {
+    element.append(document.createTextNode(target));
+  }
+
+  if (reply.text) {
+    element.append(document.createTextNode(hasTarget ? `: ${reply.text}` : ` ${reply.text}`));
+  }
+
+  return element;
 };
 
 const classifyOwnMessage = (message) => {
@@ -438,7 +468,7 @@ const verifyLocalChatSession = async () => {
   }
 };
 
-const setLocalChatSession = (session) => {
+const setLocalChatSession = (session, { syncMain = true } = {}) => {
   localChatSession = session;
   pendingGoogleOAuth = undefined;
   pendingLocalRegistrationEmail = undefined;
@@ -451,9 +481,13 @@ const setLocalChatSession = (session) => {
 
   updateLocalLoggedIdentity();
   renderLocalChatSession();
+
+  if (syncMain && session?.token) {
+    void window.chatAggregator?.localChatSyncSession?.({ token: session.token });
+  }
 };
 
-const clearLocalChatSession = () => {
+const clearLocalChatSession = ({ syncMain = true } = {}) => {
   localChatSession = undefined;
   pendingLocalRegistrationEmail = undefined;
 
@@ -465,6 +499,10 @@ const clearLocalChatSession = () => {
 
   updateLocalLoggedIdentity();
   renderLocalChatSession();
+
+  if (syncMain) {
+    void window.chatAggregator?.localChatLogout?.();
+  }
 };
 
 const renderLocalChatSession = () => {
@@ -752,7 +790,7 @@ const identifyOwnIncomingMessage = (message) => {
 const shouldRenderAuthorAvatar = (message) => !['kick', 'twitch'].includes(message.platform);
 
 const renderMessageSource = (source) => {
-  const label = source?.broadcasterName || source?.channelLabel;
+  const label = source?.channelLabel || source?.broadcasterName || source?.sourceId;
 
   if (!label) {
     return undefined;
@@ -1006,6 +1044,10 @@ const renderConnectorStatus = (status) => {
     status.details?.authenticatedUser
       ? `Authenticated: ${status.details.authenticatedUser}`
       : undefined,
+    status.details?.capture ? `Capture: ${status.details.capture}` : undefined,
+    status.details?.viewerCount !== undefined
+      ? `Viewers: ${formatViewerCount(status.details.viewerCount)}`
+      : undefined,
     formatStatusSourcesDetail(status.details?.sources),
     formatRelativeDetail(status.lastMessageAt),
     `${messageCount} msg`,
@@ -1067,7 +1109,15 @@ const formatStatusSourcesDetail = (sources = []) => {
     return undefined;
   }
 
-  return activeSources.map(formatStatusSourceLabel).join(', ');
+  return activeSources.map(formatStatusSourceDetail).join(', ');
+};
+
+const formatStatusSourceDetail = (sourceStatus = {}) => {
+  const label = formatStatusSourceLabel(sourceStatus);
+  const capture = sourceStatus.details?.capture;
+  const messageCount = sourceStatus.messageCount ?? 0;
+
+  return capture ? `${label}: ${capture}, ${messageCount} msg` : `${label}: ${messageCount} msg`;
 };
 
 const formatStatusSourcesTitle = (status) => {
@@ -1081,9 +1131,10 @@ const formatStatusSourcesTitle = (status) => {
     const label = formatStatusSourceLabel(source);
     const state = stateLabels[source.state] ?? source.state ?? 'Idle';
     const count = source.messageCount ?? 0;
+    const capture = source.details?.capture ? `, ${source.details.capture}` : '';
     const error = source.error ? ` - ${source.error}` : '';
 
-    return `${label}: ${state}, ${count} msg${error}`;
+    return `${label}: ${state}${capture}, ${count} msg${error}`;
   }).join('\n');
 };
 
@@ -1158,15 +1209,12 @@ const populateConfigForm = (config) => {
   }
 
   setFormValue('ui.theme', config.ui?.theme);
-  setFormValue('twitch.enabled', config.connectors.twitch.enabled);
   setFormValue('twitch.channel', config.connectors.twitch.channel);
   setFormValue('twitch.channel2', config.connectors.twitch.sources?.[1]?.channel);
   renderTwitchAuthStatus(config.connectors.twitch.auth);
-  setFormValue('kick.enabled', config.connectors.kick.enabled);
   setFormValue('kick.channel', config.connectors.kick.channel);
   setFormValue('kick.channel2', config.connectors.kick.sources?.[1]?.channel);
   renderKickAuthStatus(config.connectors.kick.auth);
-  setFormValue('x.enabled', config.connectors.x.enabled);
   setFormValue('x.liveUrl', config.connectors.x.liveUrl);
   setFormValue('x.liveUrl2', config.connectors.x.sources?.[1]?.liveUrl);
   setFormValue('x.showBrowser', config.connectors.x.showBrowser);
@@ -1179,7 +1227,7 @@ const readConfigForm = () => ({
   },
   connectors: {
     twitch: {
-      enabled: getFormValue('twitch.enabled'),
+      enabled: Boolean(getFormValue('twitch.channel') || getFormValue('twitch.channel2')),
       channel: getFormValue('twitch.channel'),
       sources: [
         {
@@ -1193,7 +1241,7 @@ const readConfigForm = () => ({
       ],
     },
     kick: {
-      enabled: getFormValue('kick.enabled'),
+      enabled: Boolean(getFormValue('kick.channel') || getFormValue('kick.channel2')),
       channel: getFormValue('kick.channel'),
       sources: [
         {
@@ -1207,7 +1255,7 @@ const readConfigForm = () => ({
       ],
     },
     x: {
-      enabled: getFormValue('x.enabled'),
+      enabled: Boolean(getFormValue('x.liveUrl') || getFormValue('x.liveUrl2')),
       liveUrl: getFormValue('x.liveUrl'),
       sources: [
         {
@@ -1291,6 +1339,7 @@ const setConfigBusy = (isBusy) => {
   clearKickSession.disabled = isBusy;
   connectX.disabled = isBusy;
   disconnectX.disabled = isBusy;
+  debugX.disabled = isBusy;
 };
 
 const renderTwitchAuthStatus = (auth = {}) => {
@@ -1377,6 +1426,17 @@ window.chatAggregator?.onConfigChanged((snapshot) => {
   renderConfigSnapshot(snapshot);
 });
 
+window.chatAggregator?.onLocalChatSessionChanged((session) => {
+  if (session?.token && session.user) {
+    setLocalChatSession(session, { syncMain: false });
+    localChatMeta.textContent = `Logged in as ${session.user.nick}.`;
+    return;
+  }
+
+  clearLocalChatSession({ syncMain: false });
+  localChatMeta.textContent = 'Logged out from local chat.';
+});
+
 window.chatAggregator?.onViewerCounts(renderViewerSnapshot);
 
 window.chatAggregator?.onConnectorStatus((status) => {
@@ -1390,10 +1450,6 @@ window.chatAggregator?.onChatMessage((message) => {
   identifyOwnIncomingMessage(message);
   messages.push(message);
   updateStatusForMessage(message);
-
-  if (messages.length > 1_000) {
-    messages.splice(0, messages.length - 1_000);
-  }
 
   if (!shouldStickToBottom && isMessageVisibleInActiveFilter(message)) {
     unseenMessageCount += 1;
@@ -1810,6 +1866,93 @@ disconnectX?.addEventListener('click', async () => {
     setConfigBusy(false);
   }
 });
+
+debugX?.addEventListener('click', async () => {
+  setConfigBusy(true);
+  configMeta.textContent = 'Collecting X capture debug...';
+
+  try {
+    await window.chatAggregator.saveConfig(readConfigForm());
+    const result = await window.chatAggregator.debugXCapture();
+    const output = formatXCaptureDebugResult(result);
+
+    if (xDebugOutput) {
+      xDebugOutput.hidden = false;
+      xDebugOutput.textContent = output;
+    }
+
+    try {
+      await navigator.clipboard?.writeText(output);
+      configMeta.textContent = 'X capture debug copied and shown below.';
+    } catch {
+      configMeta.textContent = 'X capture debug shown below.';
+    }
+  } catch (error) {
+    configMeta.textContent = `X capture debug failed: ${error.message}`;
+  } finally {
+    setConfigBusy(false);
+  }
+});
+
+const formatXCaptureDebugResult = (result = {}) => {
+  const lines = [];
+  const captures = Array.isArray(result.captures) ? result.captures : [];
+
+  lines.push(`connectors: ${result.connectorCount ?? 0}`);
+
+  if (captures.length === 0) {
+    lines.push('captures: none');
+    return lines.join('\n');
+  }
+
+  captures.forEach((capture, index) => {
+    const source = capture?.source ?? {};
+    const context = capture?.context ?? {};
+    const candidates = Array.isArray(context.candidates) ? context.candidates : [];
+    const best = candidates[0];
+
+    lines.push('');
+    lines.push(
+      `#${index + 1} ${capture?.connected ? 'connected' : 'disconnected'} ${source.channelLabel ?? source.broadcasterName ?? source.sourceId ?? 'x-source'}`,
+    );
+
+    if (capture?.captureUrl) {
+      lines.push(`url: ${capture.captureUrl}`);
+    }
+
+    if (capture?.error) {
+      lines.push(`error: ${capture.error}`);
+    }
+
+    if (!capture?.connected) {
+      return;
+    }
+
+    if (!best) {
+      lines.push('best: none');
+      return;
+    }
+
+    lines.push(
+      `best: ${best.handle || 'n/a'} | score=${best.score ?? 0} | chat=${best.inChatPanel ? 'yes' : 'no'} | userCell=${best.userCell ? 'yes' : 'no'} | href=${best.href || '-'}`,
+    );
+
+    const visibleCandidates = candidates
+      .filter((candidate) => candidate.handle)
+      .slice(0, 5)
+      .map(
+        (candidate, candidateIndex) =>
+          `${candidateIndex + 1}. ${candidate.handle} score=${candidate.score ?? 0} chat=${candidate.inChatPanel ? 'yes' : 'no'} cell=${candidate.userCell ? 'yes' : 'no'} href=${candidate.href || '-'}`,
+      );
+
+    if (visibleCandidates.length > 0) {
+      lines.push('top:');
+      lines.push(...visibleCandidates);
+    }
+  });
+
+  return lines.join('\n');
+};
 
 disconnectKick?.addEventListener('click', async () => {
   setConfigBusy(true);

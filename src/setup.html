@@ -46,10 +46,6 @@
 
             <fieldset class="connector-settings connector-settings--twitch">
               <legend>Twitch</legend>
-              <label class="toggle-row">
-                <input type="checkbox" name="twitch.enabled" />
-                <span>Enabled</span>
-              </label>
               <label class="field-row">
                 <span>Primary channel</span>
                 <input type="text" name="twitch.channel" autocomplete="off" />
@@ -68,10 +64,6 @@
 
             <fieldset class="connector-settings connector-settings--kick">
               <legend>Kick</legend>
-              <label class="toggle-row">
-                <input type="checkbox" name="kick.enabled" />
-                <span>Enabled</span>
-              </label>
               <label class="field-row">
                 <span>Primary channel</span>
                 <input type="text" name="kick.channel" autocomplete="off" placeholder="xqc or kick.com/xqc" />
@@ -90,10 +82,6 @@
 
             <fieldset class="connector-settings connector-settings--x">
               <legend>X</legend>
-              <label class="toggle-row">
-                <input type="checkbox" name="x.enabled" />
-                <span>Enabled</span>
-              </label>
               <label class="field-row">
                 <span>Primary live handle or URL</span>
                 <input type="text" name="x.liveUrl" autocomplete="off" placeholder="@chooserich" />
@@ -110,7 +98,9 @@
                 <span class="auth-actions__status" id="x-auth-status">Uses browser session</span>
                 <button class="tool-button" type="button" id="connect-x">Connect X</button>
                 <button class="tool-button" type="button" id="disconnect-x" hidden>Disconnect</button>
+                <button class="tool-button" type="button" id="debug-x">Debug X</button>
               </div>
+              <pre class="debug-output" id="x-debug-output" hidden></pre>
             </fieldset>
           </form>
 

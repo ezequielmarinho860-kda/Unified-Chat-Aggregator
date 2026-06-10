@@ -1,6 +1,4 @@
 (() => {
-  const DEFAULT_MAX_MESSAGES = 8;
-  const MAX_ALLOWED_MESSAGES = 50;
   const reconnectBaseMs = 1_000;
   const reconnectMaxMs = 10_000;
   const transport = window.ViewerTransports.createDefaultViewerTransportClient();
@@ -17,8 +15,6 @@
     twitch: 'Twitch',
     x: 'X',
   };
-  const maxMessages = getIntegerOption('maxMessages', DEFAULT_MAX_MESSAGES, 1, MAX_ALLOWED_MESSAGES);
-
   const start = async () => {
     try {
       await transport.loadSnapshot();
@@ -81,9 +77,7 @@
       return;
     }
 
-    if (event.type === 'snapshot.replace') {
-      clearMessages();
-    } else if (event.type === 'chat.message') {
+    if (event.type === 'chat.message') {
       addMessage(event.data);
     }
   };
@@ -98,17 +92,6 @@
     state.messages.push(message);
     state.messageKeys.add(messageKey);
 
-    while (state.messages.length > maxMessages) {
-      const removedMessage = state.messages.shift();
-      state.messageKeys.delete(getMessageKey(removedMessage));
-    }
-
-    renderMessages();
-  };
-
-  const clearMessages = () => {
-    state.messages = [];
-    state.messageKeys = new Set();
     renderMessages();
   };
 
@@ -120,6 +103,7 @@
     const article = document.createElement('article');
     const meta = document.createElement('div');
     const author = document.createElement('strong');
+    const reply = createReplyElement(message.reply);
     const text = document.createElement('p');
 
     article.className = 'overlay-message';
@@ -138,19 +122,46 @@
       ].filter(Boolean),
     );
     article.append(meta, text);
+    if (reply) {
+      article.insertBefore(reply, text);
+    }
     return article;
+  };
+
+  const createReplyElement = (reply) => {
+    if (!reply) {
+      return undefined;
+    }
+
+    const element = document.createElement('p');
+    const target = reply.username ? `@${reply.username}` : reply.authorName;
+    const hasTarget = Boolean(target);
+
+    element.className = 'overlay-reply';
+    element.textContent = hasTarget ? 'Replying to ' : 'Replying ';
+
+    if (hasTarget) {
+      element.append(document.createTextNode(target));
+    }
+
+    if (reply.text) {
+      element.append(document.createTextNode(hasTarget ? `: ${reply.text}` : ` ${reply.text}`));
+    }
+
+    return element;
   };
 
   const createPlatformElement = (platform = 'unknown') => {
     const element = document.createElement('span');
 
     element.className = 'overlay-platform';
-    element.textContent = platformLabels[platform] ?? platform;
+
+    element.append(document.createTextNode(platformLabels[platform] ?? platform));
     return element;
   };
 
   const createSourceElement = (source = {}) => {
-    const label = source.broadcasterName ?? source.channelLabel;
+    const label = source.channelLabel ?? source.broadcasterName ?? source.sourceId;
 
     if (!label) {
       return undefined;
@@ -211,12 +222,6 @@
 
   const getMessageKey = (message) =>
     message?.source?.sourceId && message?.id ? `${message.source.sourceId}:${message.id}` : undefined;
-
-  function getIntegerOption(name, fallback, min, max) {
-    const value = Number(new URLSearchParams(window.location.search).get(name));
-
-    return Number.isInteger(value) ? Math.min(Math.max(value, min), max) : fallback;
-  }
 
   void start();
 })();

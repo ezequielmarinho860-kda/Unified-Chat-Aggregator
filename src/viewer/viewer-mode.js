@@ -1,5 +1,4 @@
 (() => {
-  const MAX_MESSAGES = 200;
   const CHAT_BOTTOM_TOLERANCE_PX = 120;
   const LOCAL_SESSION_STORAGE_KEY = 'uca.localChatSession';
   const reconnectBaseMs = 1_000;
@@ -271,9 +270,6 @@
     }
 
     if (event.type === 'snapshot.replace') {
-      state.messageCount = 0;
-      state.messages = [];
-      state.messageKeys = new Set();
       setChatPinnedToBottom(true, 'snapshot_replace');
       state.unseenMessageCount = 0;
       cancelScheduledRender();
@@ -304,11 +300,6 @@
     state.messages.push(message);
     state.messageCount += 1;
     state.chatDomDirty = true;
-
-    while (state.messages.length > MAX_MESSAGES) {
-      const removedMessage = state.messages.shift();
-      state.messageKeys.delete(getMessageKey(removedMessage));
-    }
 
     if (!shouldStickToBottom) {
       setChatPinnedToBottom(false, 'chat_message_not_at_bottom', { messageKey });
@@ -743,6 +734,7 @@
     const author = document.createElement('strong');
     const time = document.createElement('time');
     const content = document.createElement('p');
+    const reply = createMessageReply(message.reply);
 
     article.className = 'message';
     article.dataset.platform = getMessagePlatform(message);
@@ -767,15 +759,44 @@
     );
     content.append(...createFragmentElements(message));
     body.append(meta, content);
+    if (reply) {
+      body.insertBefore(reply, content);
+    }
     article.append(...[avatar, body].filter(Boolean));
     return article;
+  };
+
+  const createMessageReply = (reply) => {
+    if (!reply) {
+      return undefined;
+    }
+
+    const element = document.createElement('p');
+    const label = document.createElement('strong');
+    const target = reply.username ? `@${reply.username}` : reply.authorName;
+    const hasTarget = Boolean(target);
+
+    element.className = 'message__reply';
+    label.className = 'message__reply-label';
+    label.textContent = hasTarget ? 'Replying to ' : 'Replying ';
+    element.append(label);
+
+    if (hasTarget) {
+      element.append(document.createTextNode(target));
+    }
+
+    if (reply.text) {
+      element.append(document.createTextNode(hasTarget ? `: ${reply.text}` : ` ${reply.text}`));
+    }
+
+    return element;
   };
 
   const shouldRenderAuthorAvatar = (message) =>
     !['kick', 'local', 'twitch'].includes(getMessagePlatform(message));
 
   const createMessageSource = (source = {}) => {
-    const label = source.broadcasterName ?? source.channelLabel;
+    const label = source.channelLabel ?? source.broadcasterName ?? source.sourceId;
 
     if (!label) {
       return undefined;
