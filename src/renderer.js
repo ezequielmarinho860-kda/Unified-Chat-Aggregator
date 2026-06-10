@@ -9,6 +9,7 @@ const resumeChat = document.querySelector('#resume-chat');
 const clearFeed = document.querySelector('#clear-feed');
 const configForm = document.querySelector('#connector-config-form');
 const configMeta = document.querySelector('#config-meta');
+const themeToggle = document.querySelector('#theme-toggle');
 const restartConnectors = document.querySelector('#restart-connectors');
 const reconnectBrowserBackend = document.querySelector('#reconnect-browser-backend');
 const connectTwitch = document.querySelector('#connect-twitch');
@@ -35,6 +36,7 @@ const localChatLogout = document.querySelector('#local-chat-logout');
 const localChatGoogleLogin = document.querySelector('#local-chat-google-login');
 const localChatMeta = document.querySelector('#local-chat-meta');
 const localChatSuggestions = document.querySelector('#local-chat-suggestions');
+const localChatLoginRequired = document.querySelector('#local-chat-login-required');
 const localChatNickField = localChatAuthForm?.querySelector('[data-local-nick-field]');
 const localChatAuthSubmit = localChatAuthForm?.querySelector('[data-local-auth-action]');
 const totalViewerCount = document.querySelector('#total-viewer-count');
@@ -600,6 +602,10 @@ const renderLocalChatSession = () => {
 
   if (localChatSessionPanel) {
     localChatSessionPanel.hidden = !isLoggedIn;
+  }
+
+  if (localChatLoginRequired) {
+    localChatLoginRequired.hidden = isLoggedIn;
   }
 
   if (localChatSessionLabel) {
@@ -1261,6 +1267,18 @@ const getFormValue = (name) => {
   return field.value.trim();
 };
 
+const renderThemeToggle = () => {
+  if (!themeToggle || !configForm) {
+    return;
+  }
+
+  const isDark = getFormValue('ui.theme') === 'dark';
+
+  themeToggle.textContent = `Theme: ${isDark ? 'Dark' : 'Light'}`;
+  themeToggle.setAttribute('aria-pressed', String(isDark));
+  themeToggle.title = `Switch to ${isDark ? 'light' : 'dark'} theme`;
+};
+
 const getNamedFormValue = (form, name) => {
   const field = form.elements.namedItem(name);
 
@@ -1277,6 +1295,7 @@ const populateConfigForm = (config) => {
   }
 
   setFormValue('ui.theme', config.ui?.theme);
+  renderThemeToggle();
   setFormValue('twitch.channel', config.connectors.twitch.channel);
   setFormValue('twitch.channel2', config.connectors.twitch.sources?.[1]?.channel);
   renderTwitchAuthStatus(config.connectors.twitch.auth);
@@ -1530,6 +1549,14 @@ window.chatAggregator?.onChatMessage((message) => {
   }
 
   renderFeed({ stickToBottom: shouldStickToBottom });
+});
+
+themeToggle?.addEventListener('click', () => {
+  const nextTheme = getFormValue('ui.theme') === 'dark' ? 'light' : 'dark';
+
+  setFormValue('ui.theme', nextTheme);
+  document.documentElement.dataset.theme = nextTheme;
+  renderThemeToggle();
 });
 
 updatePlatformFilterButtons();

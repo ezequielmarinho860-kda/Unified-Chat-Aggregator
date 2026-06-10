@@ -72,18 +72,9 @@
         </button>
 
         <section class="local-chat-panel" aria-label="Local chat controls">
-          <form class="local-chat-panel__auth" id="local-chat-auth-form">
-            <label>
-              <span>Email</span>
-              <input name="email" type="email" autocomplete="email" placeholder="host@example.com" required />
-            </label>
-            <label data-local-nick-field hidden>
-              <span>Nick</span>
-              <input name="nick" type="text" autocomplete="nickname" maxlength="24" placeholder="host_nick" />
-            </label>
-            <button class="tool-button tool-button--primary" type="submit" data-local-auth-action="login">Continue</button>
-            <button class="tool-button" type="button" id="local-chat-google-login">Google</button>
-          </form>
+          <p class="local-chat-panel__meta" id="local-chat-login-required" hidden>
+            Local chat unavailable. Complete login in Connector Setup.
+          </p>
           <div class="local-chat-panel__session" id="local-chat-session-panel" hidden>
             <strong id="local-chat-session-label">Not logged in</strong>
             <button class="tool-button tool-button--compact" type="button" id="local-chat-logout">Logout</button>

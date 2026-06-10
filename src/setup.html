@@ -26,103 +26,104 @@
               <h2 id="config-title">Streams and accounts</h2>
             </div>
             <div class="config-panel__actions">
+              <button
+                class="tool-button tool-button--compact theme-toggle"
+                type="button"
+                id="theme-toggle"
+                form="connector-config-form"
+                aria-pressed="false"
+              >
+                Theme: Light
+              </button>
               <button class="tool-button" type="button" id="restart-connectors">Reconnect</button>
               <button class="tool-button tool-button--primary" type="submit" form="connector-config-form">Save</button>
             </div>
           </div>
 
-          <form class="connector-form" id="connector-config-form">
-            <fieldset class="connector-settings connector-settings--appearance">
-              <legend>Appearance</legend>
-              <label class="field-row">
-                <span>Theme</span>
-                <select name="ui.theme">
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                </select>
-              </label>
-              <p class="connector-settings__note">Applies to setup and dashboard after saving.</p>
-            </fieldset>
-
-            <fieldset class="connector-settings connector-settings--twitch">
-              <legend>Twitch</legend>
-              <label class="field-row">
-                <span>Primary channel</span>
-                <input type="text" name="twitch.channel" autocomplete="off" />
-              </label>
-              <label class="field-row">
-                <span>Second channel</span>
-                <input type="text" name="twitch.channel2" autocomplete="off" placeholder="Optional" />
-              </label>
-              <div class="auth-actions" data-twitch-auth>
-                <span class="auth-actions__status" id="twitch-auth-status">Not connected</span>
-                <button class="tool-button" type="button" id="connect-twitch">Connect Twitch</button>
-                <button class="tool-button" type="button" id="disconnect-twitch" hidden>Disconnect</button>
-                <button class="tool-button" type="button" id="clear-twitch-session">Clear login session</button>
+          <div class="setup-config-grid">
+            <section class="local-chat-panel local-chat-panel--setup" aria-label="Local chat identity">
+              <h3 class="local-chat-panel__title">Local chat</h3>
+              <form class="local-chat-panel__auth" id="local-chat-auth-form">
+                <label>
+                  <span>Email</span>
+                  <input name="email" type="email" autocomplete="email" placeholder="host@example.com" required />
+                </label>
+                <label data-local-nick-field hidden>
+                  <span>Nick</span>
+                  <input name="nick" type="text" autocomplete="nickname" maxlength="24" placeholder="host_nick" />
+                </label>
+                <button class="tool-button tool-button--primary" type="submit" data-local-auth-action="login">Continue</button>
+                <button class="tool-button" type="button" id="local-chat-google-login">Google</button>
+              </form>
+              <div class="local-chat-panel__session" id="local-chat-session-panel" hidden>
+                <strong id="local-chat-session-label">Not logged in</strong>
+                <button class="tool-button tool-button--compact" type="button" id="local-chat-logout">Logout</button>
               </div>
-            </fieldset>
+              <p class="local-chat-panel__meta" id="local-chat-meta" aria-live="polite"></p>
+            </section>
 
-            <fieldset class="connector-settings connector-settings--kick">
-              <legend>Kick</legend>
-              <label class="field-row">
-                <span>Primary channel</span>
-                <input type="text" name="kick.channel" autocomplete="off" placeholder="xqc or kick.com/xqc" />
-              </label>
-              <label class="field-row">
-                <span>Second channel</span>
-                <input type="text" name="kick.channel2" autocomplete="off" placeholder="Optional" />
-              </label>
-              <div class="auth-actions" data-kick-auth>
-                <span class="auth-actions__status" id="kick-auth-status">Not connected</span>
-                <button class="tool-button" type="button" id="connect-kick">Connect Kick</button>
-                <button class="tool-button" type="button" id="disconnect-kick" hidden>Disconnect</button>
-                <button class="tool-button" type="button" id="clear-kick-session">Clear login session</button>
-              </div>
-            </fieldset>
+            <form class="connector-form" id="connector-config-form">
+              <input type="hidden" name="ui.theme" value="light" />
+              <fieldset class="connector-settings connector-settings--twitch">
+                <legend>Twitch</legend>
+                <label class="field-row">
+                  <span>Primary channel</span>
+                  <input type="text" name="twitch.channel" autocomplete="off" />
+                </label>
+                <label class="field-row">
+                  <span>Second channel</span>
+                  <input type="text" name="twitch.channel2" autocomplete="off" placeholder="Optional" />
+                </label>
+                <div class="auth-actions" data-twitch-auth>
+                  <span class="auth-actions__status" id="twitch-auth-status">Not connected</span>
+                  <button class="tool-button" type="button" id="connect-twitch">Connect Twitch</button>
+                  <button class="tool-button" type="button" id="disconnect-twitch" hidden>Disconnect</button>
+                  <button class="tool-button" type="button" id="clear-twitch-session">Clear login session</button>
+                </div>
+              </fieldset>
 
-            <fieldset class="connector-settings connector-settings--x">
-              <legend>X</legend>
-              <label class="field-row">
-                <span>Primary live handle or URL</span>
-                <input type="text" name="x.liveUrl" autocomplete="off" placeholder="@chooserich" />
-              </label>
-              <label class="field-row">
-                <span>Second live handle or URL</span>
-                <input type="text" name="x.liveUrl2" autocomplete="off" placeholder="Optional" />
-              </label>
-              <label class="toggle-row">
-                <input type="checkbox" name="x.showBrowser" />
-                <span>Show capture window</span>
-              </label>
-              <div class="auth-actions" data-x-auth>
-                <span class="auth-actions__status" id="x-auth-status">Uses browser session</span>
-                <button class="tool-button" type="button" id="connect-x">Connect X</button>
-                <button class="tool-button" type="button" id="disconnect-x" hidden>Disconnect</button>
-                <button class="tool-button" type="button" id="debug-x">Debug X</button>
-              </div>
-              <pre class="debug-output" id="x-debug-output" hidden></pre>
-            </fieldset>
-          </form>
+              <fieldset class="connector-settings connector-settings--kick">
+                <legend>Kick</legend>
+                <label class="field-row">
+                  <span>Primary channel</span>
+                  <input type="text" name="kick.channel" autocomplete="off" placeholder="xqc or kick.com/xqc" />
+                </label>
+                <label class="field-row">
+                  <span>Second channel</span>
+                  <input type="text" name="kick.channel2" autocomplete="off" placeholder="Optional" />
+                </label>
+                <div class="auth-actions" data-kick-auth>
+                  <span class="auth-actions__status" id="kick-auth-status">Not connected</span>
+                  <button class="tool-button" type="button" id="connect-kick">Connect Kick</button>
+                  <button class="tool-button" type="button" id="disconnect-kick" hidden>Disconnect</button>
+                  <button class="tool-button" type="button" id="clear-kick-session">Clear login session</button>
+                </div>
+              </fieldset>
 
-          <section class="local-chat-panel local-chat-panel--setup" aria-label="Local chat identity">
-            <form class="local-chat-panel__auth" id="local-chat-auth-form">
-              <label>
-                <span>Email</span>
-                <input name="email" type="email" autocomplete="email" placeholder="host@example.com" required />
-              </label>
-              <label data-local-nick-field hidden>
-                <span>Nick</span>
-                <input name="nick" type="text" autocomplete="nickname" maxlength="24" placeholder="host_nick" />
-              </label>
-              <button class="tool-button tool-button--primary" type="submit" data-local-auth-action="login">Continue</button>
-              <button class="tool-button" type="button" id="local-chat-google-login">Google</button>
+              <fieldset class="connector-settings connector-settings--x">
+                <legend>X</legend>
+                <label class="field-row">
+                  <span>Primary live handle or URL</span>
+                  <input type="text" name="x.liveUrl" autocomplete="off" placeholder="@chooserich" />
+                </label>
+                <label class="field-row">
+                  <span>Second live handle or URL</span>
+                  <input type="text" name="x.liveUrl2" autocomplete="off" placeholder="Optional" />
+                </label>
+                <label class="toggle-row">
+                  <input type="checkbox" name="x.showBrowser" />
+                  <span>Show capture window</span>
+                </label>
+                <div class="auth-actions" data-x-auth>
+                  <span class="auth-actions__status" id="x-auth-status">Uses browser session</span>
+                  <button class="tool-button" type="button" id="connect-x">Connect X</button>
+                  <button class="tool-button" type="button" id="disconnect-x" hidden>Disconnect</button>
+                  <button class="tool-button" type="button" id="debug-x">Debug X</button>
+                </div>
+                <pre class="debug-output" id="x-debug-output" hidden></pre>
+              </fieldset>
             </form>
-            <div class="local-chat-panel__session" id="local-chat-session-panel" hidden>
-              <strong id="local-chat-session-label">Not logged in</strong>
-              <button class="tool-button tool-button--compact" type="button" id="local-chat-logout">Logout</button>
-            </div>
-            <p class="local-chat-panel__meta" id="local-chat-meta" aria-live="polite"></p>
-          </section>
+          </div>
 
           <p class="config-panel__meta" id="config-meta">Loading configuration...</p>
           <div class="backend-status-row">

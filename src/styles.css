@@ -211,10 +211,15 @@ h1 {
   gap: 8px;
 }
 
+.setup-config-grid,
 .connector-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+
+.setup-config-grid .connector-form {
+  display: contents;
 }
 
 .connector-settings {
@@ -244,10 +249,6 @@ h1 {
 
 .connector-settings--x {
   border-top: 4px solid #24292f;
-}
-
-.connector-settings--appearance {
-  border-top: 4px solid #64748b;
 }
 
 .connector-settings__note {
@@ -593,6 +594,30 @@ h1 {
   padding: 10px 12px;
   border-top: 1px solid #ece6dc;
   background: #fffdfa;
+}
+
+.local-chat-panel--setup {
+  align-content: start;
+  padding: 14px;
+  border: 1px solid #e3ddd3;
+  border-top: 4px solid #64748b;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.local-chat-panel__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.local-chat-panel--setup .local-chat-panel__auth,
+.local-chat-panel--setup .local-chat-panel__session {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+}
+
+.theme-toggle {
+  min-width: 108px;
 }
 
 .local-chat-panel__auth,
@@ -1183,6 +1208,7 @@ h1 {
     flex-direction: column;
   }
 
+  .setup-config-grid,
   .connector-form {
     grid-template-columns: 1fr;
   }
