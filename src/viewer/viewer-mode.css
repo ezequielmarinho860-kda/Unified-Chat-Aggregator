@@ -413,6 +413,20 @@ h1 {
   object-fit: cover;
 }
 
+.message__avatar-link {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.message__avatar-link:hover .message__avatar,
+.message__avatar-link:focus-visible .message__avatar {
+  outline: 2px solid #d5dbe3;
+  outline-offset: 2px;
+}
+
 .message__avatar--fallback {
   text-transform: uppercase;
 }
@@ -531,6 +545,17 @@ h1 {
 .message__author {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.message__author-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.message__author-link:hover,
+.message__author-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .message[data-platform='kick'] .message__author {

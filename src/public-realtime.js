@@ -142,6 +142,7 @@ const serializePublicAuthor = (author) => {
     id: requireString(author.id, 'author.id'),
     name: requireString(author.name, 'author.name'),
     avatarUrl: optionalString(author.avatarUrl),
+    profileUrl: optionalString(author.profileUrl),
     badges: Array.isArray(author.badges) ? author.badges.map(serializePublicBadge) : [],
   });
 };

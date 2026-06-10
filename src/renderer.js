@@ -346,9 +346,7 @@ const renderMessage = (message) => {
   const badge = renderPlatformBadge(message.platform);
   const source = renderMessageSource(message.source);
 
-  const author = document.createElement('strong');
-  author.className = 'message__author';
-  author.textContent = message.author.name;
+  const author = renderAuthorName(message);
 
   const badges = renderAuthorBadges(message.author.badges);
   const reply = renderMessageReply(message.reply);
@@ -370,8 +368,77 @@ const renderMessage = (message) => {
   content.className = 'message__content';
   content.append(metadata, ...[reply, text].filter(Boolean));
 
-  item.append(...[avatar, content].filter(Boolean));
+  item.append(...[wrapAuthorProfileLink(message, avatar), content].filter(Boolean));
   return item;
+};
+
+const renderAuthorName = (message) => {
+  const profileUrl = getXAuthorProfileUrl(message);
+  const author = profileUrl ? document.createElement('a') : document.createElement('strong');
+
+  author.className = profileUrl
+    ? 'message__author message__author-link'
+    : 'message__author';
+  author.textContent = message.author.name;
+
+  if (profileUrl) {
+    author.href = profileUrl;
+    author.target = '_blank';
+    author.rel = 'noopener noreferrer';
+    author.title = `Open ${message.author.name}'s X profile`;
+  }
+
+  return author;
+};
+
+const wrapAuthorProfileLink = (message, element) => {
+  const profileUrl = getXAuthorProfileUrl(message);
+
+  if (!element || !profileUrl) {
+    return element;
+  }
+
+  const link = document.createElement('a');
+
+  link.className = 'message__avatar-link';
+  link.href = profileUrl;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.title = `Open ${message.author.name}'s X profile`;
+  link.append(element);
+  return link;
+};
+
+const getXAuthorProfileUrl = (message = {}) => {
+  if (message.platform !== 'x') {
+    return undefined;
+  }
+
+  return normalizeXProfileUrl(message.author?.profileUrl);
+};
+
+const normalizeXProfileUrl = (value) => {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(value);
+
+    if (
+      url.protocol !== 'https:' ||
+      !['x.com', 'twitter.com'].includes(url.hostname.toLowerCase()) ||
+      !/^\/[A-Za-z0-9_]{1,15}\/?$/.test(url.pathname) ||
+      url.search ||
+      url.hash
+    ) {
+      return undefined;
+    }
+
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return undefined;
+  }
 };
 
 const renderMessageReply = (reply) => {
@@ -787,7 +854,8 @@ const identifyOwnIncomingMessage = (message) => {
   }
 };
 
-const shouldRenderAuthorAvatar = (message) => !['kick', 'twitch'].includes(message.platform);
+const shouldRenderAuthorAvatar = (message) =>
+  !['kick', 'local', 'twitch'].includes(message.platform);
 
 const renderMessageSource = (source) => {
   const label = source?.channelLabel || source?.broadcasterName || source?.sourceId;

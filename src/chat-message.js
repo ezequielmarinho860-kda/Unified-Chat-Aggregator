@@ -58,6 +58,7 @@ const normalizeAuthor = (author) => {
     id: requireString(author.id, 'author.id'),
     name: requireString(author.name, 'author.name'),
     avatarUrl: optionalString(author.avatarUrl),
+    profileUrl: optionalString(author.profileUrl),
     badges: normalizeBadges(author.badges),
   };
 };

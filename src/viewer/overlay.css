@@ -133,6 +133,16 @@ body {
   font-size: 0.94rem;
 }
 
+.overlay-author-link {
+  text-decoration: none;
+}
+
+.overlay-author-link:hover,
+.overlay-author-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .overlay-badge {
   max-width: 92px;
   overflow: hidden;

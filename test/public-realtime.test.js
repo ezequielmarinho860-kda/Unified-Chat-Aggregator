@@ -85,6 +85,27 @@ test('serializes chat messages by allowlist', () => {
   assert.doesNotMatch(JSON.stringify(message), /secret|raw|accessToken/);
 });
 
+test('serializes public X author profile URLs', () => {
+  const message = serializePublicChatMessage({
+    id: 'message-1',
+    platform: 'x',
+    source: {
+      sourceId: 'x:broadcast-1',
+      platform: 'x',
+      channelLabel: '@streamer',
+    },
+    author: {
+      id: 'ana',
+      name: 'Ana',
+      profileUrl: 'https://x.com/ana',
+    },
+    text: 'Hello',
+    timestamp: '2026-06-06T20:00:00.000Z',
+  });
+
+  assert.equal(message.author.profileUrl, 'https://x.com/ana');
+});
+
 test('serializes public manifest player config by allowlist', () => {
   const snapshot = serializePublicSnapshot(
     {

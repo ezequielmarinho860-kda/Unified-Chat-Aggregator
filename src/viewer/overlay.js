@@ -102,16 +102,14 @@
   const createMessageElement = (message) => {
     const article = document.createElement('article');
     const meta = document.createElement('div');
-    const author = document.createElement('strong');
+    const author = createAuthorElement(message);
     const reply = createReplyElement(message.reply);
     const text = document.createElement('p');
 
     article.className = 'overlay-message';
     article.dataset.platform = message.source?.platform ?? 'unknown';
     meta.className = 'overlay-meta';
-    author.className = 'overlay-author';
     text.className = 'overlay-text';
-    author.textContent = message.author?.name ?? 'Unknown';
     text.append(...createFragmentElements(message));
     meta.append(
       ...[
@@ -126,6 +124,55 @@
       article.insertBefore(reply, text);
     }
     return article;
+  };
+
+  const createAuthorElement = (message) => {
+    const profileUrl = getXAuthorProfileUrl(message);
+    const author = profileUrl ? document.createElement('a') : document.createElement('strong');
+    const authorName = message.author?.name ?? 'Unknown';
+
+    author.className = profileUrl
+      ? 'overlay-author overlay-author-link'
+      : 'overlay-author';
+    author.textContent = authorName;
+
+    if (profileUrl) {
+      author.href = profileUrl;
+      author.target = '_blank';
+      author.rel = 'noopener noreferrer';
+      author.title = `Open ${authorName}'s X profile`;
+    }
+
+    return author;
+  };
+
+  const getXAuthorProfileUrl = (message = {}) =>
+    message.source?.platform === 'x'
+      ? normalizeXProfileUrl(message.author?.profileUrl)
+      : undefined;
+
+  const normalizeXProfileUrl = (value) => {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      return undefined;
+    }
+
+    try {
+      const url = new URL(value);
+
+      if (
+        url.protocol !== 'https:' ||
+        !['x.com', 'twitter.com'].includes(url.hostname.toLowerCase()) ||
+        !/^\/[A-Za-z0-9_]{1,15}\/?$/.test(url.pathname) ||
+        url.search ||
+        url.hash
+      ) {
+        return undefined;
+      }
+
+      return url.toString().replace(/\/$/, '');
+    } catch {
+      return undefined;
+    }
   };
 
   const createReplyElement = (reply) => {

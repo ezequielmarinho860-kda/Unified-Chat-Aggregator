@@ -14,7 +14,13 @@ test('normalizes a canonical chat message', () => {
   assert.deepEqual(message, {
     id: '1',
     platform: 'twitch',
-    author: { id: 'author-1', name: 'Ana', avatarUrl: undefined, badges: [] },
+    author: {
+      id: 'author-1',
+      name: 'Ana',
+      avatarUrl: undefined,
+      profileUrl: undefined,
+      badges: [],
+    },
     text: 'Test message',
     timestamp: '2026-06-04T20:00:00.000Z',
     avatarUrl: undefined,
@@ -50,6 +56,22 @@ test('normalizes author badges', () => {
       imageUrl: 'https://static-cdn.jtvnw.net/badges/v1/mod/2',
     },
   ]);
+});
+
+test('normalizes optional author profile URLs', () => {
+  const message = normalizeChatMessage({
+    id: '1',
+    platform: 'x',
+    author: {
+      id: 'ana',
+      name: 'Ana',
+      profileUrl: 'https://x.com/ana',
+    },
+    text: 'Test message',
+    timestamp: '2026-06-04T20:00:00.000Z',
+  });
+
+  assert.equal(message.author.profileUrl, 'https://x.com/ana');
 });
 
 test('normalizes message fragments', () => {

@@ -731,7 +731,7 @@
     const meta = document.createElement('div');
     const platform = createPlatformBadge(getMessagePlatform(message));
     const source = createMessageSource(message.source);
-    const author = document.createElement('strong');
+    const author = createAuthorElement(message);
     const time = document.createElement('time');
     const content = document.createElement('p');
     const reply = createMessageReply(message.reply);
@@ -740,11 +740,9 @@
     article.dataset.platform = getMessagePlatform(message);
     body.className = 'message__content';
     meta.className = 'message__metadata';
-    author.className = 'message__author';
     time.className = 'message__time';
     content.className = 'message__text';
 
-    author.textContent = message.author?.name ?? 'Unknown';
     time.dateTime = message.timestamp ?? '';
     time.textContent = formatTime(message.timestamp);
 
@@ -762,8 +760,76 @@
     if (reply) {
       body.insertBefore(reply, content);
     }
-    article.append(...[avatar, body].filter(Boolean));
+    article.append(...[wrapAuthorProfileLink(message, avatar), body].filter(Boolean));
     return article;
+  };
+
+  const createAuthorElement = (message) => {
+    const profileUrl = getXAuthorProfileUrl(message);
+    const author = profileUrl ? document.createElement('a') : document.createElement('strong');
+    const authorName = message.author?.name ?? 'Unknown';
+
+    author.className = profileUrl
+      ? 'message__author message__author-link'
+      : 'message__author';
+    author.textContent = authorName;
+
+    if (profileUrl) {
+      author.href = profileUrl;
+      author.target = '_blank';
+      author.rel = 'noopener noreferrer';
+      author.title = `Open ${authorName}'s X profile`;
+    }
+
+    return author;
+  };
+
+  const wrapAuthorProfileLink = (message, element) => {
+    const profileUrl = getXAuthorProfileUrl(message);
+
+    if (!element || !profileUrl) {
+      return element;
+    }
+
+    const authorName = message.author?.name ?? 'Unknown';
+    const link = document.createElement('a');
+
+    link.className = 'message__avatar-link';
+    link.href = profileUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.title = `Open ${authorName}'s X profile`;
+    link.append(element);
+    return link;
+  };
+
+  const getXAuthorProfileUrl = (message = {}) =>
+    getMessagePlatform(message) === 'x'
+      ? normalizeXProfileUrl(message.author?.profileUrl)
+      : undefined;
+
+  const normalizeXProfileUrl = (value) => {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      return undefined;
+    }
+
+    try {
+      const url = new URL(value);
+
+      if (
+        url.protocol !== 'https:' ||
+        !['x.com', 'twitter.com'].includes(url.hostname.toLowerCase()) ||
+        !/^\/[A-Za-z0-9_]{1,15}\/?$/.test(url.pathname) ||
+        url.search ||
+        url.hash
+      ) {
+        return undefined;
+      }
+
+      return url.toString().replace(/\/$/, '');
+    } catch {
+      return undefined;
+    }
   };
 
   const createMessageReply = (reply) => {

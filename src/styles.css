@@ -863,7 +863,6 @@ h1 {
 .message[data-platform='local'] {
   --mention-border: #94a3b8;
   --mention-color: #0f766e;
-  grid-template-columns: 36px minmax(0, 1fr);
 }
 
 .message__avatar {
@@ -877,6 +876,20 @@ h1 {
   font-size: 0.9rem;
   font-weight: 800;
   object-fit: cover;
+}
+
+.message__avatar-link {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.message__avatar-link:hover .message__avatar,
+.message__avatar-link:focus-visible .message__avatar {
+  outline: 2px solid #24292f;
+  outline-offset: 2px;
 }
 
 .message__avatar--fallback {
@@ -995,6 +1008,17 @@ h1 {
 .message__author {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.message__author-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.message__author-link:hover,
+.message__author-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .message[data-platform='kick'] .message__author {

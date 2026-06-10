@@ -791,6 +791,23 @@ const sendChatMessage = async (payload) => {
   }
 };
 
+const isAllowedExternalXProfileUrl = (url) => {
+  try {
+    const parsedUrl = new URL(url);
+    const normalizedHost = parsedUrl.hostname.toLowerCase();
+
+    return (
+      parsedUrl.protocol === 'https:' &&
+      ['x.com', 'twitter.com'].includes(normalizedHost) &&
+      /^\/[A-Za-z0-9_]{1,15}\/?$/.test(parsedUrl.pathname) &&
+      !parsedUrl.search &&
+      !parsedUrl.hash
+    );
+  } catch {
+    return false;
+  }
+};
+
 const registerLocalChatUser = ({ email, nick } = {}) => {
   if (browserBackendClient) {
     return browserBackendClient.registerPrivilegedLocalUser({ email, nick });
@@ -1004,6 +1021,14 @@ const createRendererWindow = ({ view, windowOptions }) => {
   });
 
   rendererWindows.add(rendererWindow);
+
+  rendererWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAllowedExternalXProfileUrl(url)) {
+      void shell.openExternal(url);
+    }
+
+    return { action: 'deny' };
+  });
 
   rendererWindow.webContents.once('did-finish-load', () => {
     const snapshot = getRuntimeSnapshot();

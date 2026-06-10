@@ -16,6 +16,7 @@ const normalizeXMessage = (payload) => {
       id: username || authorName,
       name: authorName,
       avatarUrl: normalizeOptionalString(payload.avatarUrl),
+      profileUrl: username ? createXProfileUrl(username) : undefined,
     },
     reply: normalizeReply(payload.reply),
     source: payload.source,
@@ -87,6 +88,9 @@ const normalizeOptionalUsername = (value) => {
 
   return normalized.replace(/^@+/, '');
 };
+
+const createXProfileUrl = (username) =>
+  /^[A-Za-z0-9_]{1,15}$/.test(username) ? `https://x.com/${username}` : undefined;
 
 const normalizeReply = (reply) => {
   if (!reply || typeof reply !== 'object') {
