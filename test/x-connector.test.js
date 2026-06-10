@@ -7,6 +7,7 @@ const {
   createXConnector,
   createXDebugCaptureContextScript,
   createXLiveChatUrlFromHandle,
+  createXResolveMessageContextScript,
   createXSendMessageScript,
   isXComposerUnavailableError,
   normalizeXLiveUrl,
@@ -197,6 +198,18 @@ test('builds an X capture debug script for visible handle candidates', () => {
   assert.match(script, /href/);
 });
 
+test('waits for an avatar before returning X message context when needed', () => {
+  const script = createXResolveMessageContextScript({
+    authorName: 'Ana',
+    needsAvatar: true,
+    username: '@ana',
+  });
+
+  assert.match(script, /const shouldWaitForAvatar = true/);
+  assert.match(script, /isLastAttempt && hasSourceContext/);
+  assert.doesNotMatch(script, /if \(avatarUrl \|\| channelLabel \|\| broadcasterName\)/);
+});
+
 test('prefers the streamer handle over sidebar navigation handles', () => {
   const sidebarHandle = {
     handle: '@home',
@@ -334,6 +347,50 @@ test('enriches X network messages with avatars from the capture page DOM', async
     channelLabel: '@Jugger_',
   });
   assert.match(captureWindow.webContents.executedScripts.at(-1), /targetUsername/);
+
+  await connector.disconnect();
+});
+
+test('preserves an X channel label when later enrichment only returns a broadcaster name', async () => {
+  const BrowserWindow = createFakeBrowserWindowClass();
+  const connector = createXConnector({
+    liveUrl: 'https://x.com/i/broadcasts/1',
+    BrowserWindow,
+    ipcMainImpl: new FakeIpcMain(),
+    source: {
+      sourceId: 'x:broadcast-1',
+      platform: 'x',
+      channelLabel: '@Jugguer_',
+    },
+  });
+  const received = [];
+
+  connector.onMessage((message) => received.push(message));
+  await connector.connect();
+  const captureWindow = BrowserWindow.instances[0];
+
+  captureWindow.webContents.executeResult = {
+    broadcasterName: 'Grave',
+  };
+  captureWindow.webContents.debugger.emit('message', {}, 'Network.webSocketFrameReceived', {
+    response: {
+      payloadData: JSON.stringify({
+        id: 'network-message-2',
+        message: { text: 'from network 2' },
+        sender: { displayName: 'Ana', username: '@ana' },
+      }),
+      url: 'https://chatman-replay.pscp.tv/chatapi/v1/chatnow',
+    },
+  });
+  await waitForMicrotasks();
+
+  assert.equal(received.length, 1);
+  assert.deepEqual(received[0].source, {
+    sourceId: 'x:broadcast-1',
+    platform: 'x',
+    broadcasterName: 'Grave',
+    channelLabel: '@Jugguer_',
+  });
 
   await connector.disconnect();
 });

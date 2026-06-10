@@ -364,7 +364,7 @@ const enrichXPayloadFromCaptureWindow = async (payload, captureWindow) => {
 
   try {
     const result = await captureWindow.webContents.executeJavaScript(
-      createXResolveMessageContextScript({ authorName, username }),
+      createXResolveMessageContextScript({ authorName, needsAvatar, username }),
       true,
     );
     const avatarUrl = normalizeOptionalPayloadString(result?.avatarUrl);
@@ -415,11 +415,18 @@ const mergeXSource = (currentSource, patchSource) => {
     return currentSource;
   }
 
+  const nextSource = { ...currentSource };
+
+  for (const [key, value] of Object.entries(patchSource)) {
+    if (value !== undefined && value !== null && value !== '') {
+      nextSource[key] = value;
+    }
+  }
+
   return {
-    ...currentSource,
-    ...patchSource,
-    sourceId: patchSource.sourceId ?? currentSource?.sourceId,
-    platform: patchSource.platform ?? currentSource?.platform ?? 'x',
+    ...nextSource,
+    sourceId: nextSource.sourceId ?? currentSource?.sourceId,
+    platform: nextSource.platform ?? currentSource?.platform ?? 'x',
   };
 };
 
@@ -536,11 +543,12 @@ const createXSendError = (result = {}) => {
 
 const isXComposerUnavailableError = (error) => error?.code === X_COMPOSER_UNAVAILABLE_CODE;
 
-const createXResolveMessageContextScript = ({ authorName, username } = {}) => `
+const createXResolveMessageContextScript = ({ authorName, needsAvatar = false, username } = {}) => `
 (async () => {
   const isPreferredXHandleCandidate = ${isPreferredXHandleCandidate.toString()};
   const targetUsername = ${JSON.stringify(username ?? '')}.replace(/^@+/, '').toLowerCase();
   const targetAuthorName = ${JSON.stringify(authorName ?? '')}.toLowerCase();
+  const shouldWaitForAvatar = ${JSON.stringify(Boolean(needsAvatar))};
   const scoreXHandleCandidate = ${scoreXHandleCandidate.toString()};
   const rankXHandleCandidates = ${rankXHandleCandidates.toString()};
   const normalizeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
@@ -735,12 +743,16 @@ const createXResolveMessageContextScript = ({ authorName, username } = {}) => `
   const initialChannelLabel = resolveBroadcasterHandle();
   const initialBroadcasterName = resolveBroadcasterName();
 
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  const maxAttempts = 5;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const avatarUrl = resolveAvatar();
     const channelLabel = initialChannelLabel || resolveBroadcasterHandle();
     const broadcasterName = initialBroadcasterName || resolveBroadcasterName();
+    const hasSourceContext = Boolean(channelLabel || broadcasterName);
+    const isLastAttempt = attempt === maxAttempts - 1;
 
-    if (avatarUrl || channelLabel || broadcasterName) {
+    if (avatarUrl || (!shouldWaitForAvatar && hasSourceContext) || (isLastAttempt && hasSourceContext)) {
       return { avatarUrl, broadcasterName, channelLabel };
     }
 
@@ -917,6 +929,7 @@ module.exports = {
   createXConnector,
   createXDebugCaptureContextScript,
   createXLiveChatUrlFromHandle,
+  createXResolveMessageContextScript,
   createXSendMessageScript,
   attachXNetworkCapture,
   isXComposerUnavailableError,
