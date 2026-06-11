@@ -15,6 +15,8 @@ const SNAPSHOT_PATH = '/api/v1/snapshot';
 const EVENTS_PATH = '/api/v1/events';
 const APP_EVENTS_PATH = '/api/v1/app/events';
 const APP_LOCAL_REGISTER_PATH = '/api/v1/app/local/register';
+const APP_GOOGLE_AUTH_COMPLETE_PATH = '/api/v1/app/auth/google/complete';
+const APP_GOOGLE_AUTH_RESULT_PATH = '/api/v1/app/auth/google/result';
 const GOOGLE_AUTH_CALLBACK_PATH = '/api/v1/auth/google/callback';
 const GOOGLE_AUTH_COMPLETE_PATH = '/api/v1/auth/google/complete';
 const GOOGLE_AUTH_START_PATH = '/api/v1/auth/google/start';
@@ -78,6 +80,7 @@ const createHttpGateway = ({
   googleOAuthService,
   localChatStore,
   onAppEvent,
+  onBrowserPresenceChange,
   onLocalChatMessage,
   port = DEFAULT_GATEWAY_PORT,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
@@ -109,7 +112,7 @@ const createHttpGateway = ({
         publish: (type, data) => (webSocketServer ? broadcastEvent(webSocketServer, createPublicEvent(type, data)) : 0),
       });
     });
-    webSocketServer = createWebSocketServer(server, getSnapshot, browserPresence);
+    webSocketServer = createWebSocketServer(server, getSnapshot, browserPresence, onBrowserPresenceChange);
     heartbeatTimer = setInterval(() => heartbeatClients(webSocketServer), heartbeatMs);
 
     try {
@@ -157,7 +160,7 @@ const createHttpGateway = ({
   };
 };
 
-const createWebSocketServer = (server, getSnapshot, browserPresence) => {
+const createWebSocketServer = (server, getSnapshot, browserPresence, onBrowserPresenceChange) => {
   const webSocketServer = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', (request, socket, head) => {
@@ -188,6 +191,7 @@ const createWebSocketServer = (server, getSnapshot, browserPresence) => {
 
     if (client.browserClientType === 'viewer') {
       broadcastBrowserPresence(webSocketServer, browserPresence);
+      onBrowserPresenceChange?.(browserPresence.browserChatUsers);
     }
 
     client.once('close', () => {
@@ -197,6 +201,7 @@ const createWebSocketServer = (server, getSnapshot, browserPresence) => {
 
       browserPresence.browserChatUsers = Math.max(0, browserPresence.browserChatUsers - 1);
       broadcastBrowserPresence(webSocketServer, browserPresence);
+      onBrowserPresenceChange?.(browserPresence.browserChatUsers);
     });
   });
 
@@ -307,6 +312,16 @@ const handleRequest = async (request, response, context) => {
     return;
   }
 
+  if (url.pathname === APP_GOOGLE_AUTH_RESULT_PATH) {
+    await handleAppGoogleAuthResultRequest(request, response, url, context);
+    return;
+  }
+
+  if (url.pathname === APP_GOOGLE_AUTH_COMPLETE_PATH) {
+    await handleAppGoogleAuthCompleteRequest(request, response, context);
+    return;
+  }
+
   if (isLocalChatPath(url.pathname)) {
     await handleLocalChatRequest(request, response, url.pathname, context);
     return;
@@ -383,6 +398,81 @@ const handleAppLocalRegisterRequest = async (
     const sessionResult = localChatStore.createSession({ email: user.email });
 
     sendJson(response, 201, {
+      session: serializeLocalSession(sessionResult.session),
+      user: serializeLocalUser(sessionResult.user),
+    });
+  } catch (error) {
+    sendLocalChatError(response, error);
+  }
+};
+
+const handleAppGoogleAuthResultRequest = async (
+  request,
+  response,
+  url,
+  { appIngestToken, googleOAuthService, localChatStore },
+) => {
+  if (!appIngestToken || !googleOAuthService?.isConfigured() || !localChatStore) {
+    sendJson(response, 404, { error: 'Not found.' });
+    return;
+  }
+
+  try {
+    requireMethod(request, 'GET');
+    requireBearerToken(request, appIngestToken);
+    const result = googleOAuthService.consumeResult(url.searchParams.get('resultKey'));
+
+    if (!result) {
+      sendJson(response, 202, { pending: true });
+      return;
+    }
+
+    const existingUser = localChatStore.getUserByEmail(result.profile.email);
+
+    if (!existingUser) {
+      sendJson(response, 200, {
+        pendingGoogleOAuth: {
+          email: result.profile.email,
+          name: result.profile.name ?? '',
+          ticket: result.ticket,
+        },
+      });
+      return;
+    }
+
+    const { session, user } = localChatStore.createSession({ email: existingUser.email });
+
+    sendJson(response, 200, { session: serializeLocalSession(session), user: serializeLocalUser(user) });
+  } catch (error) {
+    sendLocalChatError(response, error);
+  }
+};
+
+const handleAppGoogleAuthCompleteRequest = async (
+  request,
+  response,
+  { appIngestToken, googleOAuthService, localChatStore },
+) => {
+  if (!appIngestToken || !googleOAuthService?.isConfigured() || !localChatStore) {
+    sendJson(response, 404, { error: 'Not found.' });
+    return;
+  }
+
+  try {
+    requireMethod(request, 'POST');
+    requireBearerToken(request, appIngestToken);
+    const body = await readJsonBody(request);
+    const profile = googleOAuthService.consumeTicket(body.ticket);
+    const existingUser = localChatStore.getUserByEmail(profile.email);
+    const user = existingUser ?? localChatStore.registerUser({ email: profile.email, nick: body.nick });
+
+    if (!existingUser) {
+      localChatStore.addModerator({ email: user.email });
+    }
+
+    const sessionResult = localChatStore.createSession({ email: user.email });
+
+    sendJson(response, 200, {
       session: serializeLocalSession(sessionResult.session),
       user: serializeLocalUser(sessionResult.user),
     });

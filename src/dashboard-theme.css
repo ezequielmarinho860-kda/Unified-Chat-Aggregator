@@ -1,0 +1,739 @@
+/* ------------------------------------------------------------------ */
+/* Market Bubble — Broadcast Edition theme for the Electron dashboard. */
+/* Presentation only. Every rule is scoped to body.dashboard-view so   */
+/* the shared styles.css keeps styling the Setup window untouched.     */
+/* "!important" is used only where the legacy light/dark theme rules   */
+/* (:root[data-theme='dark'] ...) carry higher specificity.            */
+/* ------------------------------------------------------------------ */
+
+body.dashboard-view {
+  --ink: #040404;
+  --white: #f6f5f1;
+  --white-2: rgba(246, 245, 241, 0.78);
+  --dim: #8b8a85;
+  --crimson: #c8403a;
+  --red: #e0726a;
+  --amber: #d9a441;
+  --twitch: #a991f0;
+  --kick: #53d18b;
+  --x: #f6f5f1;
+  --local: #e0726a;
+  --line: rgba(255, 255, 255, 0.12);
+  --line-strong: rgba(255, 255, 255, 0.26);
+  --panel: #0a0a0b;
+  --chrome: linear-gradient(180deg, #fdfdfd 0%, #c8c9cc 35%, #898b90 50%, #b6b7bb 65%, #f2f2f3 100%);
+  --serif: "Playfair Display", georgia, serif;
+  --sans: "Libre Franklin", "Segoe UI", sans-serif;
+  --mono: "Space Mono", consolas, monospace;
+
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(28, 28, 30, 0.5), transparent 62%),
+    var(--ink) !important;
+  color: var(--white);
+  font-family: var(--sans);
+}
+
+body.dashboard-view .chat-window {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  height: 100vh;
+  min-height: 100vh;
+  padding: 8px 22px 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Decorative: masthead + chrome lower-third                           */
+/* ------------------------------------------------------------------ */
+
+body.dashboard-view .mb-masthead {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+body.dashboard-view .mb-logo-box {
+  position: relative;
+  padding: 10px 20px 14px;
+  border: 1px solid var(--line);
+  background: #000000;
+}
+
+body.dashboard-view .mb-logo {
+  color: var(--white);
+  font-family: var(--serif);
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 0.86;
+}
+
+body.dashboard-view .mb-logo-l2 {
+  display: block;
+}
+
+body.dashboard-view .mb-logo::after {
+  content: "";
+  position: absolute;
+  left: 22px;
+  bottom: 7px;
+  width: 9px;
+  height: 9px;
+  background: var(--white);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+body.dashboard-view .mb-masthead-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+body.dashboard-view .mb-presented {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dim);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+}
+
+body.dashboard-view .mb-presented-name {
+  color: var(--white);
+  letter-spacing: 0.18em;
+}
+
+body.dashboard-view .mb-chrome-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  margin: 8px 0;
+  box-shadow: 0 8px 30px -12px rgba(0, 0, 0, 0.8);
+}
+
+body.dashboard-view .mb-chrome-tag {
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  border: 1px solid var(--line);
+  background: #000000;
+  color: var(--white);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+body.dashboard-view .mb-chrome {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  padding: 7px 24px;
+  overflow: hidden;
+  background: var(--chrome);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+}
+
+body.dashboard-view .mb-chrome::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -30%;
+  width: 30%;
+  height: 100%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+  transform: skewX(-18deg);
+  animation: mbd-sheen 6s ease-in-out infinite;
+}
+
+@keyframes mbd-sheen {
+  0%,
+  70% {
+    left: -40%;
+  }
+
+  100% {
+    left: 130%;
+  }
+}
+
+body.dashboard-view .mb-chrome-headline {
+  position: relative;
+  z-index: 1;
+  color: #0a0a0a;
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+/* ------------------------------------------------------------------ */
+/* Quote bar (connector status cards)                                  */
+/* ------------------------------------------------------------------ */
+
+body.dashboard-view .status-grid {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  margin-bottom: 8px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+body.dashboard-view .status-card {
+  --platform-color: var(--dim);
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px 16px;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
+}
+
+body.dashboard-view .status-card + .status-card {
+  border-left: 1px solid var(--line) !important;
+}
+
+body.dashboard-view .status-card__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dim) !important;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+body.dashboard-view .platform-mark {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--platform-color) !important;
+  color: transparent !important;
+  font-size: 0;
+  line-height: 0;
+  text-shadow: none !important;
+}
+
+body.dashboard-view .platform-mark img {
+  display: none;
+}
+
+body.dashboard-view .status-card--twitch {
+  --platform-color: var(--twitch) !important;
+}
+
+body.dashboard-view .status-card--kick {
+  --platform-color: var(--kick) !important;
+}
+
+body.dashboard-view .status-card--x {
+  --platform-color: var(--x) !important;
+}
+
+body.dashboard-view .status-card--total {
+  --platform-color: var(--white) !important;
+}
+
+body.dashboard-view .status-card--backend {
+  --platform-color: var(--local) !important;
+}
+
+/* Platform logos: white SVGs tinted with the platform color via mask. */
+body.dashboard-view .status-card--twitch .platform-mark,
+body.dashboard-view .status-card--kick .platform-mark,
+body.dashboard-view .status-card--x .platform-mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 0;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+body.dashboard-view .status-card--twitch .platform-mark {
+  -webkit-mask-image: url("./assets/twitch-glitch.svg");
+  mask-image: url("./assets/twitch-glitch.svg");
+}
+
+body.dashboard-view .status-card--kick .platform-mark {
+  -webkit-mask-image: url("./assets/kick-logo.svg");
+  mask-image: url("./assets/kick-logo.svg");
+}
+
+body.dashboard-view .status-card--x .platform-mark {
+  -webkit-mask-image: url("./assets/x-logo.svg");
+  mask-image: url("./assets/x-logo.svg");
+}
+
+body.dashboard-view .status-card strong.status-card__viewer-count {
+  color: var(--white) !important;
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+body.dashboard-view .status-card[data-viewer-state='unavailable'] .status-card__viewer-count,
+body.dashboard-view .status-card[data-viewer-state='disabled'] .status-card__viewer-count {
+  color: var(--dim) !important;
+}
+
+body.dashboard-view .status-card strong.status-card__viewer-count--status {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+/* Viewer tooltip: black box + hairline, mono per-source lines. */
+body.dashboard-view .status-card[data-viewer-tooltip]:hover::before {
+  border-top: 1px solid var(--line-strong) !important;
+  border-left: 1px solid var(--line-strong) !important;
+  background: #000000 !important;
+}
+
+body.dashboard-view .status-card[data-viewer-tooltip]:hover::after {
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 0;
+  background: #000000 !important;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+  color: var(--white) !important;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------------------ */
+/* Feed panel                                                          */
+/* ------------------------------------------------------------------ */
+
+body.dashboard-view .feed-panel {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--line) !important;
+  border-radius: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.4)) !important;
+  box-shadow: 0 26px 60px -30px rgba(0, 0, 0, 0.95);
+}
+
+body.dashboard-view .feed-panel__header {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 14px;
+}
+
+body.dashboard-view .feed-panel__header .eyebrow {
+  color: var(--dim) !important;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+}
+
+body.dashboard-view .filter-button {
+  min-height: 26px;
+  padding: 0 11px;
+  border: 1px solid var(--line) !important;
+  border-radius: 999px;
+  background: transparent !important;
+  color: var(--white-2) !important;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition: 0.18s;
+}
+
+body.dashboard-view .filter-button:hover {
+  border-color: var(--white-2) !important;
+  color: var(--white) !important;
+}
+
+body.dashboard-view .filter-button.is-active {
+  border-color: var(--white) !important;
+  background: var(--white) !important;
+  color: #040404 !important;
+}
+
+body.dashboard-view .tool-button {
+  min-height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 0;
+  background: transparent !important;
+  color: var(--white-2) !important;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  transition: 0.18s;
+}
+
+body.dashboard-view .tool-button:hover {
+  border-color: var(--white) !important;
+  color: var(--white) !important;
+}
+
+/* Send buttons get the chrome lower-third finish. */
+body.dashboard-view .tool-button--primary {
+  border: 0 !important;
+  background: var(--chrome) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+  color: #0a0a0a !important;
+  font-weight: 700;
+}
+
+body.dashboard-view .tool-button--primary:hover {
+  color: #000000 !important;
+  filter: brightness(1.06);
+}
+
+/* ------------------------------------------------------------------ */
+/* Message feed                                                        */
+/* ------------------------------------------------------------------ */
+
+body.dashboard-view .message-feed {
+  gap: 0;
+  padding: 6px 0 10px;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-width: thin;
+}
+
+body.dashboard-view .message-feed::-webkit-scrollbar {
+  width: 8px;
+}
+
+body.dashboard-view .message-feed::-webkit-scrollbar-thumb {
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+body.dashboard-view .empty-state {
+  color: var(--dim) !important;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+body.dashboard-view .new-message-button {
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.88) !important;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.6);
+  color: var(--white) !important;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+body.dashboard-view .message {
+  --platform-accent: var(--dim);
+
+  gap: 4px;
+  padding: 9px 14px 10px 12px;
+  border: 0 !important;
+  border-left: 2px solid var(--platform-accent) !important;
+  border-bottom: 1px solid var(--line) !important;
+  border-radius: 0;
+  background: transparent !important;
+}
+
+body.dashboard-view .message[data-platform='twitch'] {
+  --platform-accent: var(--twitch);
+  --mention-border: rgba(169, 145, 240, 0.6);
+  --mention-color: #6f57b8;
+}
+
+body.dashboard-view .message[data-platform='kick'] {
+  --platform-accent: var(--kick);
+  --mention-border: rgba(83, 209, 139, 0.6);
+  --mention-color: #1f7a4a;
+}
+
+body.dashboard-view .message[data-platform='x'] {
+  --platform-accent: var(--x);
+  --mention-border: var(--line-strong);
+  --mention-color: #3c3c3e;
+}
+
+body.dashboard-view .message[data-platform='local'] {
+  --platform-accent: var(--local);
+  --mention-border: rgba(224, 114, 106, 0.6);
+  --mention-color: #a14b45;
+}
+
+body.dashboard-view .message--own {
+  border-left-color: var(--crimson) !important;
+  background: rgba(200, 64, 58, 0.07) !important;
+  box-shadow: none;
+}
+
+body.dashboard-view .message__metadata {
+  gap: 7px;
+}
+
+/* Platform badge: bordered mono tag, e.g. [Kick]. */
+body.dashboard-view .message__badge {
+  padding: 2px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--white-2) !important;
+  font-family: var(--mono);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+body.dashboard-view .message__badge-symbol,
+body.dashboard-view .message__badge-symbol--image {
+  display: none !important;
+}
+
+body.dashboard-view .message__badge--twitch {
+  border-color: rgba(169, 145, 240, 0.42);
+  color: var(--twitch) !important;
+}
+
+body.dashboard-view .message__badge--kick {
+  border-color: rgba(83, 209, 139, 0.42);
+  color: var(--kick) !important;
+}
+
+body.dashboard-view .message__badge--x {
+  border-color: rgba(246, 245, 241, 0.35);
+  color: var(--x) !important;
+}
+
+body.dashboard-view .message__badge--local {
+  border-color: rgba(224, 114, 106, 0.42);
+  color: var(--local) !important;
+}
+
+/* Channel badge, e.g. [jonvlogs]: bright filled chip. */
+body.dashboard-view .message__source {
+  padding: 2px 7px;
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  color: var(--white) !important;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+}
+
+body.dashboard-view .message__author {
+  color: var(--white);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+body.dashboard-view .message[data-platform='twitch'] .message__author {
+  color: var(--twitch) !important;
+}
+
+body.dashboard-view .message[data-platform='kick'] .message__author {
+  color: var(--kick) !important;
+}
+
+body.dashboard-view .message[data-platform='x'] .message__author {
+  color: var(--white) !important;
+}
+
+body.dashboard-view .message[data-platform='local'] .message__author {
+  color: var(--local) !important;
+}
+
+body.dashboard-view .author-badge {
+  padding: 1px 6px;
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 0;
+  background: transparent !important;
+  color: var(--white-2) !important;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+body.dashboard-view .author-badge--image {
+  border: 0 !important;
+  padding: 0;
+}
+
+body.dashboard-view .message__time {
+  color: var(--dim) !important;
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+
+body.dashboard-view .message__text {
+  color: var(--white-2) !important;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+body.dashboard-view .message__reply {
+  border-left: 2px solid var(--line-strong) !important;
+  color: var(--dim) !important;
+  font-size: 12px;
+}
+
+body.dashboard-view .message__reply-label {
+  color: var(--white) !important;
+}
+
+body.dashboard-view .message__mention {
+  border-radius: 0;
+  color: var(--white) !important;
+}
+
+body.dashboard-view .message__avatar {
+  border: 1px solid var(--line-strong);
+  background: #000000;
+  color: var(--white);
+}
+
+body.dashboard-view .message__avatar-link:hover .message__avatar,
+body.dashboard-view .message__avatar-link:focus-visible .message__avatar {
+  outline: 1px solid var(--white-2);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Local chat footer + composer                                        */
+/* ------------------------------------------------------------------ */
+
+body.dashboard-view .local-chat-panel,
+body.dashboard-view .composer-panel {
+  border-top: 1px solid var(--line-strong) !important;
+  background: #000000 !important;
+}
+
+/* Compact footer: free up vertical room for the message feed. */
+body.dashboard-view .local-chat-panel {
+  gap: 6px;
+  padding: 8px 12px 10px;
+}
+
+/* Presentational: the login hint is redundant in the broadcast skin. */
+body.dashboard-view #local-chat-login-required {
+  display: none !important;
+}
+
+body.dashboard-view .local-chat-panel label,
+body.dashboard-view .composer-panel__target,
+body.dashboard-view .composer-panel__message {
+  color: var(--dim);
+}
+
+body.dashboard-view .local-chat-panel input,
+body.dashboard-view .local-chat-panel textarea,
+body.dashboard-view .composer-panel select,
+body.dashboard-view .composer-panel textarea {
+  border: 1px solid var(--line-strong) !important;
+  border-radius: 0;
+  background: #0a0a0b !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--white) !important;
+  font-family: var(--sans);
+  font-size: 13px;
+}
+
+body.dashboard-view .local-chat-panel input:focus,
+body.dashboard-view .local-chat-panel textarea:focus,
+body.dashboard-view .composer-panel select:focus,
+body.dashboard-view .composer-panel textarea:focus {
+  border-color: var(--white-2) !important;
+  outline: none;
+}
+
+body.dashboard-view .local-chat-panel input::placeholder,
+body.dashboard-view .local-chat-panel textarea::placeholder,
+body.dashboard-view .composer-panel textarea::placeholder {
+  color: var(--dim);
+}
+
+body.dashboard-view #local-chat-session-label {
+  color: var(--white);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+body.dashboard-view .local-chat-panel__meta {
+  min-height: 0;
+  color: var(--dim) !important;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* Collapse the meta line when it has no message to show. */
+body.dashboard-view .local-chat-panel__meta:empty {
+  display: none;
+}
+
+body.dashboard-view .local-chat-suggestion {
+  border: 1px solid var(--line) !important;
+  border-radius: 0;
+  background: #050505 !important;
+  color: var(--white) !important;
+}
+
+body.dashboard-view .local-chat-suggestion:hover {
+  border-color: var(--white-2) !important;
+}
+
+body.dashboard-view .local-chat-suggestion span {
+  color: var(--dim) !important;
+}

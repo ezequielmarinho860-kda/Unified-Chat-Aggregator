@@ -10,6 +10,7 @@ const createBrowserBackendRuntime = ({
   getSnapshot,
   localChatFileName = 'local-chat.json',
   onAppEvent,
+  onBrowserPresenceChange,
   onLocalChatMessage,
   port = env.BROWSER_BACKEND_PORT ?? env.VIEWER_GATEWAY_PORT,
 } = {}) => {
@@ -46,6 +47,7 @@ const createBrowserBackendRuntime = ({
       googleOAuthService,
       localChatStore,
       onAppEvent,
+      onBrowserPresenceChange,
       onLocalChatMessage,
       port: normalizedPort,
     });

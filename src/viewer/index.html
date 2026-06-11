@@ -3,14 +3,38 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; script-src 'self'; style-src 'self'; img-src 'self' https: data:; frame-src https://player.twitch.tv; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
-    <title>Viewer Mode</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:* https://api.coingecko.com; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data:; frame-src https://player.twitch.tv; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
+    <title>Market Bubble — Combined Stream</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,800;0,900;1,600&family=Libre+Franklin:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/viewer/viewer-mode.css">
     <script src="/viewer/viewer-transport.js" defer></script>
     <script src="/viewer/viewer-mode.js" defer></script>
+    <script src="/viewer/market-bubble-theme.js" defer></script>
   </head>
   <body>
     <main class="viewer-shell">
+      <header class="mb-masthead">
+        <div class="mb-logo-box">
+          <div class="mb-logo">Market<span class="mb-logo-l2">Bubble</span></div>
+        </div>
+        <div class="mb-masthead-right">
+          <div class="mb-presented">Presented by <span class="mb-presented-name">◆ POLYMARKET</span></div>
+          <div class="connection-card" data-connection-state="loading">
+            <span class="status-dot" aria-hidden="true"></span>
+            <div>
+              <strong data-connection-label>Loading snapshot</strong>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="mb-chrome-bar" aria-hidden="true">
+        <div class="mb-chrome-tag">● On Air</div>
+        <div class="mb-chrome"><div class="mb-chrome-headline">Combined Stream · Live Now</div></div>
+      </div>
+
       <header class="topbar">
         <div class="viewer-status-grid" aria-label="Viewer counts">
           <article class="status-card status-card--twitch" data-viewer-card="twitch" data-viewer-state="unavailable">
@@ -28,27 +52,30 @@
             <strong class="status-card__viewer-count" data-viewer-platform-count="x">--</strong>
           </article>
           <article class="status-card status-card--total" data-viewer-card="total" data-viewer-state="available">
-            <span class="status-card__label"><span class="platform-mark">+</span>Total</span>
+            <span class="status-card__label"><span class="platform-mark">+</span>Total Viewers</span>
             <strong class="status-card__viewer-count" data-viewer-platform-count="total">0</strong>
           </article>
           <article class="status-card status-card--chat" data-viewer-card="chat" data-viewer-state="available">
-            <span class="status-card__label"><span class="platform-mark platform-mark--chat">C</span>Chat</span>
+            <span class="status-card__label"><span class="platform-mark platform-mark--chat">C</span>Chat · Local</span>
             <strong class="status-card__viewer-count" data-viewer-platform-count="chat">0</strong>
           </article>
-        </div>
-        <div class="connection-card" data-connection-state="loading">
-          <span class="status-dot" aria-hidden="true"></span>
-          <div>
-            <strong data-connection-label>Loading snapshot</strong>
-          </div>
         </div>
       </header>
 
       <section class="layout-grid" aria-label="Viewer layout">
-        <article class="panel player-panel" data-player-panel>
-          <p class="panel-kicker">Player</p>
-          <div class="empty-state">Waiting for a public Twitch player config.</div>
-        </article>
+        <div class="mb-screen-frame">
+          <span class="mb-corner mb-corner--tl" aria-hidden="true"></span>
+          <span class="mb-corner mb-corner--tr" aria-hidden="true"></span>
+          <span class="mb-corner mb-corner--bl" aria-hidden="true"></span>
+          <span class="mb-corner mb-corner--br" aria-hidden="true"></span>
+          <button class="mb-theater-button" type="button" data-mb-theater aria-pressed="false" title="Toggle theater mode">
+            Theater
+          </button>
+          <article class="panel player-panel" data-player-panel>
+            <p class="panel-kicker">Player</p>
+            <div class="empty-state">Waiting for a public Twitch player config.</div>
+          </article>
+        </div>
 
         <article class="panel chat-panel">
           <div class="panel-heading">
@@ -74,21 +101,27 @@
               </button>
             </div>
           </div>
+          <div class="mb-feed-wrap">
+            <div class="chat-list" data-chat-list aria-live="polite" aria-label="Combined chat messages">
+              <div class="empty-state" data-chat-empty>
+                Waiting for new public chat messages from the realtime stream.
+              </div>
+            </div>
+            <button class="chat-resume-button" type="button" data-resume-chat hidden>
+              New messages
+            </button>
+          </div>
           <section class="local-chat-controls" aria-label="Local chat">
             <form class="local-auth-form" data-local-auth-form>
-              <label>
-                <span class="visually-hidden">Email</span>
-                <input name="email" type="email" autocomplete="email" placeholder="Email">
-              </label>
               <label data-local-nick-field hidden>
                 <span class="visually-hidden">Nick</span>
                 <input name="nick" type="text" autocomplete="nickname" maxlength="24" placeholder="Nick">
               </label>
-              <button class="local-chat-button" type="submit" data-local-auth-action="login">
-                Continue
+              <button class="local-chat-button" type="submit" data-local-auth-action="login" hidden>
+                Join
               </button>
-              <button class="local-chat-button local-chat-button--secondary" type="button" data-local-google-login hidden>
-                Google
+              <button class="local-chat-button local-chat-button--secondary" type="button" data-local-google-login>
+                Continue with Google
               </button>
             </form>
             <div class="local-session-panel" data-local-session-panel hidden>
@@ -102,21 +135,18 @@
                 <span class="visually-hidden">Local chat message</span>
                 <textarea name="text" rows="1" maxlength="500" placeholder="Local chat message"></textarea>
               </label>
-              <button class="local-chat-button" type="submit">Send</button>
+              <button class="local-chat-button local-chat-button--send" type="submit">Send</button>
             </form>
             <div class="local-chat-suggestions" data-local-chat-suggestions hidden></div>
             <p class="local-chat-status" data-local-chat-status aria-live="polite"></p>
           </section>
-          <div class="chat-list" data-chat-list aria-live="polite" aria-label="Combined chat messages">
-            <div class="empty-state" data-chat-empty>
-              Waiting for new public chat messages from the realtime stream.
-            </div>
-          </div>
-          <button class="chat-resume-button" type="button" data-resume-chat hidden>
-            New messages
-          </button>
         </article>
       </section>
+
+      <div class="mb-tape" aria-hidden="true">
+        <div class="mb-tape-label">Market Watch</div>
+        <div class="mb-tape-inner" data-mb-tape></div>
+      </div>
     </main>
   </body>
 </html>

@@ -25,7 +25,6 @@
     localSession: undefined,
     localModerationCommands: [],
     pendingGoogleOAuth: undefined,
-    pendingLocalRegistrationEmail: undefined,
   };
   const platformLabels = {
     twitch: 'Twitch',
@@ -1399,7 +1398,6 @@
   const setLocalSession = ({ session, token, user }) => {
     state.localSession = { token: token ?? session?.token, user };
     state.pendingGoogleOAuth = undefined;
-    state.pendingLocalRegistrationEmail = undefined;
 
     try {
       window.localStorage.setItem(LOCAL_SESSION_STORAGE_KEY, JSON.stringify(state.localSession));
@@ -1413,7 +1411,6 @@
   const clearLocalSession = () => {
     state.localSession = undefined;
     state.pendingGoogleOAuth = undefined;
-    state.pendingLocalRegistrationEmail = undefined;
 
     try {
       window.localStorage.removeItem(LOCAL_SESSION_STORAGE_KEY);
@@ -1426,7 +1423,7 @@
 
   const renderLocalChatControls = () => {
     const isLoggedIn = Boolean(state.localSession?.token);
-    const needsNick = Boolean(state.pendingGoogleOAuth || state.pendingLocalRegistrationEmail);
+    const needsNick = Boolean(state.pendingGoogleOAuth);
 
     if (!isLoggedIn) {
       clearLocalChatSuggestions();
@@ -1434,15 +1431,6 @@
 
     if (elements.localAuthForm) {
       elements.localAuthForm.hidden = isLoggedIn;
-
-      const emailField = elements.localAuthForm.elements.namedItem('email');
-
-      if (emailField) {
-        emailField.disabled = needsNick;
-        emailField.value = state.pendingGoogleOAuth?.email ??
-          state.pendingLocalRegistrationEmail ??
-          emailField.value;
-      }
 
       const nickField = elements.localAuthForm.querySelector('[data-local-nick-field]');
       const submitButton = elements.localAuthForm.querySelector('[data-local-auth-action]');
@@ -1452,12 +1440,13 @@
       }
 
       if (submitButton) {
-        submitButton.textContent = needsNick ? 'Join' : 'Continue';
+        submitButton.hidden = !needsNick;
       }
     }
 
     if (elements.localGoogleLogin) {
-      elements.localGoogleLogin.disabled = isLoggedIn || needsNick;
+      elements.localGoogleLogin.hidden = needsNick;
+      elements.localGoogleLogin.disabled = isLoggedIn;
     }
 
     if (elements.localMessageForm) {
@@ -1480,9 +1469,6 @@
       elements.localChatStatus.textContent = message;
     }
   };
-
-  const isUnknownLocalChatEmailError = (error) =>
-    /user was not found/i.test(error?.message ?? '');
 
   const isChatNearBottom = () =>
     elements.chatList.scrollHeight - elements.chatList.scrollTop - elements.chatList.clientHeight <=
@@ -1628,7 +1614,6 @@
 
   elements.localAuthForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const email = getFormFieldValue(elements.localAuthForm, 'email');
     const nick = getFormFieldValue(elements.localAuthForm, 'nick');
 
     try {
@@ -1647,33 +1632,9 @@
         return;
       }
 
-      if (state.pendingLocalRegistrationEmail) {
-        if (!nick) {
-          throw new Error('Nick is required to join local chat.');
-        }
-
-        const session = await transport.registerLocalUser({
-          email: state.pendingLocalRegistrationEmail,
-          nick,
-        });
-
-        setLocalSession(session);
-        setLocalChatStatus('Joined local chat.');
-        return;
-      }
-
-      const session = await transport.loginLocalUser({ email });
-
-      setLocalSession(session);
-      setLocalChatStatus('Logged in.');
+      setLocalChatStatus('Use Continue with Google to log in.');
     } catch (error) {
-      if (isUnknownLocalChatEmailError(error)) {
-        state.pendingLocalRegistrationEmail = email;
-        renderLocalChatControls();
-        setLocalChatStatus('Choose a nick to join local chat.');
-      } else {
-        setLocalChatStatus(error.message);
-      }
+      setLocalChatStatus(error.message);
     }
   });
 

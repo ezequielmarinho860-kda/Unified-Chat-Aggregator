@@ -4,14 +4,32 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:;"
+      content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:;"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Unified Chat Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,800;0,900;1,600&family=Libre+Franklin:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./dashboard-theme.css" />
   </head>
   <body class="dashboard-view">
     <main class="chat-window">
+      <header class="mb-masthead">
+        <div class="mb-logo-box">
+          <div class="mb-logo">Market<span class="mb-logo-l2">Bubble</span></div>
+        </div>
+        <div class="mb-masthead-right">
+          <div class="mb-presented">Presented by <span class="mb-presented-name">◆ POLYMARKET</span></div>
+        </div>
+      </header>
+
+      <div class="mb-chrome-bar" aria-hidden="true">
+        <div class="mb-chrome-tag">● On Air</div>
+        <div class="mb-chrome"><div class="mb-chrome-headline">Combined Stream · Live Now</div></div>
+      </div>
+
       <header class="status-grid" id="status-grid" aria-label="Connector status">
         <article class="status-card status-card--twitch" data-platform="twitch">
           <span class="status-card__label">
@@ -43,9 +61,9 @@
           <strong class="status-card__viewer-count" id="total-viewer-count">0</strong>
           <small class="visually-hidden">Combined available viewers</small>
         </article>
-        <article class="status-card status-card--backend" aria-label="Browser backend status">
-          <span class="status-card__label"><span class="platform-mark">B</span>Browser</span>
-          <strong class="status-card__viewer-count status-card__viewer-count--status" id="backend-status">Checking</strong>
+        <article class="status-card status-card--backend" aria-label="Local chat users">
+          <span class="status-card__label"><span class="platform-mark">L</span>Chat Local</span>
+          <strong class="status-card__viewer-count" id="backend-status">--</strong>
         </article>
       </header>
 

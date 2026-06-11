@@ -44,16 +44,12 @@
             <section class="local-chat-panel local-chat-panel--setup" aria-label="Local chat identity">
               <h3 class="local-chat-panel__title">Local chat</h3>
               <form class="local-chat-panel__auth" id="local-chat-auth-form">
-                <label>
-                  <span>Email</span>
-                  <input name="email" type="email" autocomplete="email" placeholder="host@example.com" required />
-                </label>
                 <label data-local-nick-field hidden>
                   <span>Nick</span>
                   <input name="nick" type="text" autocomplete="nickname" maxlength="24" placeholder="host_nick" />
                 </label>
-                <button class="tool-button tool-button--primary" type="submit" data-local-auth-action="login">Continue</button>
-                <button class="tool-button" type="button" id="local-chat-google-login">Google</button>
+                <button class="tool-button tool-button--primary" type="submit" data-local-auth-action="login" hidden>Join</button>
+                <button class="tool-button" type="button" id="local-chat-google-login">Continue with Google</button>
               </form>
               <div class="local-chat-panel__session" id="local-chat-session-panel" hidden>
                 <strong id="local-chat-session-label">Not logged in</strong>
@@ -125,13 +121,7 @@
             </form>
           </div>
 
-          <p class="config-panel__meta" id="config-meta">Loading configuration...</p>
-          <div class="backend-status-row">
-            <p class="backend-status" id="backend-status" aria-live="polite">Browser backend: checking...</p>
-            <button class="tool-button tool-button--compact" type="button" id="reconnect-browser-backend" hidden>
-              Reconnect backend
-            </button>
-          </div>
+          <p class="config-panel__meta" id="config-meta" aria-live="polite"></p>
         </section>
       </section>
     </main>

@@ -1,4 +1,8 @@
 const path = require('node:path');
+const { loadProjectEnv } = require('./load-env');
+
+loadProjectEnv({ override: true });
+
 const { app, BrowserWindow, ipcMain, session, shell } = require('electron');
 const {
   PLATFORM_ORDER,
@@ -70,6 +74,7 @@ let browserBackendClient;
 let browserBackendEventsConnection;
 let browserBackendRuntime;
 let browserBackendStatus = createBrowserBackendStatus();
+let localChatUsers = 0;
 const displayedLocalMessageIds = new Set();
 const localChatMessageBuffer = [];
 let activeLocalChatSession;
@@ -253,6 +258,7 @@ const broadcastToWindows = (channel, payload) => {
 
 const getRuntimeSnapshot = () => ({
   browserBackend: browserBackendStatus,
+  localChatUsers,
   config: createPublicAppConfig(savedConfig),
   runtimeConfig: createPublicAppConfig(runtimeConfig),
   envOverrides,
@@ -316,6 +322,7 @@ const startHttpGateway = async () => {
       dataDir: app.getPath('userData'),
       env: process.env,
       getSnapshot: getPublicRealtimeSnapshot,
+      onBrowserPresenceChange: (count) => updateLocalChatUsers(count),
       onLocalChatMessage: (message) => publishLocalChatMessage(message),
       port: process.env.VIEWER_GATEWAY_PORT,
     });
@@ -346,7 +353,19 @@ const stopBrowserBackend = async () => {
   localChatStore = undefined;
   await browserBackendRuntime?.stop();
   browserBackendRuntime = undefined;
+  localChatUsers = 0;
   updateBrowserBackendStatus('stopped');
+};
+
+const updateLocalChatUsers = (count) => {
+  const normalizedCount = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
+
+  if (normalizedCount === localChatUsers) {
+    return;
+  }
+
+  localChatUsers = normalizedCount;
+  broadcastToWindows('chat:config', getRuntimeSnapshot());
 };
 
 const updateBrowserBackendStatus = (state, error) => {
@@ -361,6 +380,11 @@ const updateBrowserBackendStatus = (state, error) => {
 const handleBrowserBackendEvent = (event) => {
   if (event.type === 'chat.message' && event.data?.source?.platform === 'local') {
     publishBackendLocalChatMessage(event.data);
+    return;
+  }
+
+  if (event.type === 'presence.update') {
+    updateLocalChatUsers(event.data?.browserChatUsers);
   }
 };
 
@@ -911,11 +935,33 @@ const getLocalChatModerationCommands = () =>
     ? browserBackendClient.getLocalModerationCommands()
     : { commands: LOCAL_MODERATION_COMMANDS };
 
-const getLocalGoogleOAuthStatus = () => ({
-  enabled: Boolean(!browserBackendClient && googleOAuthService?.isConfigured()),
-});
+const getExternalBrowserBackendClient = () =>
+  runtimeConfig?.browserBackend?.mode === 'external'
+    ? createBrowserBackendClient({
+        appIngestToken: runtimeConfig.browserBackend.ingestToken,
+        baseUrl: runtimeConfig.browserBackend.url,
+      })
+    : undefined;
+
+const getLocalGoogleOAuthStatus = () => {
+  const externalClient = getExternalBrowserBackendClient();
+
+  return externalClient
+    ? externalClient.getGoogleOAuthStatus()
+    : { enabled: Boolean(googleOAuthService?.isConfigured()) };
+};
 
 const startLocalGoogleOAuth = async ({ nick } = {}) => {
+  const externalClient = getExternalBrowserBackendClient();
+
+  if (externalClient) {
+    const resultKey = cryptoRandomId();
+    const authUrl = externalClient.createGoogleOAuthStartUrl({ resultKey, returnTo: 'app' });
+
+    await shell.openExternal(authUrl);
+    return waitForExternalGoogleOAuthResult(externalClient, resultKey);
+  }
+
   if (!googleOAuthService?.isConfigured()) {
     throw new Error('Google OAuth is not configured.');
   }
@@ -932,10 +978,29 @@ const startLocalGoogleOAuth = async ({ nick } = {}) => {
   return completeAppGoogleOAuthResult(result, { nick });
 };
 
-const completeLocalGoogleOAuth = ({ nick, ticket } = {}) =>
-  browserBackendClient
-    ? browserBackendClient.completeGoogleOAuth({ nick, ticket })
+const completeLocalGoogleOAuth = ({ nick, ticket } = {}) => {
+  const externalClient = getExternalBrowserBackendClient();
+
+  return externalClient
+    ? externalClient.completePrivilegedGoogleOAuth({ nick, ticket })
     : completeAppGoogleOAuthResult({ ticket }, { nick });
+};
+
+const waitForExternalGoogleOAuthResult = async (externalClient, resultKey) => {
+  const expiresAt = Date.now() + 120_000;
+
+  while (Date.now() < expiresAt) {
+    const result = await externalClient.getPrivilegedGoogleOAuthResult(resultKey);
+
+    if (!result.pending) {
+      return result;
+    }
+
+    await delay(500);
+  }
+
+  throw new Error('Google OAuth login timed out.');
+};
 
 const waitForGoogleOAuthResult = async (resultKey) => {
   const expiresAt = Date.now() + 120_000;

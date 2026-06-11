@@ -610,8 +610,14 @@ body.mb-theater .topbar {
 }
 
 body.mb-theater .layout-grid {
-  grid-template-columns: minmax(0, 3fr) minmax(340px, 0.62fr);
+  grid-template-columns: minmax(0, 3fr) minmax(380px, 0.72fr);
+  gap: 0;
   padding-bottom: 8px;
+}
+
+/* Glue the chat column to the player frame. */
+body.mb-theater .player-panel {
+  padding-right: 6px;
 }
 
 .player-panel {
@@ -1313,9 +1319,9 @@ body.mb-theater .layout-grid {
 
 .local-chat-controls {
   display: grid;
-  gap: 10px;
+  gap: 5px;
   margin: 0;
-  padding: 12px 14px;
+  padding: 6px 10px 8px;
   border-top: 1px solid var(--line-strong);
   background: #000000;
 }
@@ -1329,7 +1335,7 @@ body.mb-theater .layout-grid {
 }
 
 .local-auth-form {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .local-message-form {
@@ -1346,9 +1352,13 @@ body.mb-theater .layout-grid {
   display: none;
 }
 
+.local-auth-form [hidden] {
+  display: none;
+}
+
 .local-session-panel strong {
   color: var(--white);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -1360,7 +1370,7 @@ body.mb-theater .layout-grid {
 .local-auth-form input,
 .local-message-form textarea {
   width: 100%;
-  min-height: 36px;
+  min-height: 32px;
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: 0;
@@ -1384,12 +1394,12 @@ body.mb-theater .layout-grid {
 
 .local-message-form textarea {
   max-height: 92px;
-  padding: 9px 12px;
+  padding: 7px 12px;
   resize: vertical;
 }
 
 .local-chat-button {
-  min-height: 36px;
+  min-height: 32px;
   padding: 0 14px;
   border: 1px solid rgba(200, 64, 58, 0.65);
   border-radius: 0;
@@ -1408,11 +1418,13 @@ body.mb-theater .layout-grid {
 }
 
 .local-chat-button--secondary {
+  min-height: 22px;
+  padding: 0 9px;
   border-color: var(--line-strong);
   background: transparent;
   color: var(--white-2);
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1440,7 +1452,7 @@ body.mb-theater .layout-grid {
   display: flex;
   align-items: center;
   gap: 7px;
-  min-height: 18px;
+  min-height: 0;
   margin: 0;
   color: var(--dim);
   font-family: var(--mono);
@@ -1460,6 +1472,11 @@ body.mb-theater .layout-grid {
 }
 
 .local-chat-status:empty::before {
+  display: none;
+}
+
+/* Collapse the status row entirely when there is nothing to report. */
+.local-chat-status:empty {
   display: none;
 }
 

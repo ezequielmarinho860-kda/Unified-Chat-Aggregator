@@ -69,7 +69,6 @@ let xAuthState = { connected: false };
 let xAuthPollingTimer;
 let localChatSession;
 let pendingGoogleOAuth;
-let pendingLocalRegistrationEmail;
 let localModerationCommands = [];
 const view = document.body.classList.contains('dashboard-view') ? 'dashboard' : 'setup';
 
@@ -540,7 +539,6 @@ const verifyLocalChatSession = async () => {
 const setLocalChatSession = (session, { syncMain = true } = {}) => {
   localChatSession = session;
   pendingGoogleOAuth = undefined;
-  pendingLocalRegistrationEmail = undefined;
 
   try {
     window.localStorage.setItem(LOCAL_CHAT_SESSION_STORAGE_KEY, JSON.stringify(session));
@@ -558,7 +556,6 @@ const setLocalChatSession = (session, { syncMain = true } = {}) => {
 
 const clearLocalChatSession = ({ syncMain = true } = {}) => {
   localChatSession = undefined;
-  pendingLocalRegistrationEmail = undefined;
 
   try {
     window.localStorage.removeItem(LOCAL_CHAT_SESSION_STORAGE_KEY);
@@ -576,7 +573,7 @@ const clearLocalChatSession = ({ syncMain = true } = {}) => {
 
 const renderLocalChatSession = () => {
   const isLoggedIn = Boolean(localChatSession?.token && localChatSession.user);
-  const needsNick = Boolean(pendingGoogleOAuth || pendingLocalRegistrationEmail);
+  const needsNick = Boolean(pendingGoogleOAuth);
 
   if (!isLoggedIn) {
     clearLocalChatSuggestions();
@@ -588,7 +585,7 @@ const renderLocalChatSession = () => {
 
     if (emailField) {
       emailField.disabled = needsNick;
-      emailField.value = pendingGoogleOAuth?.email ?? pendingLocalRegistrationEmail ?? emailField.value;
+      emailField.value = pendingGoogleOAuth?.email ?? emailField.value;
     }
   }
 
@@ -598,6 +595,11 @@ const renderLocalChatSession = () => {
 
   if (localChatAuthSubmit) {
     localChatAuthSubmit.textContent = needsNick ? 'Join' : 'Continue';
+    localChatAuthSubmit.hidden = !needsNick;
+  }
+
+  if (localChatGoogleLogin) {
+    localChatGoogleLogin.hidden = needsNick;
   }
 
   if (localChatSessionPanel) {
@@ -633,9 +635,6 @@ const setLocalChatBusy = (isBusy) => {
   }
 };
 
-const isUnknownLocalChatEmailError = (error) =>
-  /user was not found/i.test(error?.message ?? '');
-
 const refreshLocalGoogleOAuthStatus = async () => {
   if (!localChatGoogleLogin || typeof window.chatAggregator?.localChatGoogleStatus !== 'function') {
     return;
@@ -644,9 +643,11 @@ const refreshLocalGoogleOAuthStatus = async () => {
   try {
     const status = await window.chatAggregator.localChatGoogleStatus();
 
-    localChatGoogleLogin.hidden = !status.enabled;
+    if (!status.enabled) {
+      localChatMeta.textContent = 'Google login is not configured.';
+    }
   } catch {
-    localChatGoogleLogin.hidden = true;
+    localChatMeta.textContent = 'Google login status is temporarily unavailable.';
   }
 };
 
@@ -1361,7 +1362,7 @@ const readConfigForm = () => ({
 
 const renderConfigSnapshot = (snapshot) => {
   document.documentElement.dataset.theme = snapshot.config.ui?.theme ?? 'light';
-  renderBrowserBackendStatus(snapshot.browserBackend);
+  renderBrowserBackendStatus(snapshot.browserBackend, snapshot.localChatUsers);
   updateLoggedIdentities(snapshot.config);
   renderFeed();
 
@@ -1377,19 +1378,13 @@ const renderConfigSnapshot = (snapshot) => {
 
   renderViewerSnapshot(snapshot.viewers);
 
-  const overrideText =
-    snapshot.envOverrides?.length > 0
-      ? `Environment overrides active: ${snapshot.envOverrides.join(', ')}. Saved changes apply after clearing those variables.`
-      : 'Using saved configuration.';
-  const pathText = snapshot.configPath ? ` Saved at ${snapshot.configPath}.` : '';
-
   if (configMeta) {
-    configMeta.textContent = `${overrideText}${pathText}`;
+    configMeta.textContent = '';
     void refreshXAuthStatus();
   }
 };
 
-const renderBrowserBackendStatus = (status = {}) => {
+const renderBrowserBackendStatus = (status = {}, localChatUsers = 0) => {
   if (!backendStatus) {
     return;
   }
@@ -1403,7 +1398,8 @@ const renderBrowserBackendStatus = (status = {}) => {
     status.error,
   ].filter(Boolean);
 
-  backendStatus.textContent = details.join(' | ');
+  backendStatus.textContent = formatViewerCount(Number.isFinite(localChatUsers) ? localChatUsers : 0);
+  backendStatus.title = details.join(' | ');
   backendStatus.dataset.backendState = status.state ?? 'stopped';
 
   if (reconnectBrowserBackend) {
@@ -1417,7 +1413,9 @@ const setConfigBusy = (isBusy) => {
   }
 
   restartConnectors.disabled = isBusy;
-  reconnectBrowserBackend.disabled = isBusy;
+  if (reconnectBrowserBackend) {
+    reconnectBrowserBackend.disabled = isBusy;
+  }
   connectTwitch.disabled = isBusy;
   disconnectTwitch.disabled = isBusy;
   clearTwitchSession.disabled = isBusy;
@@ -1628,7 +1626,6 @@ clearFeed?.addEventListener('click', () => {
 localChatAuthForm?.addEventListener('submit', async (event) => {
   event.preventDefault();
 
-  const email = getNamedFormValue(localChatAuthForm, 'email');
   const nick = getNamedFormValue(localChatAuthForm, 'nick');
 
   if (pendingGoogleOAuth) {
@@ -1657,61 +1654,11 @@ localChatAuthForm?.addEventListener('submit', async (event) => {
     return;
   }
 
-  if (pendingLocalRegistrationEmail) {
-    if (!nick) {
-      localChatMeta.textContent = 'Choose a nick to join local chat.';
-      return;
-    }
-
-    setLocalChatBusy(true);
-    localChatMeta.textContent = 'Creating local chat identity...';
-
-    try {
-      const result = await window.chatAggregator.localChatRegister({
-        email: pendingLocalRegistrationEmail,
-        nick,
-      });
-
-      setLocalChatSession({ token: result.session.token, user: result.user });
-      localChatMeta.textContent = `Logged in as ${result.user.nick}.`;
-    } catch (error) {
-      localChatMeta.textContent = `Local chat login failed: ${error.message}`;
-    } finally {
-      setLocalChatBusy(false);
-      renderLocalChatSession();
-    }
-    return;
-  }
-
-  if (!email) {
-    localChatMeta.textContent = 'Email is required.';
-    return;
-  }
-
-  setLocalChatBusy(true);
-  localChatMeta.textContent = 'Logging into local chat...';
-
-  try {
-    const result = await window.chatAggregator.localChatLogin({ email });
-
-    setLocalChatSession({ token: result.session.token, user: result.user });
-    localChatMeta.textContent = `Logged in as ${result.user.nick}.`;
-  } catch (error) {
-    if (isUnknownLocalChatEmailError(error)) {
-      pendingLocalRegistrationEmail = email;
-      localChatMeta.textContent = 'Choose a nick to join local chat.';
-    } else {
-      localChatMeta.textContent = `Local chat login failed: ${error.message}`;
-    }
-  } finally {
-    setLocalChatBusy(false);
-    renderLocalChatSession();
-  }
+  localChatMeta.textContent = 'Use Continue with Google to log in.';
 });
 
 localChatLogout?.addEventListener('click', () => {
   pendingGoogleOAuth = undefined;
-  pendingLocalRegistrationEmail = undefined;
   clearLocalChatSession();
   localChatMeta.textContent = 'Logged out from local chat.';
 });

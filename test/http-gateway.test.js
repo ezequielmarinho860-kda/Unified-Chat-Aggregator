@@ -36,12 +36,17 @@ const postJson = (url, body, token) =>
 const createFakeGoogleOAuthService = ({
   authorizationUrl = 'https://accounts.google.com/mock',
   callbackResult,
+  oauthResult,
   onCreateAuthorizationUrl = () => {},
   profile = {
     email: 'google@example.com',
     name: 'Google User',
   },
 } = {}) => ({
+  consumeResult(resultKey) {
+    assert.equal(resultKey, 'result-1');
+    return oauthResult;
+  },
   consumeTicket(ticket) {
     assert.equal(ticket, 'ticket-1');
     return profile;
@@ -303,6 +308,85 @@ test('reports Google OAuth status and redirects authorization starts', async () 
       resultKey: 'result-1',
       returnTo: '/viewer?debugChat=1',
     });
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('returns privileged Google OAuth results to the Electron app', async () => {
+  const localChatStore = createTestLocalChatStore();
+  const existingUser = localChatStore.registerUser({ email: 'ana@example.com', nick: 'ana' });
+  const googleOAuthService = createFakeGoogleOAuthService({
+    oauthResult: {
+      profile: { email: 'ana@example.com', name: 'Ana' },
+      ticket: 'ticket-1',
+    },
+  });
+  const gateway = createHttpGateway({
+    appIngestToken: 'secret-token',
+    getSnapshot: () => ({}),
+    googleOAuthService,
+    localChatStore,
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const response = await fetch(
+      localUrl(address, '/api/v1/app/auth/google/result?resultKey=result-1'),
+      { headers: { Authorization: 'Bearer secret-token' } },
+    );
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.user.id, existingUser.id);
+    assert.match(body.session.token, /id-/);
+  } finally {
+    await gateway.stop();
+  }
+});
+
+test('requires a nick before completing a new privileged Google account', async () => {
+  const localChatStore = createTestLocalChatStore();
+  const googleOAuthService = createFakeGoogleOAuthService({
+    oauthResult: {
+      profile: { email: 'new@example.com', name: 'New User' },
+      ticket: 'ticket-1',
+    },
+    profile: { email: 'new@example.com', name: 'New User' },
+  });
+  const gateway = createHttpGateway({
+    appIngestToken: 'secret-token',
+    getSnapshot: () => ({}),
+    googleOAuthService,
+    localChatStore,
+    port: 0,
+  });
+
+  try {
+    const address = await gateway.start();
+    const resultResponse = await fetch(
+      localUrl(address, '/api/v1/app/auth/google/result?resultKey=result-1'),
+      { headers: { Authorization: 'Bearer secret-token' } },
+    );
+    const resultBody = await resultResponse.json();
+
+    assert.deepEqual(resultBody.pendingGoogleOAuth, {
+      email: 'new@example.com',
+      name: 'New User',
+      ticket: 'ticket-1',
+    });
+
+    const completeResponse = await postJson(
+      localUrl(address, '/api/v1/app/auth/google/complete'),
+      { nick: 'NewUser', ticket: 'ticket-1' },
+      'secret-token',
+    );
+    const completeBody = await completeResponse.json();
+
+    assert.equal(completeResponse.status, 200);
+    assert.equal(completeBody.user.nick, 'NewUser');
+    assert.equal(completeBody.user.role, 'moderator');
   } finally {
     await gateway.stop();
   }

@@ -319,6 +319,10 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.config-panel__meta:empty {
+  display: none;
+}
+
 .backend-status {
   margin: 0;
   color: #4e5660;
@@ -641,6 +645,10 @@ h1 {
 .local-chat-panel__auth[hidden],
 .local-chat-panel__session[hidden] {
   display: none;
+}
+
+.local-chat-panel [hidden] {
+  display: none !important;
 }
 
 .local-chat-panel label {

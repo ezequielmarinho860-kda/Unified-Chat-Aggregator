@@ -155,22 +155,25 @@ test('builds backend client OAuth and app ingestion requests', async () => {
   });
 
   assert.equal(
-    client.createGoogleOAuthStartUrl({ returnTo: '/viewer?debugChat=1' }),
-    'http://127.0.0.1:47831/api/v1/auth/google/start?returnTo=%2Fviewer%3FdebugChat%3D1',
+    client.createGoogleOAuthStartUrl({ resultKey: 'result-1', returnTo: 'app' }),
+    'http://127.0.0.1:47831/api/v1/auth/google/start?returnTo=app&resultKey=result-1',
   );
 
+  await client.getPrivilegedGoogleOAuthResult('result-1');
+  await client.completePrivilegedGoogleOAuth({ nick: 'ModUser', ticket: 'ticket-1' });
   await client.publishAppEvent({ type: 'chat.message', data: { id: 'message-1' } });
   await client.registerPrivilegedLocalUser({ email: 'mod@example.com', nick: 'ModUser' });
 
-  assert.equal(requests[0].url, 'http://127.0.0.1:47831/api/v1/app/events');
-  assert.equal(requests[0].options.method, 'POST');
+  assert.equal(requests[0].url, 'http://127.0.0.1:47831/api/v1/app/auth/google/result?resultKey=result-1');
   assert.equal(requests[0].options.headers.Authorization, 'Bearer app-token');
-  assert.equal(requests[0].options.headers['Content-Type'], 'application/json');
-  assert.equal(requests[0].options.body, JSON.stringify({ type: 'chat.message', data: { id: 'message-1' } }));
-  assert.equal(requests[1].url, 'http://127.0.0.1:47831/api/v1/app/local/register');
+  assert.equal(requests[1].url, 'http://127.0.0.1:47831/api/v1/app/auth/google/complete');
   assert.equal(requests[1].options.method, 'POST');
   assert.equal(requests[1].options.headers.Authorization, 'Bearer app-token');
-  assert.equal(requests[1].options.body, JSON.stringify({ email: 'mod@example.com', nick: 'ModUser' }));
+  assert.equal(requests[1].options.body, JSON.stringify({ nick: 'ModUser', ticket: 'ticket-1' }));
+  assert.equal(requests[2].url, 'http://127.0.0.1:47831/api/v1/app/events');
+  assert.equal(requests[2].options.body, JSON.stringify({ type: 'chat.message', data: { id: 'message-1' } }));
+  assert.equal(requests[3].url, 'http://127.0.0.1:47831/api/v1/app/local/register');
+  assert.equal(requests[3].options.body, JSON.stringify({ email: 'mod@example.com', nick: 'ModUser' }));
 });
 
 test('surfaces backend client JSON errors', async () => {

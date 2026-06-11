@@ -13,6 +13,8 @@ const LOCAL_REGISTER_PATH = '/api/v1/local/register';
 const SNAPSHOT_PATH = '/api/v1/snapshot';
 const APP_EVENTS_PATH = '/api/v1/app/events';
 const APP_LOCAL_REGISTER_PATH = '/api/v1/app/local/register';
+const APP_GOOGLE_AUTH_COMPLETE_PATH = '/api/v1/app/auth/google/complete';
+const APP_GOOGLE_AUTH_RESULT_PATH = '/api/v1/app/auth/google/result';
 
 const createBrowserBackendClient = ({
   appIngestToken = '',
@@ -27,6 +29,14 @@ const createBrowserBackendClient = ({
   }
 
   return {
+    async completePrivilegedGoogleOAuth({ nick, ticket }) {
+      return requestJson(fetchImpl, normalizedBaseUrl, APP_GOOGLE_AUTH_COMPLETE_PATH, {
+        body: { nick, ticket },
+        headers: createBearerHeaders(appIngestToken),
+        method: 'POST',
+      });
+    },
+
     async completeGoogleOAuth({ nick, ticket }) {
       return requestJson(fetchImpl, normalizedBaseUrl, GOOGLE_AUTH_COMPLETE_PATH, {
         body: { nick, ticket },
@@ -57,11 +67,23 @@ const createBrowserBackendClient = ({
       };
     },
 
-    createGoogleOAuthStartUrl({ returnTo = '/viewer' } = {}) {
+    createGoogleOAuthStartUrl({ resultKey, returnTo = '/viewer' } = {}) {
       const url = new URL(GOOGLE_AUTH_START_PATH, normalizedBaseUrl);
 
       url.searchParams.set('returnTo', returnTo);
+      if (resultKey) {
+        url.searchParams.set('resultKey', resultKey);
+      }
       return url.toString();
+    },
+
+    async getPrivilegedGoogleOAuthResult(resultKey) {
+      const url = new URL(APP_GOOGLE_AUTH_RESULT_PATH, normalizedBaseUrl);
+
+      url.searchParams.set('resultKey', resultKey);
+      return requestJson(fetchImpl, normalizedBaseUrl, url, {
+        headers: createBearerHeaders(appIngestToken),
+      });
     },
 
     async getGoogleOAuthStatus() {
