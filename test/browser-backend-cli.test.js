@@ -5,6 +5,7 @@ const path = require('node:path');
 const test = require('node:test');
 const {
   createEmptySnapshot,
+  createStandalonePublicManifest,
   startStandaloneBrowserBackend,
 } = require('../src/browser-backend/cli');
 const { createBrowserBackendClient } = require('../src/browser-backend/client');
@@ -19,6 +20,30 @@ test('creates a standalone empty browser backend snapshot', () => {
   assert.equal(snapshot.manifest.title, 'Unified Chat Aggregator');
   assert.deepEqual(snapshot.statuses, []);
   assert.deepEqual(snapshot.viewers, { sources: [], total: 0 });
+});
+
+test('creates a standalone public Twitch player manifest from environment', () => {
+  const manifest = createStandalonePublicManifest({
+    env: {
+      TWITCH_ACCESS_TOKEN: 'secret-token',
+      TWITCH_CHANNEL: 'HasanAbi',
+    },
+  });
+
+  assert.deepEqual(manifest, {
+    title: 'Unified Chat Aggregator',
+    sources: [{
+      sourceId: 'twitch:hasanabi',
+      platform: 'twitch',
+      channelLabel: 'hasanabi',
+      watchUrl: 'https://www.twitch.tv/hasanabi',
+      player: {
+        provider: 'twitch',
+        channel: 'hasanabi',
+      },
+    }],
+  });
+  assert.doesNotMatch(JSON.stringify(manifest), /secret-token|accessToken/);
 });
 
 test('starts and stops the standalone browser backend cli controller', async () => {
@@ -53,6 +78,35 @@ test('starts and stops the standalone browser backend cli controller', async () 
       { accepted: true, published: 0 },
     );
     assert.equal((await client.loadSnapshot()).viewers.total, 18);
+  } finally {
+    await controller.stop();
+  }
+});
+
+test('starts standalone backend with Twitch player manifest from environment', async () => {
+  const dataDir = createTempDataDir();
+  const controller = await startStandaloneBrowserBackend({
+    env: {
+      BROWSER_BACKEND_DATA_DIR: dataDir,
+      BROWSER_BACKEND_PORT: '0',
+      TWITCH_CHANNEL: 'Monstercat',
+    },
+    stdout: () => {},
+  });
+
+  try {
+    const snapshot = await (await fetch(controller.address.snapshotUrl)).json();
+
+    assert.deepEqual(snapshot.manifest.sources, [{
+      sourceId: 'twitch:monstercat',
+      platform: 'twitch',
+      channelLabel: 'monstercat',
+      watchUrl: 'https://www.twitch.tv/monstercat',
+      player: {
+        provider: 'twitch',
+        channel: 'monstercat',
+      },
+    }]);
   } finally {
     await controller.stop();
   }

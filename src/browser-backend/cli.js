@@ -3,7 +3,9 @@
 const { createBrowserBackendConfig } = require('./config');
 const { createBrowserBackendRuntime } = require('./runtime');
 const { createBrowserBackendSnapshotState } = require('./snapshot-state');
+const { createRuntimeAppConfig } = require('../app-config');
 const { loadProjectEnv } = require('../load-env');
+const { createPublicViewerManifestContext } = require('../public-viewer-manifest');
 
 const startStandaloneBrowserBackend = async ({
   createRuntime = createBrowserBackendRuntime,
@@ -13,7 +15,7 @@ const startStandaloneBrowserBackend = async ({
 } = {}) => {
   const config = createBrowserBackendConfig({ env });
   const snapshotState = createBrowserBackendSnapshotState({
-    initialSnapshot: createEmptySnapshot(),
+    initialSnapshot: createEmptySnapshot({ env }),
   });
   const runtime = createRuntime({
     appIngestToken: env.APP_INGEST_TOKEN,
@@ -36,12 +38,47 @@ const startStandaloneBrowserBackend = async ({
   };
 };
 
-const createEmptySnapshot = () => ({
+const createEmptySnapshot = ({ env = {} } = {}) => ({
   generatedAt: new Date().toISOString(),
-  manifest: { sources: [], title: 'Unified Chat Aggregator' },
+  manifest: createStandalonePublicManifest({ env }),
   protocolVersion: '1',
   statuses: [],
   viewers: { sources: [], total: 0 },
+});
+
+const createStandalonePublicManifest = ({ env = {} } = {}) => {
+  const { runtimeConfig } = createRuntimeAppConfig(createStandaloneBootstrapConfig(), { env });
+
+  return createPublicViewerManifestContext({ config: runtimeConfig }).manifest;
+};
+
+const createStandaloneBootstrapConfig = () => ({
+  connectors: {
+    twitch: {
+      enabled: false,
+      channel: '',
+      sources: [
+        { enabled: false, channel: '' },
+        { enabled: false, channel: '' },
+      ],
+    },
+    kick: {
+      enabled: false,
+      channel: '',
+      sources: [
+        { enabled: false, channel: '' },
+        { enabled: false, channel: '' },
+      ],
+    },
+    x: {
+      enabled: false,
+      liveUrl: '',
+      sources: [
+        { enabled: false, liveUrl: '' },
+        { enabled: false, liveUrl: '' },
+      ],
+    },
+  },
 });
 
 const stopRuntime = async (runtime, stderr = console.error) => {
@@ -80,5 +117,6 @@ if (require.main === module) {
 
 module.exports = {
   createEmptySnapshot,
+  createStandalonePublicManifest,
   startStandaloneBrowserBackend,
 };

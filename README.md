@@ -12,8 +12,10 @@ The current direction is external app bridge mode: the browser backend serves
 the live viewer, overlay, realtime events, and local chat, while the Electron
 app remains the local collector for Twitch, Kick, and X. Closing Electron in
 external mode leaves the browser viewer and local chat online, but platform
-collection stops until the app is opened again. The implementation plan lives in
-`docs/external-app-bridge-plan.md`.
+collection stops until the app is opened again. The standalone backend can also
+publish the public Twitch player manifest from `TWITCH_CHANNEL`, so the Twitch
+live player can keep loading in Viewer Mode even when Electron is closed. The
+implementation plan lives in `docs/external-app-bridge-plan.md`.
 
 ## Current Capabilities
 
@@ -365,8 +367,8 @@ Supported variables:
 
 | Variable | Purpose |
 | --- | --- |
-| `CONNECTORS` | Comma-separated connector list, such as `twitch,kick,x`. |
-| `TWITCH_CHANNEL` | Overrides the Twitch channel before saved config exists. |
+| `CONNECTORS` | Comma-separated connector list, such as `twitch,kick,x`. If set while using standalone Twitch player bootstrap, include `twitch`. |
+| `TWITCH_CHANNEL` | Overrides the Twitch channel before saved config exists and lets the standalone backend publish a public Twitch player manifest. |
 | `TWITCH_ACCESS_TOKEN` | Provides a Twitch token for development flows. |
 | `TWITCH_CLIENT_ID` | Overrides the Twitch Client ID. |
 | `KICK_CHANNEL` | Overrides the Kick channel before saved config exists. |
@@ -446,11 +448,13 @@ they are published as public realtime feed events by the Electron app.
 Viewer Mode shows per-platform viewer cards and a combined total in a compact
 top bar similar to the app dashboard. Platform cards are calculated from the
 public viewer source list, so multiple public sources from the same platform are
-summed into one platform card. When a Twitch connector is enabled, the public
-manifest includes a Twitch player config and the Viewer Mode embeds the Twitch
-player through a small player adapter boundary. Kick and X publish public watch
-links when available, but remain external fallbacks until an embed is technically
-approved for those providers.
+summed into one platform card. When a Twitch connector is enabled, or when the
+standalone backend starts with `TWITCH_CHANNEL` configured, the public manifest
+includes a Twitch player config and Viewer Mode embeds the Twitch player through
+a small player adapter boundary. This lets the Twitch live player remain
+available from the browser backend even if Electron is closed. Kick and X
+publish public watch links when available, but remain external fallbacks until
+an embed is technically approved for those providers.
 
 The public manifest is normalized separately from the internal connector config,
 so credentials and local runtime details are not part of the Viewer Mode
@@ -494,6 +498,9 @@ run the viewer/local-chat backend as a separate Node process:
 
 ```powershell
 $env:APP_INGEST_TOKEN = "demo-token"
+$env:TWITCH_CHANNEL = "your_twitch_channel"
+# If CONNECTORS is set, it must include twitch for this standalone player manifest.
+# $env:CONNECTORS = "twitch,x"
 npm.cmd run backend
 ```
 
@@ -506,8 +513,14 @@ npm.cmd start
 ```
 
 In external mode, the browser viewer and local chat continue while the backend
-process is running. Closing the Electron app still stops Twitch/Kick/X
-collection because those connectors remain inside the app.
+process is running. If `TWITCH_CHANNEL` is set in the backend environment or
+project `.env`, the standalone backend publishes the public Twitch player
+manifest by itself, so the browser Twitch live player does not depend on
+Electron being open. Closing Electron still stops Twitch/Kick/X chat collection
+and live viewer-count polling because those collectors remain inside the app.
+If `CONNECTORS` is explicitly configured, it must include `twitch`; otherwise
+the standalone backend treats Twitch as disabled and does not expose the player
+source.
 
 The browser-only admin roadmap is paused for now. The active plan is to keep the
 Electron app as the platform collector and use the standalone browser backend as
