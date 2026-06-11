@@ -3,6 +3,7 @@
 const { createBrowserBackendConfig } = require('./config');
 const { createBrowserBackendRuntime } = require('./runtime');
 const { createBrowserBackendSnapshotState } = require('./snapshot-state');
+const { loadProjectEnv } = require('../load-env');
 
 const startStandaloneBrowserBackend = async ({
   createRuntime = createBrowserBackendRuntime,
@@ -52,6 +53,7 @@ const stopRuntime = async (runtime, stderr = console.error) => {
 };
 
 const run = async () => {
+  loadProjectEnv({ override: true });
   const controller = await startStandaloneBrowserBackend();
   let isStopping = false;
 

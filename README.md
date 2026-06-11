@@ -354,6 +354,13 @@ public config snapshots, but they still exist on disk when saved.
 Environment variables are supported mainly for development and first-run
 bootstrap.
 
+The Electron app and standalone browser backend automatically load a `.env`
+file from the project root when they start. Copy `.env.example` to `.env` and
+fill the required values. The real `.env` file is ignored by Git. When present,
+its values take precedence so Electron and the standalone backend cannot start
+with different stale shell variables. Without a `.env`, normal operating-system
+environment variables continue to work.
+
 Supported variables:
 
 | Variable | Purpose |
@@ -370,6 +377,11 @@ Supported variables:
 | `BROWSER_BACKEND_URL` | Connects the app to a standalone browser backend instead of starting the embedded gateway. |
 | `BROWSER_BACKEND_MODE` | Forces `embedded` or `external` browser backend mode. Optional when `BROWSER_BACKEND_URL` is set. |
 | `APP_INGEST_TOKEN` | Bearer token used by the app to publish connector events into the standalone browser backend. |
+| `BROWSER_BACKEND_PORT` | Port used by the standalone browser backend. Defaults to `47831`. |
+| `BROWSER_BACKEND_DATA_DIR` | Directory used for standalone backend persistence. |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth web application client ID for verified local-chat login. |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth web application client secret. Keep this only on the backend. |
+| `GOOGLE_OAUTH_REDIRECT_URI` | Public Google OAuth callback URL, normally ending in `/api/v1/auth/google/callback`. |
 
 After a saved config file exists, the app prioritizes saved configuration on
 startup so old shell variables do not unexpectedly switch the stream. Browser

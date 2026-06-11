@@ -3,6 +3,9 @@ out/
 dist/
 .vite/
 .npm-cache/
+.env
+.env.*
+!.env.example
 npm-debug.log*
 *.log
 coverage/
